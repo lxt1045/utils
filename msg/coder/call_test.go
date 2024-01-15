@@ -1,4 +1,4 @@
-package call
+package coder
 
 import (
 	"context"
@@ -23,7 +23,7 @@ func InitTest() {
 		panic(err)
 	}
 
-	if len(svcInterfaces) != len(svcMethods) {
+	if len(ifaces) != len(methods) {
 		panic("error")
 	}
 }

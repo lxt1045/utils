@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	methodsLock sync.Mutex
-	methods     = make([]Method, 0, 32)
-	ifaces      = make(map[string]uint32) // map[func]id
+	svcMethodsLock sync.Mutex
+	svcMethods     = make([]Method, 0, 32)
+	svcInterfaces  = make(map[string]uint32) // map[func]id
 )
 
 type Method struct {
@@ -22,10 +22,16 @@ type Method struct {
 	SvcPointer unsafe.Pointer
 	ReqType    reflect.Type
 	RespType   reflect.Type
+	Idx        uint32
+	Name       string
 }
 
 // Rigester fun: pb.RegisterHelloService, service: implementation
 func Rigester(ctx context.Context, fun interface{}, service interface{}) (err error) {
+
+	return
+}
+func rigester(ctx context.Context, fun interface{}, service interface{}) (err error) {
 	regMethodType := reflect.TypeOf(fun)
 	if regMethodType.Kind() != reflect.Func {
 		err = errors.Errorf("arg fun must be func")
@@ -63,8 +69,8 @@ func Rigester(ctx context.Context, fun interface{}, service interface{}) (err er
 
 	log.Ctx(ctx).Info().Caller().Str("type", svcImpType.String()).Send()
 
-	methodsLock.Lock()
-	defer methodsLock.Unlock()
+	svcMethodsLock.Lock()
+	defer svcMethodsLock.Unlock()
 
 	for i := 0; i < ifaceType.NumMethod(); i++ {
 		method := ifaceType.Method(i)
@@ -74,7 +80,7 @@ func Rigester(ctx context.Context, fun interface{}, service interface{}) (err er
 
 		// 输入参数 和 输出参数 都需要注册到 msg 里去，以便序列化和反序列化
 
-		if _, ok := ifaces[methodKey]; ok {
+		if _, ok := svcInterfaces[methodKey]; ok {
 			err = errors.Errorf("The function is registered: %s", methodKey)
 			return
 		}
@@ -96,13 +102,13 @@ func Rigester(ctx context.Context, fun interface{}, service interface{}) (err er
 			return
 		}
 
-		idx := uint32(len(methods))
-		if int(idx) != len(methods) {
+		idx := uint32(len(svcMethods))
+		if int(idx) != len(svcMethods) {
 			err = errors.Errorf("The number of methods exceeds the limit")
 			return
 		}
-		ifaces[methodKey] = idx
-		methods = append(methods, Method{
+		svcInterfaces[methodKey] = idx
+		svcMethods = append(svcMethods, Method{
 			Func:       f,
 			SvcPointer: svcValue.UnsafePointer(),
 			ReqType:    mType.In(1).Elem(), // 形参是指针，所以要换成原始数据结构形式
@@ -114,7 +120,7 @@ func Rigester(ctx context.Context, fun interface{}, service interface{}) (err er
 }
 
 func MethodIdx(method string) (idx uint32, exist bool) {
-	idx, exist = ifaces[method]
+	idx, exist = svcInterfaces[method]
 	return
 }
 
@@ -124,7 +130,7 @@ func Call(ctx context.Context, methodIdx uint32, req unsafe.Pointer) (resp unsaf
 	// 	return
 	// }
 
-	method := methods[methodIdx]
+	method := svcMethods[methodIdx]
 	resp, err = method.Func(method.SvcPointer, ctx, req)
 	return
 }
@@ -135,11 +141,11 @@ type MethodOut struct {
 }
 
 func AllInterfaces() (is []MethodOut) {
-	keys := make([]string, len(ifaces))
-	for k, v := range ifaces {
+	keys := make([]string, len(svcInterfaces))
+	for k, v := range svcInterfaces {
 		keys[v] = k
 	}
-	for i, m := range methods {
+	for i, m := range svcMethods {
 		is = append(is, MethodOut{
 			Method: m,
 			Name:   keys[i],
