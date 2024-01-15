@@ -1,0 +1,25 @@
+
+syntax = "proto3";
+package pb;
+
+option go_package = "./;pb";
+
+// 客户端发送给服务端
+message HelloReq {
+  string name = 1;
+}
+
+// 服务端返回给客户端
+message HelloRsp {
+  string msg = 1;
+}
+
+message BenchmarkReq {}
+
+message BenchmarkRsp {}
+
+// 定义服务
+service Hello {
+  rpc SayHello(HelloReq) returns (HelloRsp) {}
+  rpc Benchmark(BenchmarkReq) returns (BenchmarkRsp) {}
+}
