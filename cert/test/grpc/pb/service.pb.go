@@ -210,20 +210,22 @@ func init() {
 func init() { proto.RegisterFile("cert/test/grpc/pb/service.proto", fileDescriptor_92865409db567e80) }
 
 var fileDescriptor_92865409db567e80 = []byte{
-	// 199 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x92, 0x4f, 0x4e, 0x2d, 0x2a,
-	0xd1, 0x2f, 0x49, 0x2d, 0x2e, 0xd1, 0x4f, 0x2f, 0x2a, 0x48, 0xd6, 0x2f, 0x48, 0xd2, 0x2f, 0x4e,
-	0x2d, 0x2a, 0xcb, 0x4c, 0x4e, 0xd5, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x2a, 0x48, 0x52,
-	0x92, 0xe3, 0xe2, 0xf0, 0x48, 0xcd, 0xc9, 0xc9, 0x0f, 0x4a, 0x2d, 0x14, 0x12, 0xe2, 0x62, 0xc9,
-	0x4b, 0xcc, 0x4d, 0x95, 0x60, 0x54, 0x60, 0xd4, 0xe0, 0x0c, 0x02, 0xb3, 0x95, 0x64, 0x60, 0xf2,
-	0xc5, 0x05, 0x42, 0x02, 0x5c, 0xcc, 0xb9, 0xc5, 0xe9, 0x50, 0x69, 0x10, 0x53, 0x89, 0x8f, 0x8b,
-	0xc7, 0x29, 0x35, 0x2f, 0x39, 0x23, 0x37, 0xb1, 0x28, 0x3b, 0x28, 0xb5, 0x10, 0x95, 0x5f, 0x5c,
-	0x60, 0x94, 0xc2, 0xc5, 0x0a, 0xd6, 0x2d, 0xa4, 0xc1, 0xc5, 0x11, 0x9c, 0x58, 0x09, 0x61, 0xf3,
-	0xe8, 0x15, 0x24, 0xe9, 0xc1, 0x2c, 0x95, 0x42, 0xe2, 0x15, 0x17, 0x28, 0x31, 0x08, 0x19, 0x72,
-	0x71, 0xc2, 0x8d, 0x10, 0x12, 0x00, 0x49, 0x22, 0xdb, 0x20, 0x85, 0x26, 0x02, 0xd2, 0xe2, 0x24,
-	0x7c, 0xe2, 0x91, 0x1c, 0xe3, 0x85, 0x47, 0x72, 0x8c, 0x0f, 0x1e, 0xc9, 0x31, 0x46, 0xb1, 0xea,
-	0xe9, 0x5b, 0x17, 0x24, 0x25, 0xb1, 0x81, 0xfd, 0x68, 0x0c, 0x08, 0x00, 0x00, 0xff, 0xff, 0xd2,
-	0x9e, 0x2f, 0xa3, 0x06, 0x01, 0x00, 0x00,
+	// 239 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x90, 0xb1, 0x4e, 0xc3, 0x40,
+	0x10, 0x44, 0x59, 0x20, 0x28, 0x59, 0xa2, 0x10, 0x2d, 0x0d, 0x8a, 0x90, 0x41, 0xae, 0x5c, 0xf9,
+	0x1c, 0x28, 0xe9, 0x52, 0x51, 0x3b, 0x1d, 0x9d, 0xef, 0xb4, 0x0a, 0x88, 0x5c, 0xbc, 0xbe, 0x3b,
+	0x21, 0xf1, 0x87, 0x94, 0x7c, 0x02, 0xf2, 0x67, 0x50, 0xa1, 0x5c, 0x30, 0x0a, 0xa9, 0xdc, 0xcd,
+	0xec, 0xe8, 0xcd, 0x48, 0x8b, 0x37, 0x86, 0x5d, 0x50, 0x81, 0x7d, 0x50, 0x2b, 0x27, 0x46, 0x89,
+	0x56, 0x9e, 0xdd, 0xdb, 0x8b, 0xe1, 0x5c, 0x5c, 0x1d, 0x6a, 0x3a, 0x16, 0x9d, 0x26, 0x38, 0x7c,
+	0xe4, 0xf5, 0xba, 0x2e, 0xb9, 0x21, 0xc2, 0xd3, 0x4d, 0x65, 0xf9, 0x0a, 0x6e, 0x21, 0x1b, 0x95,
+	0x51, 0xa7, 0xd7, 0x5d, 0xee, 0x85, 0xa6, 0x78, 0x62, 0xfd, 0xea, 0x37, 0xde, 0xca, 0x74, 0x82,
+	0xe3, 0x05, 0x6f, 0xcc, 0xb3, 0xad, 0xdc, 0x6b, 0xc9, 0xcd, 0x7f, 0xef, 0xe5, 0xee, 0x1b, 0x70,
+	0x10, 0x71, 0xca, 0x70, 0xb8, 0xac, 0xde, 0x77, 0x7a, 0x9c, 0x8b, 0xce, 0xbb, 0xd5, 0xd9, 0x9e,
+	0xf3, 0x92, 0x1e, 0xd1, 0x1c, 0x47, 0x7f, 0x1d, 0x34, 0xdd, 0x86, 0xfb, 0x13, 0xb3, 0x83, 0x4b,
+	0x44, 0x14, 0x9e, 0x2f, 0x83, 0xe3, 0xca, 0xf6, 0xe8, 0xcf, 0xa0, 0x00, 0x2a, 0x70, 0xb2, 0x03,
+	0x4a, 0x6e, 0x7a, 0x31, 0x34, 0xc7, 0x8b, 0x8e, 0xf0, 0xd2, 0x03, 0x29, 0x60, 0x71, 0xf9, 0xd1,
+	0x26, 0xf0, 0xd9, 0x26, 0xf0, 0xd5, 0x26, 0xf0, 0x34, 0xc8, 0xd5, 0x83, 0x68, 0x7d, 0x16, 0x5f,
+	0x7f, 0xff, 0x13, 0x00, 0x00, 0xff, 0xff, 0x45, 0x1b, 0x58, 0x01, 0x9d, 0x01, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -240,6 +242,9 @@ const _ = grpc.SupportPackageIsVersion4
 type HelloClient interface {
 	SayHello(ctx context.Context, in *HelloReq, opts ...grpc.CallOption) (*HelloRsp, error)
 	Benchmark(ctx context.Context, in *BenchmarkReq, opts ...grpc.CallOption) (*BenchmarkRsp, error)
+	StreamHello(ctx context.Context, opts ...grpc.CallOption) (Hello_StreamHelloClient, error)
+	StreamReqHello(ctx context.Context, opts ...grpc.CallOption) (Hello_StreamReqHelloClient, error)
+	StreamRespHello(ctx context.Context, in *HelloReq, opts ...grpc.CallOption) (Hello_StreamRespHelloClient, error)
 }
 
 type helloClient struct {
@@ -268,10 +273,110 @@ func (c *helloClient) Benchmark(ctx context.Context, in *BenchmarkReq, opts ...g
 	return out, nil
 }
 
+func (c *helloClient) StreamHello(ctx context.Context, opts ...grpc.CallOption) (Hello_StreamHelloClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Hello_serviceDesc.Streams[0], "/pb.Hello/StreamHello", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &helloStreamHelloClient{stream}
+	return x, nil
+}
+
+type Hello_StreamHelloClient interface {
+	Send(*HelloReq) error
+	Recv() (*HelloRsp, error)
+	grpc.ClientStream
+}
+
+type helloStreamHelloClient struct {
+	grpc.ClientStream
+}
+
+func (x *helloStreamHelloClient) Send(m *HelloReq) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *helloStreamHelloClient) Recv() (*HelloRsp, error) {
+	m := new(HelloRsp)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *helloClient) StreamReqHello(ctx context.Context, opts ...grpc.CallOption) (Hello_StreamReqHelloClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Hello_serviceDesc.Streams[1], "/pb.Hello/StreamReqHello", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &helloStreamReqHelloClient{stream}
+	return x, nil
+}
+
+type Hello_StreamReqHelloClient interface {
+	Send(*HelloReq) error
+	CloseAndRecv() (*HelloRsp, error)
+	grpc.ClientStream
+}
+
+type helloStreamReqHelloClient struct {
+	grpc.ClientStream
+}
+
+func (x *helloStreamReqHelloClient) Send(m *HelloReq) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *helloStreamReqHelloClient) CloseAndRecv() (*HelloRsp, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	m := new(HelloRsp)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *helloClient) StreamRespHello(ctx context.Context, in *HelloReq, opts ...grpc.CallOption) (Hello_StreamRespHelloClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Hello_serviceDesc.Streams[2], "/pb.Hello/StreamRespHello", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &helloStreamRespHelloClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Hello_StreamRespHelloClient interface {
+	Recv() (*HelloRsp, error)
+	grpc.ClientStream
+}
+
+type helloStreamRespHelloClient struct {
+	grpc.ClientStream
+}
+
+func (x *helloStreamRespHelloClient) Recv() (*HelloRsp, error) {
+	m := new(HelloRsp)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // HelloServer is the server API for Hello service.
 type HelloServer interface {
 	SayHello(context.Context, *HelloReq) (*HelloRsp, error)
 	Benchmark(context.Context, *BenchmarkReq) (*BenchmarkRsp, error)
+	StreamHello(Hello_StreamHelloServer) error
+	StreamReqHello(Hello_StreamReqHelloServer) error
+	StreamRespHello(*HelloReq, Hello_StreamRespHelloServer) error
 }
 
 // UnimplementedHelloServer can be embedded to have forward compatible implementations.
@@ -283,6 +388,15 @@ func (*UnimplementedHelloServer) SayHello(ctx context.Context, req *HelloReq) (*
 }
 func (*UnimplementedHelloServer) Benchmark(ctx context.Context, req *BenchmarkReq) (*BenchmarkRsp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Benchmark not implemented")
+}
+func (*UnimplementedHelloServer) StreamHello(srv Hello_StreamHelloServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamHello not implemented")
+}
+func (*UnimplementedHelloServer) StreamReqHello(srv Hello_StreamReqHelloServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamReqHello not implemented")
+}
+func (*UnimplementedHelloServer) StreamRespHello(req *HelloReq, srv Hello_StreamRespHelloServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamRespHello not implemented")
 }
 
 func RegisterHelloServer(s *grpc.Server, srv HelloServer) {
@@ -325,6 +439,79 @@ func _Hello_Benchmark_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Hello_StreamHello_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(HelloServer).StreamHello(&helloStreamHelloServer{stream})
+}
+
+type Hello_StreamHelloServer interface {
+	Send(*HelloRsp) error
+	Recv() (*HelloReq, error)
+	grpc.ServerStream
+}
+
+type helloStreamHelloServer struct {
+	grpc.ServerStream
+}
+
+func (x *helloStreamHelloServer) Send(m *HelloRsp) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *helloStreamHelloServer) Recv() (*HelloReq, error) {
+	m := new(HelloReq)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _Hello_StreamReqHello_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(HelloServer).StreamReqHello(&helloStreamReqHelloServer{stream})
+}
+
+type Hello_StreamReqHelloServer interface {
+	SendAndClose(*HelloRsp) error
+	Recv() (*HelloReq, error)
+	grpc.ServerStream
+}
+
+type helloStreamReqHelloServer struct {
+	grpc.ServerStream
+}
+
+func (x *helloStreamReqHelloServer) SendAndClose(m *HelloRsp) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *helloStreamReqHelloServer) Recv() (*HelloReq, error) {
+	m := new(HelloReq)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func _Hello_StreamRespHello_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(HelloReq)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(HelloServer).StreamRespHello(m, &helloStreamRespHelloServer{stream})
+}
+
+type Hello_StreamRespHelloServer interface {
+	Send(*HelloRsp) error
+	grpc.ServerStream
+}
+
+type helloStreamRespHelloServer struct {
+	grpc.ServerStream
+}
+
+func (x *helloStreamRespHelloServer) Send(m *HelloRsp) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 var _Hello_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "pb.Hello",
 	HandlerType: (*HelloServer)(nil),
@@ -338,7 +525,24 @@ var _Hello_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Hello_Benchmark_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamHello",
+			Handler:       _Hello_StreamHello_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamReqHello",
+			Handler:       _Hello_StreamReqHello_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamRespHello",
+			Handler:       _Hello_StreamRespHello_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "cert/test/grpc/pb/service.proto",
 }
 

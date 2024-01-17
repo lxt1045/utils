@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"strconv"
+	"time"
 
 	"github.com/lxt1045/utils/cert/test/grpc/filesystem"
 	"github.com/lxt1045/utils/cert/test/grpc/pb"
@@ -67,6 +71,7 @@ func main() {
 	//通过句柄进行调用服务端函数SayHello
 
 	sayHello(ctx, c)
+	streamHello(ctx, c)
 }
 
 func sayHello(ctx context.Context, c pb.HelloClient) {
@@ -79,4 +84,35 @@ func sayHello(ctx context.Context, c pb.HelloClient) {
 	}
 
 	fmt.Println(re1.Msg)
+}
+
+func streamHello(ctx context.Context, c pb.HelloClient) {
+	stream, err := c.StreamHello(ctx)
+	if err != nil {
+		fmt.Println("calling OrderList() error: ", err)
+		return
+	}
+	ctx = stream.Context()
+	for i := 1; i <= 3; i++ {
+		time.Sleep(time.Second * 1)
+
+		err = stream.Send(&pb.HelloReq{Name: "lxt-" + strconv.Itoa(i)})
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println("calling StreamHello() error", err)
+			return
+		}
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println("calling StreamHello() error", err)
+			return
+		}
+		log.Printf("res msg:%s", res.Msg)
+	}
+	stream.CloseSend()
 }

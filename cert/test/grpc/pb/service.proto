@@ -22,4 +22,7 @@ message BenchmarkRsp {}
 service Hello {
   rpc SayHello(HelloReq) returns (HelloRsp) {}
   rpc Benchmark(BenchmarkReq) returns (BenchmarkRsp) {}
+  rpc StreamHello(stream HelloReq) returns (stream HelloRsp) {};
+  rpc StreamReqHello(stream HelloReq) returns (HelloRsp) {};
+  rpc StreamRespHello(HelloReq) returns (stream HelloRsp) {};
 }

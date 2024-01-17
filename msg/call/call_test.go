@@ -2,111 +2,87 @@ package call
 
 import (
 	"context"
-	"reflect"
-	"strconv"
-	"sync"
+	"net"
 	"testing"
-	"unsafe"
+	"time"
 
 	"github.com/lxt1045/utils/cert/test/grpc/pb"
-	"github.com/lxt1045/utils/log"
 )
 
-var doOnce sync.Once
-
-func InitTest() {
+func TestConn(t *testing.T) {
 	ctx := context.Background()
-	err := Rigester(ctx, pb.RegisterHelloServer, &server{
-		Str: "test",
-	})
-	if err != nil {
-		panic(err)
-	}
+	addr := ":18080"
+	ch := make(chan struct{})
+	go func() {
+		testService(ctx, t, addr, ch)
+	}()
 
-	if len(svcInterfaces) != len(svcMethods) {
-		panic("error")
-	}
+	<-ch
+	time.Sleep(time.Millisecond * 10)
+	testClient(ctx, t, addr)
 }
 
-func TestMake(t *testing.T) {
-	ctx := context.Background()
-	doOnce.Do(InitTest)
-
-	all := AllInterfaces()
-	for i, m := range all {
-		svc := (*server)(m.SvcPointer)
-		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s, resp:%s",
-			i, svc.Str, m.Name, m.ReqType.String(), m.RespType.String())
-	}
-
-	idx, exist := MethodIdx("pb.HelloServer.SayHello")
-	if !exist {
-		t.Fatal("exist")
-	}
-
-	req := pb.HelloReq{
-		Name: "call 1",
-	}
-	r, err := Call(ctx, idx, unsafe.Pointer(&req))
+func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := (*pb.HelloRsp)(r)
-	t.Logf("resp.Msg:\"%s\"", resp.Msg)
+	for {
+		ch <- struct{}{}
+
+		// 接收输入流
+		conn, err := ln.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s, err := NewService(ctx, pb.RegisterHelloServer, &server{Str: "test"}, conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		all := s.AllInterfaces()
+		for i, m := range all {
+			svc := (*server)(m.SvcPointer)
+			t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
+				i, svc.Str, m.Name, m.ReqType.String())
+		}
+	}
 }
 
-func BenchmarkMethod(b *testing.B) {
-	ctx := context.Background()
-	doOnce.Do(InitTest)
-
-	req := pb.BenchmarkReq{}
-	idx, exist := MethodIdx("pb.HelloServer.Benchmark")
-	if !exist {
-		b.Fatal("exist")
+func testClient(ctx context.Context, t *testing.T, addr string) {
+	addr = "127.0.0.1" + addr
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	b.Run("Call", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, err := Call(ctx, idx, unsafe.Pointer(&req))
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
+	client, err := NewClient(ctx, pb.RegisterHelloServer, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	b.Run("CallByReflect", func(b *testing.B) {
-		svc := &server{}
-		svcImpMethod, ok := reflect.TypeOf(svc).MethodByName("Benchmark")
-		if !ok {
-			b.Fatal("!ok")
-		}
-		fCall := func(ctx context.Context, methodIdx uint32, req interface{}) (resp interface{}, err error) {
-			rvs := svcImpMethod.Func.Call([]reflect.Value{reflect.ValueOf(svc), reflect.ValueOf(ctx), reflect.ValueOf(req)})
-			resp = rvs[0].Interface()
-			err, _ = rvs[1].Interface().(error)
-			return
-		}
-		for i := 0; i < b.N; i++ {
-			_, err := fCall(ctx, idx, &req)
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
-}
+	req := pb.HelloReq{
+		Name: "call 10086",
+	}
 
-type server struct {
-	Str   string
-	count int
-}
+	ir, err := client.Invoke(ctx, "pb.HelloServer.SayHello", &req)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-func (s *server) SayHello(ctx context.Context, in *pb.HelloReq) (out *pb.HelloRsp, err error) {
-	s.count++
-	str := s.Str + ": " + "hello " + in.Name + " " + strconv.Itoa(s.count)
-	log.Ctx(ctx).Info().Caller().Msg(str)
-	return &pb.HelloRsp{Msg: str}, nil
-}
+	resp, ok := ir.(*pb.HelloRsp)
+	if !ok {
+		t.Fatal("!ok")
+	}
+	t.Logf("resp.Msg:\"%s\"", resp.Msg)
 
-func (s *server) Benchmark(ctx context.Context, in *pb.BenchmarkReq) (out *pb.BenchmarkRsp, err error) {
-	return &pb.BenchmarkRsp{}, nil
 }

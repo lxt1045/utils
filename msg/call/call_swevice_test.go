@@ -1,10 +1,9 @@
-package coder
+package call
 
 import (
 	"context"
 	"reflect"
 	"strconv"
-	"sync"
 	"testing"
 	"unsafe"
 
@@ -12,34 +11,21 @@ import (
 	"github.com/lxt1045/utils/log"
 )
 
-var doOnce sync.Once
-
-func InitTest() {
-	ctx := context.Background()
-	err := Rigester(ctx, pb.RegisterHelloServer, &server{
-		Str: "test",
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	if len(ifaces) != len(methods) {
-		panic("error")
-	}
-}
-
 func TestMake(t *testing.T) {
 	ctx := context.Background()
-	doOnce.Do(InitTest)
-
-	all := AllInterfaces()
-	for i, m := range all {
-		svc := (*server)(m.SvcPointer)
-		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s, resp:%s",
-			i, svc.Str, m.Name, m.ReqType.String(), m.RespType.String())
+	s, err := NewService(ctx, pb.RegisterHelloServer, &server{Str: "test"}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	idx, exist := MethodIdx("pb.HelloServer.SayHello")
+	all := s.AllInterfaces()
+	for i, m := range all {
+		svc := (*server)(m.SvcPointer)
+		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
+			i, svc.Str, m.Name, m.ReqType.String())
+	}
+
+	idx, exist := s.MethodIdx("pb.HelloServer.SayHello")
 	if !exist {
 		t.Fatal("exist")
 	}
@@ -47,7 +33,7 @@ func TestMake(t *testing.T) {
 	req := pb.HelloReq{
 		Name: "call 1",
 	}
-	r, err := Call(ctx, idx, unsafe.Pointer(&req))
+	r, err := s.Call(ctx, idx, unsafe.Pointer(&req))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,17 +43,20 @@ func TestMake(t *testing.T) {
 
 func BenchmarkMethod(b *testing.B) {
 	ctx := context.Background()
-	doOnce.Do(InitTest)
+	s, err := NewService(ctx, pb.RegisterHelloServer, &server{Str: "test"}, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	req := pb.BenchmarkReq{}
-	idx, exist := MethodIdx("pb.HelloServer.Benchmark")
+	idx, exist := s.MethodIdx("pb.HelloServer.Benchmark")
 	if !exist {
 		b.Fatal("exist")
 	}
 
 	b.Run("Call", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := Call(ctx, idx, unsafe.Pointer(&req))
+			_, err := s.Call(ctx, idx, unsafe.Pointer(&req))
 			if err != nil {
 				b.Fatal(err)
 			}
