@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/delay"
 	"github.com/lxt1045/utils/log"
+	"github.com/lxt1045/utils/msg/call/base"
 )
 
 var (
@@ -29,9 +31,10 @@ type Msg interface {
 }
 
 type Caller interface {
+	ReqType() reflect.Type
+	RespType() reflect.Type
 	NewReq() Msg
 	NewResp() Msg
-	NilResp() bool
 	SvcInvoke(ctx context.Context, req Msg) (resp Msg, err error)
 }
 
@@ -43,6 +46,12 @@ type Codec struct {
 	resps     map[uint64]resp
 	segments  map[uint64][]byte // 分片
 	delay     *delay.Queue[post]
+
+	callIDsLock sync.Mutex
+	callIDs     []string
+
+	streamsLock sync.Mutex
+	streams     map[uint64]*Stream
 }
 
 type resp struct {
@@ -82,109 +91,22 @@ func NewCodec(ctx context.Context, conn net.Conn) (c *Codec, err error) {
 		resps:    make(map[uint64]resp),
 		segments: make(map[uint64][]byte),
 		delay:    delay.New[post](64, int64(time.Minute), false),
+		streams:  make(map[uint64]*Stream),
 	}
 	return
+}
+func (c *Codec) SetCallIDs(callIDs []string) {
+	c.callIDsLock.Lock()
+	defer c.callIDsLock.Unlock()
+	c.callIDs = callIDs
 }
 
 func (c *Codec) ClientCall(ctx context.Context, channel, callID uint16, req, res Msg) (done <-chan error, err error) {
-	bs := bufPool.Get().([]byte)
-	wbuf := bs[:HeaderSize]      // 给 Header 预留足够的内存
-	buf := proto.NewBuffer(wbuf) //
-	if req != nil {
-		err = buf.Marshal(req)
-		if err != nil {
-			bufPool.Put(bs)
-			log.Ctx(ctx).Error().Err(err).Caller().Send()
-			return
-		}
-		wbuf = buf.Bytes()
-	}
-
-	defer bufPool.Put(wbuf)
-	callSN := atomic.AddUint32(&c.tmpCallSN, 1)
-
-	// 先安排好返回路径，再发送请求
-	if res != nil {
-		func() {
-			ch := make(chan error, 1)
-			done = ch
-			res := resp{
-				r:    res,
-				done: ch,
-			}
-			key := respsKey(channel, callSN)
-			c.delay.Push(post{Codec: c, key: key, resps: true}) // 写入超时队列
-
-			c.respsLock.Lock()
-			defer c.respsLock.Unlock()
-			c.resps[key] = res
-		}()
-	}
-
-	c.Send(ctx, wbuf, channel, callID, callSN)
-	return
+	return c.clientCall(ctx, VerCallReq, channel, callID, 0, req, res)
 }
 
-func (c *Codec) SendCloseMsg(ctx context.Context) (done <-chan error, err error) {
-	wbuf := make([]byte, HeaderSize)
-	h := Header{
-		Ver:          VerClose,
-		Channel:      0,
-		Len:          uint16(len(wbuf)),
-		SegmentCount: 0,
-		SegmentIdx:   0,
-		CallID:       0,
-		CallSN:       0,
-	}
-	h.FormatCall(wbuf)
-	c.Conn.Write(wbuf)
-	return
-}
-
-func (c *Codec) Send(ctx context.Context, wbuf []byte, channel, callID uint16, callSN uint32) {
-	if len(wbuf) <= math.MaxUint16 {
-		h := Header{
-			Ver:          VerCallReq,
-			Channel:      channel,
-			Len:          uint16(len(wbuf)),
-			SegmentCount: 0,
-			SegmentIdx:   0,
-			CallID:       callID,
-			CallSN:       callSN,
-		}
-		h.FormatCall(wbuf)
-		c.Conn.Write(wbuf)
-		return
-	}
-
-	Count, idx := uint16(len(wbuf)/math.MaxUint16), uint16(0)
-	wbuf0 := wbuf
-	for i := uint16(0); i < Count; i, idx = i+math.MaxUint16, idx+1 {
-		h := Header{
-			Ver:          VerCallReq,
-			Channel:      channel,
-			Len:          uint16(len(wbuf0)),
-			SegmentCount: Count,
-			SegmentIdx:   idx,
-			CallID:       callID,
-			CallSN:       callSN,
-		}
-		h.FormatCall(wbuf0)
-		c.Conn.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
-		wbuf0 = wbuf0[math.MaxUint16:]
-	}
-	// 最后一个数据包
-	h := Header{
-		Ver:          VerCallReq,
-		Channel:      channel,
-		Len:          uint16(len(wbuf0)),
-		SegmentCount: Count,
-		SegmentIdx:   idx,
-		CallID:       callID,
-		CallSN:       callSN,
-	}
-	h.FormatCall(wbuf0)
-	c.Conn.Write(wbuf0)
+func (c *Codec) StreamCall(ctx context.Context, ver, channel, callID uint16, callSN uint32, req Msg) (err error) {
+	_, err = c.clientCall(ctx, ver, channel, callID, callSN, req, nil)
 	return
 }
 
@@ -221,10 +143,6 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 			err = err1
 			return
 		}
-		if header.Ver == VerClose {
-			log.Ctx(ctx).Debug().Caller().Msg("close by peer")
-			return
-		}
 
 		// 需要分片时
 		if header.SegmentCount > 1 {
@@ -250,78 +168,41 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 
 		switch header.Ver {
 		case VerCallReq:
-			res := func() resp {
-				key := respsKey(header.Channel, header.CallSN)
-				c.respsLock.Lock()
-				defer c.respsLock.Unlock()
-				return c.resps[key]
-			}()
-			if res.r == nil {
-				log.Ctx(ctx).Error().Caller().Interface("header", header).Err(err1).Msg("drop, res.r is nil")
-				continue
-			}
-
-			err1 = proto.Unmarshal(bsBody, res.r)
-			if err1 != nil {
-				err1 = errors.Errorf(err1.Error())
-				log.Ctx(ctx).Error().Caller().Interface("header", header).Err(err1).Msg("drop")
+			err = c.VerCallReq(ctx, header, bsBody, fNewCaller)
+			if err != nil {
 				return
 			}
-			res.done <- nil
 		case VerCallResp:
-			if fNewCaller != nil {
-				caller := fNewCaller(header.CallID)
-				if caller == nil {
-					log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
-					continue
-				}
-				req := caller.NewReq()
-				err1 = proto.Unmarshal(bsBody, req)
-				if err1 != nil {
-					err1 = errors.Errorf(err1.Error())
-					log.Ctx(ctx).Error().Caller().Interface("header", header).Err(err1).Msg("drop")
-					return
-				}
-
-				go c.Handler(ctx, caller, header, req)
+			err = c.VerCallResp(ctx, header, bsBody)
+			if err != nil {
+				return
+			}
+		case VerClose:
+			log.Ctx(ctx).Debug().Caller().Msg("close by peer")
+			return
+		case VerCmdReq:
+			err = c.VerCmdReq(ctx, header, bsBody)
+			if err != nil {
+				return
+			}
+		case VerCmdResp:
+			err = c.VerCallResp(ctx, header, bsBody)
+			if err != nil {
+				return
+			}
+		case VerStreamReq:
+			err = c.VerStreamReq(ctx, header, bsBody, fNewCaller)
+			if err != nil {
+				return
+			}
+		case VerStreamResp:
+			err = c.VerStreamResp(ctx, header, bsBody)
+			if err != nil {
+				return
 			}
 		default:
 		}
 	}
-}
-
-func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req Msg) (resp Msg, err error) {
-	defer func() {
-		// resp 发送放 defer 中，及时panic也有返回值
-		e := recover()
-		if e != nil {
-			err = errors.Errorf("recover: %v", e)
-		}
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-		}
-	}()
-	resp, err = caller.SvcInvoke(ctx, req)
-	if err != nil {
-		return
-	}
-	if resp == nil || caller.NilResp() {
-		return
-	}
-
-	bs := bufPool.Get().([]byte)
-	wbuf := bs[:HeaderSize]      // 给 Header 预留足够的内存
-	buf := proto.NewBuffer(wbuf) //
-	err = buf.Marshal(resp)
-	if err != nil {
-		bufPool.Put(bs)
-		return
-	}
-	wbuf = buf.Bytes()
-
-	defer bufPool.Put(wbuf)
-	c.Send(ctx, wbuf, header.Channel, header.CallID, header.CallSN)
-	return
 }
 
 // ReadPack 读一个裸消息
@@ -357,5 +238,128 @@ func ReadPack(ctx context.Context, r io.Reader, buf []byte) (header Header, bsBo
 
 	header, lHeader := ParseHeader(bsHeader)
 	bsBody = buf[lHeader:lenNeed]
+	return
+}
+
+func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
+	wbuf := make([]byte, HeaderSize)
+	h := Header{
+		Ver:          VerClose,
+		Channel:      0,
+		Len:          uint16(len(wbuf)),
+		SegmentCount: 0,
+		SegmentIdx:   0,
+		CallID:       0,
+		CallSN:       0,
+	}
+	h.FormatCall(wbuf)
+	c.Conn.Write(wbuf)
+	return
+}
+
+func (c *Codec) SendCmd(ctx context.Context, channel uint16, req *base.CmdReq) (res *base.CmdRsp, err error) {
+	res = &base.CmdRsp{}
+	done, err := c.clientCall(ctx, VerCmdReq, channel, 0, 0, req, res)
+	if err != nil {
+		return
+	}
+	if done != nil {
+		err = <-done
+	}
+	return
+}
+
+func (c *Codec) clientCall(ctx context.Context, ver, channel, callID uint16, callSN uint32, req, res Msg) (done <-chan error, err error) {
+	if callSN == 0 {
+		callSN = atomic.AddUint32(&c.tmpCallSN, 1)
+	}
+
+	// 先安排好返回路径，再发送请求
+	if res != nil {
+		func() {
+			ch := make(chan error, 1)
+			done = ch
+			res := resp{
+				r:    res,
+				done: ch,
+			}
+			key := respsKey(channel, callSN)
+			c.delay.Push(post{Codec: c, key: key, resps: true}) // 写入超时队列
+
+			c.respsLock.Lock()
+			defer c.respsLock.Unlock()
+			c.resps[key] = res
+		}()
+	}
+
+	err = c.SendMsg(ctx, ver, channel, callID, callSN, req)
+	if err != nil {
+		return
+	}
+	return
+}
+func (c *Codec) SendMsg(ctx context.Context, ver, channel, callID uint16, callSN uint32, msg Msg) (err error) {
+	bs := bufPool.Get().([]byte)
+	wbuf := bs[:HeaderSize]      // 给 Header 预留足够的内存
+	buf := proto.NewBuffer(wbuf) //
+	if msg != nil {
+		err = buf.Marshal(msg)
+		if err != nil {
+			bufPool.Put(bs)
+			return
+		}
+		wbuf = buf.Bytes()
+	}
+	defer bufPool.Put(wbuf)
+	return c.Send(ctx, wbuf, ver, channel, callID, callSN)
+}
+
+func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint16, callSN uint32) (err error) {
+	if len(wbuf) <= math.MaxUint16 {
+		h := Header{
+			Ver:          ver,
+			Channel:      channel,
+			Len:          uint16(len(wbuf)),
+			SegmentCount: 0,
+			SegmentIdx:   0,
+			CallID:       callID,
+			CallSN:       callSN,
+		}
+		h.FormatCall(wbuf)
+		_, err = c.Conn.Write(wbuf)
+		return
+	}
+
+	Count, idx := uint16(len(wbuf)/math.MaxUint16), uint16(0)
+	wbuf0 := wbuf
+	for i := uint16(0); i < Count; i, idx = i+math.MaxUint16, idx+1 {
+		h := Header{
+			Ver:          ver,
+			Channel:      channel,
+			Len:          uint16(len(wbuf0)),
+			SegmentCount: Count,
+			SegmentIdx:   idx,
+			CallID:       callID,
+			CallSN:       callSN,
+		}
+		h.FormatCall(wbuf0)
+		_, err = c.Conn.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
+		if err != nil {
+			return
+		}
+		wbuf0 = wbuf0[math.MaxUint16:]
+	}
+	// 最后一个数据包
+	h := Header{
+		Ver:          ver,
+		Channel:      channel,
+		Len:          uint16(len(wbuf0)),
+		SegmentCount: Count,
+		SegmentIdx:   idx,
+		CallID:       callID,
+		CallSN:       callSN,
+	}
+	h.FormatCall(wbuf0)
+	_, err = c.Conn.Write(wbuf0)
 	return
 }

@@ -27,15 +27,19 @@ func NewService(ctx context.Context, fRegister interface{}, service interface{},
 		return
 	}
 
+	callIDs := make([]string, 0, len(methods))
 	for _, m := range methods {
 		s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
 		s.svcMethods = append(s.svcMethods, m.Method)
+		callIDs = append(callIDs, m.Name)
 	}
 
 	s.Codec, err = codec.NewCodec(ctx, conn)
 	if err != nil {
 		return
 	}
+	s.Codec.SetCallIDs(callIDs)
+
 	go s.Codec.ReadLoop(ctx, func(callID uint16) codec.Caller {
 		m := s.svcMethods[callID]
 		return m
@@ -45,7 +49,7 @@ func NewService(ctx context.Context, fRegister interface{}, service interface{},
 
 func (c Service) Close(ctx context.Context) (err error) {
 	defer c.Conn.Close()
-	_, err = c.Codec.SendCloseMsg(ctx)
+	err = c.Codec.SendCloseMsg(ctx)
 	return
 }
 func (s *Service) AddService(ctx context.Context, fRegister interface{}, service interface{}) (err error) {
@@ -54,11 +58,14 @@ func (s *Service) AddService(ctx context.Context, fRegister interface{}, service
 		return
 	}
 
+	callIDs := make([]string, 0, len(methods))
 	for _, m := range methods {
 		s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
 		s.svcMethods = append(s.svcMethods, m.Method)
+		callIDs = append(callIDs, m.Name)
 	}
 
+	s.Codec.SetCallIDs(callIDs)
 	return
 }
 

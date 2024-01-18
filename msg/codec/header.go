@@ -10,9 +10,10 @@ const (
 	VerCallReq    = 1
 	VerCallResp   = 2
 	VerClose      = 3
-	VerStreamNew  = 4
-	VerStreamReq  = 5
-	VerStreamResp = 6
+	VerCmdReq     = 4 // 发送控制命令
+	VerCmdResp    = 5 // 响应控制命令
+	VerStreamReq  = 6
+	VerStreamResp = 7
 )
 const (
 	HeaderSizeRaw = 6

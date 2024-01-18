@@ -3,17 +3,15 @@ package call
 import (
 	"context"
 	"reflect"
-	"strconv"
 	"testing"
 	"unsafe"
 
-	"github.com/lxt1045/utils/cert/test/grpc/pb"
-	"github.com/lxt1045/utils/log"
+	"github.com/lxt1045/utils/msg/call/base"
 )
 
 func TestMake(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewService(ctx, pb.RegisterHelloServer, &server{Str: "test"}, nil)
+	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,34 +20,34 @@ func TestMake(t *testing.T) {
 	for i, m := range all {
 		svc := (*server)(m.SvcPointer)
 		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
-			i, svc.Str, m.Name, m.ReqType.String())
+			i, svc.Str, m.Name, m.reqType.String())
 	}
 
-	idx, exist := s.MethodIdx("pb.HelloServer.SayHello")
+	idx, exist := s.MethodIdx("base.HelloServer.SayHello")
 	if !exist {
 		t.Fatal("exist")
 	}
 
-	req := pb.HelloReq{
+	req := base.HelloReq{
 		Name: "call 1",
 	}
 	r, err := s.Call(ctx, idx, unsafe.Pointer(&req))
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := (*pb.HelloRsp)(r)
+	resp := (*base.HelloRsp)(r)
 	t.Logf("resp.Msg:\"%s\"", resp.Msg)
 }
 
 func BenchmarkMethod(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewService(ctx, pb.RegisterHelloServer, &server{Str: "test"}, nil)
+	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	req := pb.BenchmarkReq{}
-	idx, exist := s.MethodIdx("pb.HelloServer.Benchmark")
+	req := base.BenchmarkReq{}
+	idx, exist := s.MethodIdx("base.HelloServer.Benchmark")
 	if !exist {
 		b.Fatal("exist")
 	}
@@ -82,20 +80,4 @@ func BenchmarkMethod(b *testing.B) {
 			}
 		}
 	})
-}
-
-type server struct {
-	Str   string
-	count int
-}
-
-func (s *server) SayHello(ctx context.Context, in *pb.HelloReq) (out *pb.HelloRsp, err error) {
-	s.count++
-	str := s.Str + ": " + "hello " + in.Name + " " + strconv.Itoa(s.count)
-	log.Ctx(ctx).Info().Caller().Msg(str)
-	return &pb.HelloRsp{Msg: str}, nil
-}
-
-func (s *server) Benchmark(ctx context.Context, in *pb.BenchmarkReq) (out *pb.BenchmarkRsp, err error) {
-	return &pb.BenchmarkRsp{}, nil
 }

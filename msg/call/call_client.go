@@ -7,12 +7,14 @@ import (
 	"unsafe"
 
 	"github.com/lxt1045/errors"
+	"github.com/lxt1045/utils/msg/call/base"
 	"github.com/lxt1045/utils/msg/codec"
 )
 
 type Client struct {
 	*codec.Codec
 	Methods map[string]MethodFull // CallID 需要连接握手后从service端获取
+
 }
 
 // NewClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
@@ -35,25 +37,49 @@ func NewClient(ctx context.Context, fRegister interface{}, conn net.Conn) (c Cli
 		return
 	}
 	go c.Codec.ReadLoop(ctx, nil)
+
+	req := &base.CmdReq{
+		Cmd: base.CmdReq_CallIDs,
+	}
+	res, err := c.SendCmd(ctx, 0, req)
+	if err != nil {
+		c.Codec.Close()
+		return
+	}
+
+	methodsNew := make(map[string]MethodFull)
+	for i, name := range res.Fields {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		m.CallID = uint16(i)
+		methodsNew[name] = m
+	}
+	c.Methods = methodsNew
 	return
 }
 
 func (c Client) Close(ctx context.Context) (err error) {
 	defer c.Conn.Close()
-	_, err = c.Codec.SendCloseMsg(ctx)
+	err = c.Codec.SendCloseMsg(ctx)
 	return
 }
 
 func (c Client) Invoke(ctx context.Context, method string, req codec.Msg) (resp codec.Msg, err error) {
-	m := c.Methods[method]
-
-	if t := reflect.TypeOf(req); req != nil && t.Elem() != m.ReqType {
-		err = errors.Errorf("req type error: should be %s, not %s", m.ReqType.String(), t.String())
+	m, ok := c.Methods[method]
+	if !ok {
+		err = errors.Errorf("method not found: %s", method)
 		return
 	}
 
-	if m.RespType != nil {
-		resp = reflect.New(m.RespType).Interface().(codec.Msg)
+	if t := reflect.TypeOf(req); req != nil && t.Elem() != m.reqType {
+		err = errors.Errorf("req type error: should be %s, not %s", m.reqType.String(), t.String())
+		return
+	}
+
+	if m.respType != nil {
+		resp = reflect.New(m.respType).Interface().(codec.Msg)
 	}
 
 	done, err := c.Codec.ClientCall(ctx, 0, m.CallID, req, resp)
@@ -63,6 +89,17 @@ func (c Client) Invoke(ctx context.Context, method string, req codec.Msg) (resp 
 	if done != nil {
 		err = <-done
 	}
+	return
+}
+
+// Stream 流式调用
+func (c *Client) Stream(ctx context.Context, method string) (stream *codec.Stream, err error) {
+	m, ok := c.Methods[method]
+	if !ok {
+		err = errors.Errorf("method not found: %s", method)
+		return
+	}
+	stream, err = c.Codec.Stream(ctx, 0, m.CallID, m)
 	return
 }
 
@@ -84,7 +121,11 @@ func NewMockClient(ctx context.Context, fun interface{}, s interface{}) (c mockC
 }
 
 func (c mockClient) Invoke(ctx context.Context, method string, req interface{}) (resp interface{}, err error) {
-	m := c.Methods[method]
+	m, ok := c.Methods[method]
+	if !ok {
+		err = errors.Errorf("method not found: %s", method)
+		return
+	}
 
 	// p := reflect.ValueOf(req).UnsafePointer()
 	p := (*[2]unsafe.Pointer)(unsafe.Pointer(&req))[1]
@@ -93,7 +134,7 @@ func (c mockClient) Invoke(ctx context.Context, method string, req interface{}) 
 		return
 	}
 
-	resp = reflect.NewAt(m.RespType, pr).Interface()
+	resp = reflect.NewAt(m.respType, pr).Interface()
 	return
 }
 
@@ -106,6 +147,6 @@ func (c mockClient) Invoke2(ctx context.Context, method string, req interface{})
 		return
 	}
 
-	resp = reflect.NewAt(m.RespType, pr).Interface()
+	resp = reflect.NewAt(m.respType, pr).Interface()
 	return
 }

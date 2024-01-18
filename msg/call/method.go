@@ -16,33 +16,37 @@ var _ codec.Caller = Method{} // 检查是由实现接口
 type Method struct {
 	Func       func(unsafe.Pointer, context.Context, unsafe.Pointer) (unsafe.Pointer, error)
 	SvcPointer unsafe.Pointer
-	ReqType    reflect.Type
-	RespType   reflect.Type
+	reqType    reflect.Type
+	respType   reflect.Type
 	// bStream    bool // 是否双向流
 }
 
+func (m Method) ReqType() reflect.Type {
+	return m.reqType
+}
+func (m Method) RespType() reflect.Type {
+	return m.respType
+}
+
 func (m Method) NewReq() codec.Msg {
-	msg := reflect.New(m.ReqType).Interface().(codec.Msg)
+	msg := reflect.New(m.reqType).Interface().(codec.Msg)
 	return msg
 }
 func (m Method) NewResp() codec.Msg {
-	if m.RespType == nil {
+	if m.respType == nil {
 		return nil
 	}
-	msg := reflect.New(m.RespType).Interface().(codec.Msg)
+	msg := reflect.New(m.respType).Interface().(codec.Msg)
 	return msg
-}
-func (m Method) NilResp() bool {
-	return m.RespType == nil
 }
 
 func (m Method) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
 	p := (*[2]unsafe.Pointer)(unsafe.Pointer(&req))[1]
 	pr, err := m.Func(m.SvcPointer, ctx, p)
-	if err != nil {
+	if err != nil || pr == nil {
 		return
 	}
-	resp = reflect.NewAt(m.RespType, pr).Interface().(codec.Msg)
+	resp = reflect.NewAt(m.respType, pr).Interface().(codec.Msg)
 	return
 }
 
@@ -115,8 +119,8 @@ func getMethods(ctx context.Context, fun interface{}, service interface{}) (meth
 
 		m := MethodFull{
 			Method: Method{
-				ReqType:  reqType,
-				RespType: respType,
+				reqType:  reqType,
+				respType: respType,
 			},
 			Name: ifaceType.String() + "." + method.Name,
 		}
