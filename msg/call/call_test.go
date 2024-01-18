@@ -44,7 +44,7 @@ func TestPipe(t *testing.T) {
 	}
 	{
 		req := base.HelloReq{Name: "call 1"}
-		ir, err := client.Invoke(ctx, "base.HelloServer.SayHello", &req)
+		ir, err := client.Invoke(ctx, "SayHello", &req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestPipe(t *testing.T) {
 	}
 	{
 		req := base.HelloReq{Name: "call 2"}
-		ir, err := client.Invoke(ctx, "base.HelloServer.SayHello", &req)
+		ir, err := client.Invoke(ctx, "SayHello", &req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestPipeStream(t *testing.T) {
 
 	// base.NewHelloClient(nil)
 
-	stream, err := client.Stream(ctx, "base.HelloServer.SayHello")
+	stream, err := client.Stream(ctx, "SayHello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +119,7 @@ func TestPipeStream(t *testing.T) {
 		time.Sleep(time.Second)
 	}
 }
+
 func TestConn(t *testing.T) {
 	ctx := context.Background()
 	addr := ":18080"
@@ -184,7 +185,7 @@ func testClient(ctx context.Context, t *testing.T, addr string) {
 		Name: "call 10086",
 	}
 
-	ir, err := client.Invoke(ctx, "base.HelloServer.SayHello", &req)
+	ir, err := client.Invoke(ctx, "SayHello", &req)
 	if err != nil {
 		t.Fatal(err)
 	}

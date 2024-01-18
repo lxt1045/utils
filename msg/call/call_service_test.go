@@ -7,8 +7,43 @@ import (
 	"unsafe"
 
 	"github.com/lxt1045/utils/msg/call/base"
+	// innerbase "github.com/lxt1045/utils/msg/call/base/base"
 )
 
+func TestAddService(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	all := s.AllInterfaces()
+	for i, m := range all {
+		svc := (*server)(m.SvcPointer)
+		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
+			i, svc.Str, m.Name, m.reqType.String())
+	}
+
+	// err = s.AddService(ctx, innerbase.RegisterHelloServer, &server{Str: "test"})
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+
+	idx, exist := s.MethodIdx("base.HelloServer.SayHello")
+	if !exist {
+		t.Fatal("exist")
+	}
+
+	req := base.HelloReq{
+		Name: "call 1",
+	}
+	r, err := s.Call(ctx, idx, unsafe.Pointer(&req))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := (*base.HelloRsp)(r)
+	t.Logf("resp.Msg:\"%s\"", resp.Msg)
+}
 func TestMake(t *testing.T) {
 	ctx := context.Background()
 	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)

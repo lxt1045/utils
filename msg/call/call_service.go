@@ -5,6 +5,7 @@ import (
 	"net"
 	"unsafe"
 
+	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/msg/codec"
 )
 
@@ -60,6 +61,10 @@ func (s *Service) AddService(ctx context.Context, fRegister interface{}, service
 
 	callIDs := make([]string, 0, len(methods))
 	for _, m := range methods {
+		if _, ok := s.svcInterfaces[m.Name]; ok {
+			err = errors.Errorf("%s already exists", m.Name)
+			return
+		}
 		s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
 		s.svcMethods = append(s.svcMethods, m.Method)
 		callIDs = append(callIDs, m.Name)

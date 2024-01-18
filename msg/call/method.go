@@ -56,8 +56,8 @@ type MethodFull struct {
 	CallID uint16
 }
 
-func getMethods(ctx context.Context, fun interface{}, service interface{}) (methods []MethodFull, err error) {
-	regMethodType := reflect.TypeOf(fun)
+func getMethods(ctx context.Context, fRegister interface{}, service interface{}) (methods []MethodFull, err error) {
+	regMethodType := reflect.TypeOf(fRegister)
 	if regMethodType.Kind() != reflect.Func {
 		err = errors.Errorf("arg fun must be func")
 		return
@@ -122,7 +122,7 @@ func getMethods(ctx context.Context, fun interface{}, service interface{}) (meth
 				reqType:  reqType,
 				respType: respType,
 			},
-			Name: ifaceType.String() + "." + method.Name,
+			Name: ifaceType.String() + "." + method.Name, // ifaceType.PkgPath() + "." +
 		}
 
 		if service != nil {

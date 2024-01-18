@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"reflect"
+	"strings"
 	"unsafe"
 
 	"github.com/lxt1045/errors"
@@ -54,6 +55,11 @@ func NewClient(ctx context.Context, fRegister interface{}, conn net.Conn) (c Cli
 			continue
 		}
 		m.CallID = uint16(i)
+
+		i := strings.LastIndex(name, ".")
+		if i >= 0 {
+			name = name[i+1:]
+		}
 		methodsNew[name] = m
 	}
 	c.Methods = methodsNew
