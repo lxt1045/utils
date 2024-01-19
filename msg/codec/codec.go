@@ -5,7 +5,6 @@ import (
 	stderrs "errors"
 	"io"
 	"math"
-	"net"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -39,7 +38,7 @@ type Caller interface {
 }
 
 type Codec struct {
-	net.Conn
+	rwc       io.ReadWriteCloser
 	tmpCallSN uint32
 
 	respsLock sync.Mutex
@@ -85,9 +84,9 @@ func (d post) Post() {
 	}
 }
 
-func NewCodec(ctx context.Context, conn net.Conn) (c *Codec, err error) {
+func NewCodec(ctx context.Context, rwc io.ReadWriteCloser) (c *Codec, err error) {
 	c = &Codec{
-		Conn:     conn,
+		rwc:      rwc,
 		resps:    make(map[uint64]resp),
 		segments: make(map[uint64][]byte),
 		delay:    delay.New[post](64, int64(time.Minute), false),
@@ -95,6 +94,12 @@ func NewCodec(ctx context.Context, conn net.Conn) (c *Codec, err error) {
 	}
 	return
 }
+
+func (c *Codec) Close() (err error) {
+	err = c.rwc.Close()
+	return
+}
+
 func (c *Codec) SetCallIDs(callIDs []string) {
 	c.callIDsLock.Lock()
 	defer c.callIDsLock.Unlock()
@@ -127,7 +132,7 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 			log.Ctx(ctx).Debug().Caller().Msg("defer")
 		}
 
-		if c.Conn != nil {
+		if c.rwc != nil {
 			c.SendCloseMsg(ctx)
 			c.Close()
 		}
@@ -135,7 +140,7 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 
 	rbuf := make([]byte, 0, math.MaxUint16)
 	for {
-		header, bsBody, err1 := ReadPack(ctx, c.Conn, rbuf)
+		header, bsBody, err1 := ReadPack(ctx, c.rwc, rbuf)
 		if err1 != nil {
 			if err1 == io.EOF || err1 == io.ErrUnexpectedEOF {
 				return
@@ -253,7 +258,7 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 		CallSN:       0,
 	}
 	h.FormatCall(wbuf)
-	c.Conn.Write(wbuf)
+	c.rwc.Write(wbuf)
 	return
 }
 
@@ -326,7 +331,7 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 			CallSN:       callSN,
 		}
 		h.FormatCall(wbuf)
-		_, err = c.Conn.Write(wbuf)
+		_, err = c.rwc.Write(wbuf)
 		return
 	}
 
@@ -343,7 +348,7 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 			CallSN:       callSN,
 		}
 		h.FormatCall(wbuf0)
-		_, err = c.Conn.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
+		_, err = c.rwc.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
 		if err != nil {
 			return
 		}
@@ -360,6 +365,6 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 		CallSN:       callSN,
 	}
 	h.FormatCall(wbuf0)
-	_, err = c.Conn.Write(wbuf0)
+	_, err = c.rwc.Write(wbuf0)
 	return
 }

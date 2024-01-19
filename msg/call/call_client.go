@@ -67,7 +67,7 @@ func NewClient(ctx context.Context, fRegister interface{}, conn net.Conn) (c Cli
 }
 
 func (c Client) Close(ctx context.Context) (err error) {
-	defer c.Conn.Close()
+	defer c.Codec.Close()
 	err = c.Codec.SendCloseMsg(ctx)
 	return
 }

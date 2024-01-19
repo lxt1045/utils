@@ -49,7 +49,7 @@ func NewService(ctx context.Context, fRegister interface{}, service interface{},
 }
 
 func (c Service) Close(ctx context.Context) (err error) {
-	defer c.Conn.Close()
+	defer c.Codec.Close()
 	err = c.Codec.SendCloseMsg(ctx)
 	return
 }
