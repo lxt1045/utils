@@ -83,11 +83,7 @@ func (c Client) Invoke(ctx context.Context, method string, req codec.Msg) (resp 
 		err = errors.Errorf("req type error: should be %s, not %s", m.reqType.String(), t.String())
 		return
 	}
-
-	if m.respType != nil {
-		resp = reflect.New(m.respType).Interface().(codec.Msg)
-	}
-
+	resp = m.NewResp()
 	done, err := c.Codec.ClientCall(ctx, 0, m.CallID, req, resp)
 	if err != nil {
 		return
@@ -121,17 +117,17 @@ func NewMockClient(ctx context.Context, fun interface{}, s interface{}) (c mockC
 	}
 	c.Methods = make(map[string]MethodFull)
 	for _, m := range methods {
+		i := strings.LastIndex(m.Name, ".")
+		if i >= 0 {
+			m.Name = m.Name[i+1:]
+		}
 		c.Methods[m.Name] = m
 	}
 	return
 }
 
 func (c mockClient) Invoke(ctx context.Context, method string, req interface{}) (resp interface{}, err error) {
-	m, ok := c.Methods[method]
-	if !ok {
-		err = errors.Errorf("method not found: %s", method)
-		return
-	}
+	m := c.Methods[method]
 
 	// p := reflect.ValueOf(req).UnsafePointer()
 	p := (*[2]unsafe.Pointer)(unsafe.Pointer(&req))[1]

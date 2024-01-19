@@ -6,8 +6,8 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/lxt1045/utils/cert/test/grpc/pb"
 	"github.com/lxt1045/utils/msg/call/base"
-	// innerbase "github.com/lxt1045/utils/msg/call/base/base"
 )
 
 func TestAddService(t *testing.T) {
@@ -24,10 +24,10 @@ func TestAddService(t *testing.T) {
 			i, svc.Str, m.Name, m.reqType.String())
 	}
 
-	// err = s.AddService(ctx, innerbase.RegisterHelloServer, &server{Str: "test"})
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
+	err = s.AddService(ctx, pb.RegisterHelloServer, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	idx, exist := s.MethodIdx("base.HelloServer.SayHello")
 	if !exist {
@@ -44,6 +44,7 @@ func TestAddService(t *testing.T) {
 	resp := (*base.HelloRsp)(r)
 	t.Logf("resp.Msg:\"%s\"", resp.Msg)
 }
+
 func TestMake(t *testing.T) {
 	ctx := context.Background()
 	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)

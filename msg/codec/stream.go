@@ -37,7 +37,7 @@ func (s *Stream) Close() {
 	// 2. 再删除
 	c := s.codec
 
-	key := respsKey(s.channel, s.callSN)
+	key := respsKey(s.callSN)
 	c.streamsLock.Lock()
 	defer c.streamsLock.Unlock()
 	delete(c.streams, key)
@@ -128,7 +128,7 @@ func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, calle
 		defer c.streamsLock.Unlock()
 		for {
 			callSN := atomic.AddUint32(&c.tmpCallSN, 1)
-			key := respsKey(0, callSN)
+			key := respsKey(callSN)
 			if _, ok := c.streams[key]; ok {
 				continue
 			}
@@ -139,7 +139,7 @@ func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, calle
 	}()
 	req := &base.CmdReq{Cmd: base.CmdReq_Stream}
 	res := &base.CmdRsp{}
-	done, err := c.clientCall(ctx, VerCmdReq, channel, 0, stream.callSN, req, res)
+	done, err := c.clientCall(ctx, VerCmdReq, channel, callID, stream.callSN, req, res)
 	if err != nil {
 		return
 	}
@@ -166,7 +166,7 @@ func GetStream(ctx context.Context) (stream *Stream) {
 
 func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, fNewCaller func(callID uint16) Caller) (err error) {
 	stream := func() (stream *Stream) {
-		key := respsKey(header.Channel, header.CallSN)
+		key := respsKey(header.CallSN)
 		c.streamsLock.Lock()
 		defer c.streamsLock.Unlock()
 		stream = c.streams[key]
@@ -225,7 +225,7 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, 
 
 func (c *Codec) VerStreamResp(ctx context.Context, header Header, bsBody []byte) (err error) {
 	stream := func() *Stream {
-		key := respsKey(header.Channel, header.CallSN)
+		key := respsKey(header.CallSN)
 		c.streamsLock.Lock()
 		defer c.streamsLock.Unlock()
 		return c.streams[key]

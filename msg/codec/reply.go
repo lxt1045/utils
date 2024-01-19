@@ -29,22 +29,15 @@ func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req M
 		return
 	}
 
-	bs := bufPool.Get().([]byte)
-	wbuf := bs[:HeaderSize]      // 给 Header 预留足够的内存
-	buf := proto.NewBuffer(wbuf) //
-	err = buf.Marshal(resp)
-	if err != nil {
-		bufPool.Put(bs)
-		return
-	}
-	wbuf = buf.Bytes()
-	defer bufPool.Put(wbuf)
-
 	ver := uint16(VerCallResp)
 	if header.Ver == VerStreamReq {
 		ver = VerStreamResp
 	}
-	c.Send(ctx, wbuf, ver, header.Channel, header.CallID, header.CallSN)
+
+	err = c.SendMsg(ctx, ver, header.Channel, header.CallID, header.CallSN, resp)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -73,7 +66,7 @@ func (c *Codec) VerCallReq(ctx context.Context, header Header, bsBody []byte, fN
 // 收到 Resp
 func (c *Codec) VerCallResp(ctx context.Context, header Header, bsBody []byte) (err error) {
 	res := func() resp {
-		key := respsKey(header.Channel, header.CallSN)
+		key := respsKey(header.CallSN)
 		c.respsLock.Lock()
 		defer c.respsLock.Unlock()
 		return c.resps[key]
@@ -106,7 +99,7 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 	switch req.Cmd {
 	case base.CmdReq_Stream:
 		func() {
-			key := respsKey(header.Channel, header.CallSN)
+			key := respsKey(header.CallSN)
 			c.streamsLock.Lock()
 			defer c.streamsLock.Unlock()
 			c.streams[key] = &Stream{

@@ -110,8 +110,8 @@ func (c *Codec) StreamCall(ctx context.Context, ver, channel, callID uint16, cal
 	return
 }
 
-func respsKey(channel uint16, callSN uint32) uint64 {
-	return uint64(channel)<<32 | uint64(callSN)
+func respsKey(callSN uint32) uint64 {
+	return uint64(callSN)
 }
 
 func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Caller) {
@@ -146,7 +146,7 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 
 		// 需要分片时
 		if header.SegmentCount > 1 {
-			key := respsKey(header.Channel, header.CallSN)
+			key := respsKey(header.CallSN)
 			bsOld, ok := c.segments[key]
 
 			if header.SegmentIdx == 0 {
@@ -283,7 +283,7 @@ func (c *Codec) clientCall(ctx context.Context, ver, channel, callID uint16, cal
 				r:    res,
 				done: ch,
 			}
-			key := respsKey(channel, callSN)
+			key := respsKey(callSN)
 			c.delay.Push(post{Codec: c, key: key, resps: true}) // 写入超时队列
 
 			c.respsLock.Lock()

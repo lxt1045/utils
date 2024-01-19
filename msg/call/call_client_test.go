@@ -20,7 +20,7 @@ func TestClient(t *testing.T) {
 		Name: "call 10086",
 	}
 
-	ir, err := client.Invoke(ctx, "base.HelloServer.SayHello", &req)
+	ir, err := client.Invoke(ctx, "SayHello", &req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func BenchmarkClient(b *testing.B) {
 
 	b.Run("Client", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := client.Invoke(ctx, "base.HelloServer.Benchmark", &req)
+			_, err := client.Invoke(ctx, "Benchmark", &req)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -53,17 +53,17 @@ func BenchmarkClient(b *testing.B) {
 	})
 	b.Run("Client2", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, err := client.Invoke2(ctx, "base.HelloServer.Benchmark", &req)
+			_, err := client.Invoke2(ctx, "Benchmark", &req)
 			if err != nil {
 				b.Fatal(err)
 			}
 		}
 	})
 
-	m := client.Methods["base.HelloServer.Benchmark"]
+	m := client.Methods["Benchmark"]
 	b.Run("map", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			m = client.Methods["base.HelloServer.Benchmark"]
+			m = client.Methods["Benchmark"]
 		}
 	})
 	_ = m
