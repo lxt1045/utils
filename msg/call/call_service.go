@@ -2,6 +2,7 @@ package call
 
 import (
 	"context"
+	"io"
 	"net"
 	"unsafe"
 
@@ -17,25 +18,31 @@ type Service struct {
 }
 
 // NewService fRegister: pb.RegisterHelloService, service: implementation
-func NewService(ctx context.Context, fRegister interface{}, service interface{}, conn net.Conn) (s Service, err error) {
+func NewService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
 	s = Service{
 		svcMethods:    make([]Method, 0, 32),
 		svcInterfaces: make(map[string]uint32),
 	}
+	callIDs := make([]string, 0, 16)
+	for _, fRegister := range fRegisters {
+		if fRegister == nil {
+			err = errors.Errorf("fRegister should not been nil")
+			return
+		}
+		methods, err1 := getMethods(ctx, fRegister, service)
+		if err1 != nil {
+			err = err1
+			return
+		}
 
-	methods, err := getMethods(ctx, fRegister, service)
-	if err != nil {
-		return
+		for _, m := range methods {
+			s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
+			s.svcMethods = append(s.svcMethods, m.Method)
+			callIDs = append(callIDs, m.Name)
+		}
 	}
 
-	callIDs := make([]string, 0, len(methods))
-	for _, m := range methods {
-		s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
-		s.svcMethods = append(s.svcMethods, m.Method)
-		callIDs = append(callIDs, m.Name)
-	}
-
-	s.Codec, err = codec.NewCodec(ctx, conn)
+	s.Codec, err = codec.NewCodec(ctx, rwc)
 	if err != nil {
 		return
 	}

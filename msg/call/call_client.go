@@ -2,7 +2,7 @@ package call
 
 import (
 	"context"
-	"net"
+	"io"
 	"reflect"
 	"strings"
 	"unsafe"
@@ -19,21 +19,23 @@ type Client struct {
 }
 
 // NewClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
-func NewClient(ctx context.Context, fRegister interface{}, conn net.Conn) (c Client, err error) {
+func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
 	c = Client{
 		Methods: make(map[string]MethodFull),
 	}
-
-	methods, err := getMethods(ctx, fRegister, nil)
-	if err != nil {
-		return
+	for _, fRegister := range fRegisters {
+		methods, err1 := getMethods(ctx, fRegister, nil)
+		if err1 != nil {
+			err = err1
+			return
+		}
+		for i, m := range methods {
+			m.CallID = uint16(i)
+			c.Methods[m.Name] = m
+		}
 	}
-	for i, m := range methods {
-		m.CallID = uint16(i)
-		c.Methods[m.Name] = m
-	}
 
-	c.Codec, err = codec.NewCodec(ctx, conn)
+	c.Codec, err = codec.NewCodec(ctx, rwc)
 	if err != nil {
 		return
 	}

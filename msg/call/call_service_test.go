@@ -12,7 +12,7 @@ import (
 
 func TestAddService(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)
+	s, err := NewService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer, base.RegisterTestServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestAddService(t *testing.T) {
 
 func TestMake(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)
+	s, err := NewService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestMake(t *testing.T) {
 
 func BenchmarkMethod(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, nil)
+	s, err := NewService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		b.Fatal(err)
 	}

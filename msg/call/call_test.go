@@ -12,6 +12,7 @@ import (
 	"github.com/lxt1045/utils/log"
 	base "github.com/lxt1045/utils/msg/call/base"
 	"github.com/lxt1045/utils/msg/codec"
+	"github.com/lxt1045/utils/msg/conn"
 )
 
 var x reflect.Type
@@ -26,15 +27,23 @@ func TestPipe(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	svc, cli := NewFakeConnPipe()
+	s, c := NewFakeConnPipe()
+	svc, err := conn.NewZip(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := conn.NewZip(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, svc)
+	_, err = NewService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := NewClient(ctx, base.RegisterHelloServer, cli)
+	client, err := NewClient(ctx, cli, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,15 +79,23 @@ func TestPipe(t *testing.T) {
 
 func TestPipeStream(t *testing.T) {
 	ctx := context.Background()
-	svc, cli := NewFakeConnPipe()
+	s, c := NewFakeConnPipe()
+	svc, err := conn.NewZip(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := conn.NewZip(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, svc)
+	_, err = NewService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := NewClient(ctx, base.RegisterHelloServer, cli)
+	client, err := NewClient(ctx, cli, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +164,7 @@ func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 			t.Fatal(err)
 		}
 
-		s, err := NewService(ctx, base.RegisterHelloServer, &server{Str: "test"}, conn)
+		s, err := NewService(ctx, conn, &server{Str: "test"}, base.RegisterHelloServer)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +189,7 @@ func testClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewClient(ctx, base.RegisterHelloServer, conn)
+	client, err := NewClient(ctx, conn, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +262,41 @@ func (s *server) Benchmark(ctx context.Context, in *base.BenchmarkReq) (out *bas
 
 func (s *server) Cmd(ctx context.Context, in *base.CmdReq) (out *base.CmdRsp, err error) {
 	return &base.CmdRsp{}, nil
+}
+
+func (s *server) TestHello(ctx context.Context, in *base.HelloReq) (out *base.HelloRsp, err error) {
+	// stream 模式的返回值由己方随意控制
+	if stream := codec.GetStream(ctx); stream != nil {
+		go func() {
+			for i := 0; i < 10; i++ {
+				iface, err1 := stream.Recv(ctx)
+				if err1 != nil {
+					log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
+					return
+				}
+				in = iface.(*base.HelloReq)
+				log.Ctx(ctx).Info().Caller().Msg("service recv: " + in.Name)
+			}
+		}()
+		for i := 0; i < 10; i++ {
+			str := "Service Send: " + strconv.Itoa(i)
+			log.Ctx(ctx).Info().Caller().Msg("service send: " + str)
+			err1 := stream.Send(ctx, &base.HelloRsp{Msg: str})
+			if err1 != nil {
+				log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
+				return
+			}
+			time.Sleep(time.Second)
+		}
+		return
+	}
+
+	log.Ctx(ctx).Info().Caller().Msg("service recv: " + in.Name)
+
+	str := "Service Send: " + strconv.Itoa(s.count)
+	log.Ctx(ctx).Info().Caller().Msg("service send: " + str)
+	s.count++
+	return &base.HelloRsp{Msg: str}, nil
 }
 
 type fakeConn struct {

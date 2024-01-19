@@ -41,9 +41,14 @@ message CmdRsp {
   Err err = 2;
   repeated string fields = 3;
 }
+
 // 定义服务
 service Hello {
   rpc SayHello(HelloReq) returns (HelloRsp) {}
   rpc Benchmark(BenchmarkReq) returns (BenchmarkRsp) {}
   rpc Cmd(CmdReq) returns (CmdRsp) {}
+}
+
+service Test {
+  rpc TestHello(HelloReq) returns (HelloRsp) {}
 }
