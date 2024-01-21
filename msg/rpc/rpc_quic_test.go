@@ -1,4 +1,4 @@
-package call
+package rpc
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/log"
-	base "github.com/lxt1045/utils/msg/call/base"
 	"github.com/lxt1045/utils/msg/conn"
+	base "github.com/lxt1045/utils/msg/rpc/base"
 	"github.com/lxt1045/utils/msg/test/filesystem"
 	"github.com/quic-go/quic-go"
 )

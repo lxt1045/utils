@@ -1,4 +1,4 @@
-package call
+package rpc
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/lxt1045/utils/log"
-	base "github.com/lxt1045/utils/msg/call/base"
 	"github.com/lxt1045/utils/msg/codec"
 	"github.com/lxt1045/utils/msg/conn"
+	base "github.com/lxt1045/utils/msg/rpc/base"
 )
 
 var x reflect.Type

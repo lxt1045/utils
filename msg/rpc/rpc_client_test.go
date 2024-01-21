@@ -1,10 +1,10 @@
-package call
+package rpc
 
 import (
 	"context"
 	"testing"
 
-	"github.com/lxt1045/utils/msg/call/base"
+	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
 func TestClient(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/log"
-	"github.com/lxt1045/utils/msg/call/base"
+	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
 func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req Msg) (resp Msg, err error) {

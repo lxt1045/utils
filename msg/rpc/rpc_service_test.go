@@ -1,4 +1,4 @@
-package call
+package rpc
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/lxt1045/utils/cert/test/grpc/pb"
-	"github.com/lxt1045/utils/msg/call/base"
+	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
 func TestAddService(t *testing.T) {

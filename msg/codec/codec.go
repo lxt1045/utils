@@ -14,7 +14,7 @@ import (
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/delay"
 	"github.com/lxt1045/utils/log"
-	"github.com/lxt1045/utils/msg/call/base"
+	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
 var (

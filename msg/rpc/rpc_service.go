@@ -1,4 +1,4 @@
-package call
+package rpc
 
 import (
 	"context"
@@ -60,6 +60,7 @@ func (c Service) Close(ctx context.Context) (err error) {
 	err = c.Codec.SendCloseMsg(ctx)
 	return
 }
+
 func (s *Service) AddService(ctx context.Context, fRegister interface{}, service interface{}) (err error) {
 	methods, err := getMethods(ctx, fRegister, service)
 	if err != nil {

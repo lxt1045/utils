@@ -1,4 +1,4 @@
-package call
+package rpc
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"unsafe"
 
 	"github.com/lxt1045/errors"
-	"github.com/lxt1045/utils/msg/call/base"
 	"github.com/lxt1045/utils/msg/codec"
+	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
 type Client struct {
@@ -24,6 +24,10 @@ func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interf
 		Methods: make(map[string]MethodFull),
 	}
 	for _, fRegister := range fRegisters {
+		if fRegister == nil {
+			err = errors.Errorf("fRegister should not been nil")
+			return
+		}
 		methods, err1 := getMethods(ctx, fRegister, nil)
 		if err1 != nil {
 			err = err1
