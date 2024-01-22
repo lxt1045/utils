@@ -14,21 +14,21 @@ import (
 
 type Client struct {
 	*codec.Codec
-	Methods map[string]MethodFull // CallID 需要连接握手后从service端获取
+	Methods map[string]MethodClient // CallID 需要连接握手后从service端获取
 
 }
 
 // NewClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
 func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
 	c = Client{
-		Methods: make(map[string]MethodFull),
+		Methods: make(map[string]MethodClient),
 	}
 	for _, fRegister := range fRegisters {
 		if fRegister == nil {
 			err = errors.Errorf("fRegister should not been nil")
 			return
 		}
-		methods, err1 := getMethods(ctx, fRegister, nil)
+		methods, err1 := getClientMethods(ctx, fRegister)
 		if err1 != nil {
 			err = err1
 			return
@@ -55,7 +55,7 @@ func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interf
 		return
 	}
 
-	methodsNew := make(map[string]MethodFull)
+	methodsNew := make(map[string]MethodClient)
 	for i, name := range res.Fields {
 		m, ok := c.Methods[name]
 		if !ok {

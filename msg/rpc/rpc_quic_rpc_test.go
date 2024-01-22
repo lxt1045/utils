@@ -90,7 +90,7 @@ func rpcService(ctx context.Context, t *testing.T, addr string, ch chan struct{}
 			t.Fatal(err)
 		}
 
-		_, err = NewRPC(ctx, zsvc, &server{Str: "test"}, nil, []interface{}{base.RegisterHelloServer})
+		_, err = NewPeer(ctx, zsvc, &server{Str: "test"}, nil, []interface{}{base.RegisterHelloServer})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +138,7 @@ func rpcClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewRPC(ctx, zcli, nil, []interface{}{base.RegisterHelloServer}, nil)
+	client, err := NewPeer(ctx, zcli, nil, []interface{}{base.NewHelloClient}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

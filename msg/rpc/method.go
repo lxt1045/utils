@@ -7,8 +7,8 @@ import (
 	"unsafe"
 
 	"github.com/lxt1045/errors"
-	"github.com/lxt1045/utils/grpc"
 	"github.com/lxt1045/utils/msg/codec"
+	"google.golang.org/grpc"
 )
 
 var _ codec.Caller = Method{} // 检查是由实现接口
@@ -56,6 +56,7 @@ type MethodFull struct {
 	CallID uint16
 }
 
+// RegisterServiceServer(s *grpc.Server, srv ServiceServer)
 func getMethods(ctx context.Context, fRegister interface{}, service interface{}) (methods []MethodFull, err error) {
 	regMethodType := reflect.TypeOf(fRegister)
 	if regMethodType.Kind() != reflect.Func {
@@ -149,6 +150,106 @@ func getMethods(ctx context.Context, fRegister interface{}, service interface{})
 			}
 			m.Func = f
 			m.SvcPointer = reflect.ValueOf(service).UnsafePointer()
+		}
+
+		methods = append(methods, m)
+	}
+
+	return
+}
+
+type MethodClient struct {
+	reqType  reflect.Type
+	respType reflect.Type
+	Name     string
+	CallID   uint16
+}
+
+func (m MethodClient) ReqType() reflect.Type {
+	return m.reqType
+}
+func (m MethodClient) RespType() reflect.Type {
+	return m.respType
+}
+
+func (m MethodClient) NewReq() codec.Msg {
+	msg := reflect.New(m.reqType).Interface().(codec.Msg)
+	return msg
+}
+func (m MethodClient) NewResp() codec.Msg {
+	if m.respType == nil {
+		return nil
+	}
+	msg := reflect.New(m.respType).Interface().(codec.Msg)
+	return msg
+}
+
+func (m MethodClient) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
+	return
+}
+
+// NewClientClient(cc *grpc.ClientConn) ClientClient
+func getClientMethods(ctx context.Context, fRegister interface{}) (methods []MethodClient, err error) {
+	regMethodType := reflect.TypeOf(fRegister)
+	if regMethodType.Kind() != reflect.Func {
+		err = errors.Errorf("arg fun must be func")
+		return
+	}
+	if regMethodType.NumIn() != 1 || regMethodType.NumOut() != 1 {
+		err = errors.Errorf("arg fun args error")
+		return
+	}
+	arg0 := regMethodType.In(0)
+	argGrpcClientConn := reflect.TypeOf(&grpc.ClientConn{})
+	if arg0.String() != argGrpcClientConn.String() {
+		err = errors.Errorf("arg fun args error, arg0:%s, argGrpcService:%s", arg0, argGrpcClientConn)
+		return
+	}
+
+	ifaceType := regMethodType.Out(0)
+	if ifaceType.Kind() != reflect.Interface {
+		err = errors.Errorf("arg fun args error")
+		return
+	}
+	if ifaceType.NumMethod() == 0 {
+		err = errors.Errorf("service %s has no funcs", ifaceType.String())
+		return
+	}
+
+	ifaceName, needReplace, newSuffix := ifaceType.String(), "Client", "Server"
+	if strings.HasSuffix(ifaceName, needReplace) {
+		ifaceName = ifaceName[:len(ifaceName)-len(needReplace)] + newSuffix
+	}
+	for i := 0; i < ifaceType.NumMethod(); i++ {
+		method := ifaceType.Method(i)
+		mType := method.Type
+
+		// stream 模式，抛弃
+		if mType.NumOut() == 1 || mType.NumIn() < 2 {
+			continue
+		}
+
+		reqType := mType.In(1).Elem()   // 形参是指针，所以要换成原始数据结构形式
+		respType := mType.Out(0).Elem() // 同上
+
+		// 判断该 Call 是否需要返回，如果不需要返回则会直接不管返回值，提高返回性能
+		if respType.NumField() <= 3 && strings.HasSuffix(respType.String(), ".Empty") {
+			bFound := false
+			for i := 0; i < respType.NumField(); i++ {
+				field := respType.Field(i)
+				if reflect.StructTag(field.Tag).Get("protobuf") != "" {
+					bFound = true
+				}
+			}
+			if !bFound {
+				respType = nil // 返回值成员为空的时候
+			}
+		}
+
+		m := MethodClient{
+			reqType:  reqType,
+			respType: respType,
+			Name:     ifaceName + "." + method.Name, // ifaceType.PkgPath() + "." +
 		}
 
 		methods = append(methods, m)

@@ -43,7 +43,7 @@ func TestPipe(t *testing.T) {
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := NewClient(ctx, cli, base.RegisterHelloServer)
+	client, err := NewClient(ctx, cli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestPipeStream(t *testing.T) {
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := NewClient(ctx, cli, base.RegisterHelloServer)
+	client, err := NewClient(ctx, cli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func testClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewClient(ctx, conn, base.RegisterHelloServer)
+	client, err := NewClient(ctx, conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

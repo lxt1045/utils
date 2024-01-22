@@ -13,6 +13,12 @@ message Err {
   string msg = 2;
 }
 
+message CloseReq {}
+
+message CloseRsp {
+  Err err = 1;
+}
+
 message LatencyReq {
   int64 ts = 1;
 }
@@ -35,7 +41,8 @@ message AuthRsp {
 }
 
 message ClientsReq {
-  repeated string names = 1;
+  string my_name = 1;
+  repeated string names = 2;
 }
 
 enum Protocol {
@@ -67,25 +74,17 @@ message ConnToRsp {
   Err err = 2;
 }
 
-message WaitConnReq {
-  ClientInfo client = 1;
-}
-
-message WaitConnRsp {
-  ClientInfo client = 1;
-  int64 timestamp = 2;  // 开始执行时间
-  int32 frequency = 3;  // 每秒执行多少次连接（并发）
-}
-
 // 定义服务
 service Service {
+  rpc Close(CloseReq) returns (CloseRsp) {}
   rpc Latency(LatencyReq) returns (LatencyRsp) {}
   rpc Auth(AuthReq) returns (AuthRsp) {}
   rpc Clients(ClientsReq) returns (ClientsRsp) {}
   rpc ConnTo(ConnToReq) returns (ConnToRsp) {}
-  rpc WaitConn(WaitConnReq) returns (WaitConnRsp) {}
 }
 
 service Client {
+  rpc Close(CloseReq) returns (CloseRsp) {}
+  rpc Latency(LatencyReq) returns (LatencyRsp) {}
   rpc ConnTo(ConnToReq) returns (ConnToRsp) {}
 }

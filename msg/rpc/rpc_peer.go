@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"reflect"
 	"strings"
 
 	"github.com/lxt1045/errors"
@@ -10,16 +11,16 @@ import (
 	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
-type RPC struct {
+type Peer struct {
 	Client
 	Service
 }
 
 // NewCS fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
-func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cliRegisters, svcRegisters []interface{}) (rpc RPC, err error) {
-	rpc = RPC{
+func NewPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+	rpc = Peer{
 		Client: Client{
-			Methods: make(map[string]MethodFull),
+			Methods: make(map[string]MethodClient),
 		},
 		Service: Service{
 			svcMethods:    make([]Method, 0, 32),
@@ -27,13 +28,29 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		},
 	}
 
-	clientCallIDs := make([]string, 0, 16)
+	var cliRegisters, svcRegisters []interface{}
+	for _, f := range fRegisters {
+		regMethodType := reflect.TypeOf(f)
+		if regMethodType.Kind() != reflect.Func {
+			err = errors.Errorf("arg fun must be func")
+			return
+		}
+		if regMethodType.NumIn() == 1 && regMethodType.NumOut() == 1 {
+			cliRegisters = append(cliRegisters, f)
+			continue
+		}
+		if regMethodType.NumIn() == 2 && regMethodType.NumOut() == 0 {
+			svcRegisters = append(svcRegisters, f)
+			continue
+		}
+	}
+
 	for _, fRegister := range cliRegisters {
 		if fRegister == nil {
 			err = errors.Errorf("fRegister should not been nil")
 			return
 		}
-		methods, err1 := getMethods(ctx, fRegister, service)
+		methods, err1 := getClientMethods(ctx, fRegister)
 		if err1 != nil {
 			err = err1
 			return
@@ -42,11 +59,6 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		for i, m := range methods {
 			m.CallID = uint16(i)
 			rpc.Client.Methods[m.Name] = m
-		}
-		for _, m := range methods {
-			rpc.svcInterfaces[m.Name] = uint32(len(rpc.svcMethods))
-			rpc.svcMethods = append(rpc.svcMethods, m.Method)
-			clientCallIDs = append(clientCallIDs, m.Name)
 		}
 	}
 
@@ -69,11 +81,11 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		}
 	}
 
-	rpc.Client.Codec, err = codec.NewCodec(ctx, rwc)
+	rpc.Service.Codec, err = codec.NewCodec(ctx, rwc)
 	if err != nil {
 		return
 	}
-	rpc.Service.Codec = rpc.Client.Codec
+	rpc.Client.Codec = rpc.Service.Codec // 这个在收到
 	rpc.Service.Codec.SetCallIDs(callIDs)
 
 	go rpc.Service.Codec.ReadLoop(ctx, func(callID uint16) codec.Caller {
@@ -83,8 +95,7 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 	go rpc.Client.Codec.Heartbeat(ctx)
 
 	req := &base.CmdReq{
-		Cmd:    base.CmdReq_CallIDs,
-		Fields: clientCallIDs,
+		Cmd: base.CmdReq_CallIDs,
 	}
 
 	res, err := rpc.Client.SendCmd(ctx, 0, req)
@@ -94,7 +105,7 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		return
 	}
 
-	methodsNew := make(map[string]MethodFull)
+	methodsNew := make(map[string]MethodClient)
 	for i, name := range res.Fields {
 		m, ok := rpc.Methods[name]
 		if !ok {
@@ -112,7 +123,7 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 	return
 }
 
-func (rpc RPC) Close(ctx context.Context) (err error) {
+func (rpc Peer) Close(ctx context.Context) (err error) {
 	err = rpc.Client.Close(ctx)
 	err1 := rpc.Service.Close(ctx)
 	if err == nil {

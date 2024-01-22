@@ -12,9 +12,7 @@ import (
 	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
-	"github.com/lxt1045/utils/msg/codec"
 	"github.com/lxt1045/utils/msg/rpc"
-	"github.com/lxt1045/utils/msg/rpc/base"
 	"github.com/lxt1045/utils/msg/test/filesystem"
 	"github.com/lxt1045/utils/msg/test/pb"
 )
@@ -64,6 +62,7 @@ func main() {
 			return
 		default:
 		}
+		ctx := context.TODO()
 		conn, err := listener.Accept()
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
@@ -75,9 +74,8 @@ func main() {
 			continue
 		}
 
-		ctx := context.TODO()
-		ctx = context.WithValue(ctx, connRemoteAddr{}, conn.RemoteAddr().String())
-		_, err = rpc.NewService(ctx, conn, NewServer(), base.RegisterHelloServer)
+		svc := NewServer(conn.RemoteAddr().String())
+		svc.Peer, err = rpc.NewPeer(ctx, conn, svc, []interface{}{pb.RegisterClientServer}, []interface{}{pb.RegisterServiceServer})
 		if err != nil {
 			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		}
@@ -85,22 +83,22 @@ func main() {
 	}
 }
 
-type connRemoteAddr struct{}
+var (
+	clients     map[string]*server
+	clientsLock sync.Mutex
+)
 
-type ClientInfo struct {
+type server struct {
+	MyName     string
 	RemoteAddr string
-	*codec.Stream
+	Peer       rpc.Peer
 	*pb.ClientInfo
 }
 
-type server struct {
-	clients map[string]ClientInfo
-	lock    sync.Mutex
-}
-
-func NewServer() *server {
+func NewServer(remoteAddr string) *server {
 	return &server{
-		clients: make(map[string]ClientInfo),
+		RemoteAddr: remoteAddr,
+		// ClientInfo
 	}
 }
 
@@ -112,27 +110,36 @@ func (s *server) Latency(ctx context.Context, in *pb.LatencyReq) (out *pb.Latenc
 func (s *server) Auth(ctx context.Context, in *pb.AuthReq) (out *pb.AuthRsp, err error) {
 	return &pb.AuthRsp{}, nil
 }
+func (s *server) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
+	clientsLock.Lock()
+	defer clientsLock.Unlock()
+	delete(clients, s.MyName)
+	return &pb.CloseRsp{}, nil
+}
 func (s *server) Clients(ctx context.Context, in *pb.ClientsReq) (out *pb.ClientsRsp, err error) {
+	s.MyName = in.MyName
+
 	clients := func() []*pb.ClientInfo {
-		s.lock.Lock()
-		defer s.lock.Unlock()
-		m := make([]*pb.ClientInfo, len(s.clients))
-		for _, v := range s.clients {
+		clientsLock.Lock()
+		defer clientsLock.Unlock()
+		m := make([]*pb.ClientInfo, len(clients))
+		for _, v := range clients {
 			m = append(m, v.ClientInfo)
 		}
+		clients[s.MyName] = s
 		return m
 	}()
-	return &pb.ClientsRsp{
-		Clients: clients,
-	}, nil
+
+	return &pb.ClientsRsp{Clients: clients}, nil
 }
+
 func (s *server) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRsp, err error) {
-	target := func() ClientInfo {
-		s.lock.Lock()
-		defer s.lock.Unlock()
-		return s.clients[in.Client.Name]
+	target := func() *server {
+		clientsLock.Lock()
+		defer clientsLock.Unlock()
+		return clients[in.Client.Name]
 	}()
-	if target.Stream == nil || target.ClientInfo == nil {
+	if target == nil {
 		out = &pb.ConnToRsp{
 			Status: pb.ConnToRsp_Fail,
 			Err: &pb.Err{
@@ -143,52 +150,6 @@ func (s *server) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 	}
 
 	// 这里注意可以先探测一下网络延时
-	go func() {
-		target.Stream.Clear(ctx)
-		req := &pb.WaitConnRsp{}
-		err = target.Stream.Send(ctx, req)
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnTo")
-			return
-		}
-		r, err := target.Stream.Recv(ctx)
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnTo")
-			return
-		}
-		resp, ok := r.(*pb.WaitConnReq)
-		if !ok {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnTo")
-			return
-		}
-	}()
 
 	return &pb.ConnToRsp{}, nil
-}
-
-func (s *server) WaitConn(ctx context.Context, in *pb.WaitConnReq) (out *pb.WaitConnRsp, err error) {
-	// stream 模式的返回值由己方随意控制
-	if stream := codec.GetStream(ctx); stream != nil {
-		iface, err1 := stream.Recv(ctx)
-		if err1 != nil {
-			log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
-			return
-		}
-		in = iface.(*pb.WaitConnReq)
-		func() {
-			remoteAddr, _ := ctx.Value(connRemoteAddr{}).(string)
-			client := ClientInfo{
-				RemoteAddr: remoteAddr,
-				Stream:     stream,
-				ClientInfo: in.Client,
-			}
-			s.lock.Lock()
-			defer s.lock.Unlock()
-			s.clients[in.Client.Name] = client
-		}()
-		return
-	}
-
-	log.Ctx(ctx).Error().Caller().Msg("WaitConn should be call by stream mode")
-	return
 }
