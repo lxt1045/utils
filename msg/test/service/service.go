@@ -5,14 +5,18 @@ import (
 	"crypto/tls"
 	"io/fs"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
-	"github.com/lxt1045/utils/msg"
-	"github.com/lxt1045/utils/msg/pb"
+	"github.com/lxt1045/utils/msg/codec"
+	"github.com/lxt1045/utils/msg/rpc"
+	"github.com/lxt1045/utils/msg/rpc/base"
 	"github.com/lxt1045/utils/msg/test/filesystem"
+	"github.com/lxt1045/utils/msg/test/pb"
 )
 
 type Config struct {
@@ -41,11 +45,6 @@ func main() {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 	}
 
-	if err != nil {
-		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
-		return
-	}
-
 	cmtls := conf.Conn.TLS
 	tlsConfig, err := config.LoadTLSConfig(filesystem.Static, cmtls.ServerCert, cmtls.ServerKey, cmtls.CACert)
 	if err != nil {
@@ -65,7 +64,7 @@ func main() {
 			return
 		default:
 		}
-		c, err := listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				log.Ctx(ctx).Error().Caller().Err(errors.Errorf(err.Error())).Send()
@@ -76,55 +75,120 @@ func main() {
 			continue
 		}
 
-		// msg.SetReadWriteBuff(ctx, c, 1024*1024*8, 0)
-
-		conf.Conn.FlushTime = -1 // Write 的时候刷新
-		conn, err := msg.NewConn(c, int64(i), &conf.Conn, nil)
+		ctx := context.TODO()
+		ctx = context.WithValue(ctx, connRemoteAddr{}, conn.RemoteAddr().String())
+		_, err = rpc.NewService(ctx, conn, NewServer(), base.RegisterHelloServer)
 		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			conn.Close()
-			continue
+			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		}
-
-		func(ctx context.Context, conn *msg.Conn) {
-
-			defer func() {
-				conn.Close()
-			}()
-
-			conn.ReadLoop(ctx, msg.MsgHandler(func(ctx context.Context, in Msg) (out Msg, err error) {
-				log.Ctx(ctx).Info().Err(err).Caller().Interface("in", in).Send()
-
-				req := &pb.Notice{
-					Msg:   "hello",
-					LogId: 11111,
-				}
-				_, err = conn.SendMsg(ctx, req, 222222, nil)
-				if err != nil {
-					log.Ctx(ctx).Error().Err(err).Caller().Send()
-					c.Close()
-					return
-				}
-
-				_, err = conn.SendMsg(ctx, req, 222222, nil)
-				if err != nil {
-					log.Ctx(ctx).Error().Err(err).Caller().Send()
-					c.Close()
-					return
-				}
-
-				// _, err = conn.SendMsgHaft(ctx, req, 222222, nil)
-				// if err != nil {
-				// 	log.Ctx(ctx).Error().Err(err).Caller().Send()
-				// 	c.Close()
-				// 	return
-				// }
-				conn.Close()
-
-				return
-			}))
-		}(ctx, conn)
-
 		continue
 	}
+}
+
+type connRemoteAddr struct{}
+
+type ClientInfo struct {
+	RemoteAddr string
+	*codec.Stream
+	*pb.ClientInfo
+}
+
+type server struct {
+	clients map[string]ClientInfo
+	lock    sync.Mutex
+}
+
+func NewServer() *server {
+	return &server{
+		clients: make(map[string]ClientInfo),
+	}
+}
+
+func (s *server) Latency(ctx context.Context, in *pb.LatencyReq) (out *pb.LatencyRsp, err error) {
+	return &pb.LatencyRsp{
+		Ts: time.Now().UnixNano(),
+	}, nil
+}
+func (s *server) Auth(ctx context.Context, in *pb.AuthReq) (out *pb.AuthRsp, err error) {
+	return &pb.AuthRsp{}, nil
+}
+func (s *server) Clients(ctx context.Context, in *pb.ClientsReq) (out *pb.ClientsRsp, err error) {
+	clients := func() []*pb.ClientInfo {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		m := make([]*pb.ClientInfo, len(s.clients))
+		for _, v := range s.clients {
+			m = append(m, v.ClientInfo)
+		}
+		return m
+	}()
+	return &pb.ClientsRsp{
+		Clients: clients,
+	}, nil
+}
+func (s *server) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRsp, err error) {
+	target := func() ClientInfo {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		return s.clients[in.Client.Name]
+	}()
+	if target.Stream == nil || target.ClientInfo == nil {
+		out = &pb.ConnToRsp{
+			Status: pb.ConnToRsp_Fail,
+			Err: &pb.Err{
+				Msg: in.Client.Name + " not exist",
+			},
+		}
+		return
+	}
+
+	// 这里注意可以先探测一下网络延时
+	go func() {
+		target.Stream.Clear(ctx)
+		req := &pb.WaitConnRsp{}
+		err = target.Stream.Send(ctx, req)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnTo")
+			return
+		}
+		r, err := target.Stream.Recv(ctx)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnTo")
+			return
+		}
+		resp, ok := r.(*pb.WaitConnReq)
+		if !ok {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnTo")
+			return
+		}
+	}()
+
+	return &pb.ConnToRsp{}, nil
+}
+
+func (s *server) WaitConn(ctx context.Context, in *pb.WaitConnReq) (out *pb.WaitConnRsp, err error) {
+	// stream 模式的返回值由己方随意控制
+	if stream := codec.GetStream(ctx); stream != nil {
+		iface, err1 := stream.Recv(ctx)
+		if err1 != nil {
+			log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
+			return
+		}
+		in = iface.(*pb.WaitConnReq)
+		func() {
+			remoteAddr, _ := ctx.Value(connRemoteAddr{}).(string)
+			client := ClientInfo{
+				RemoteAddr: remoteAddr,
+				Stream:     stream,
+				ClientInfo: in.Client,
+			}
+			s.lock.Lock()
+			defer s.lock.Unlock()
+			s.clients[in.Client.Name] = client
+		}()
+		return
+	}
+
+	log.Ctx(ctx).Error().Caller().Msg("WaitConn should be call by stream mode")
+	return
 }

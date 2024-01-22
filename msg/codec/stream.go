@@ -15,28 +15,40 @@ import (
 )
 
 type Stream struct {
-	codec   *Codec
-	channel uint16
-	callID  uint16
-	callSN  uint32
-	cache   []Msg
-	l       sync.Mutex
-	c       chan struct{}
+	codec     *Codec
+	channel   uint16
+	callID    uint16
+	callSN    uint32
+	cache     []Msg
+	cacheLock sync.Mutex
+	cacheCh   chan struct{}
 
 	caller         Caller
 	connectAt      int64
+	deadline       int64 // 超时时间，超时后删除
 	bSvc           bool
 	bSvcStreamMode bool
 	bClosed        bool
 	bOld           bool
 }
 
-func (s *Stream) Close() {
+func (s *Stream) Close(ctx context.Context) {
 	// 1. 先发送关闭请求
+	req := &base.CmdReq{Cmd: base.CmdReq_StreamClose}
+	res := &base.CmdRsp{}
+	done, err := s.codec.clientCall(ctx, VerCmdReq, s.channel, s.callID, s.callSN, req, res)
+	if err != nil {
+		return
+	}
+	if done != nil {
+		err = <-done
+		if err != nil {
+			log.Ctx(ctx).Warn().Caller().Err(err).Msg("Stream.close")
+		}
+	}
 
 	// 2. 再删除
 	c := s.codec
-
 	key := respsKey(s.callSN)
 	c.streamsLock.Lock()
 	defer c.streamsLock.Unlock()
@@ -54,13 +66,13 @@ func (s *Stream) Method() (method string) {
 
 func (s *Stream) Recv(ctx context.Context) (resp Msg, err error) {
 	recv := func() (req Msg) {
-		s.l.Lock()
-		defer s.l.Unlock()
+		s.cacheLock.Lock()
+		defer s.cacheLock.Unlock()
 		if len(s.cache) > 0 {
 			req = s.cache[0]
 			s.cache = s.cache[1:]
 			select {
-			case s.c <- struct{}{}:
+			case s.cacheCh <- struct{}{}:
 			default:
 			}
 			return
@@ -77,20 +89,27 @@ func (s *Stream) Recv(ctx context.Context) (resp Msg, err error) {
 			err = io.EOF
 			return
 		}
-		<-s.c
+		<-s.cacheCh
 	}
 }
 
+// Clear 清空以前接收的数据（准备好接收下一个数据包）
+func (s *Stream) Clear(ctx context.Context) {
+	s.cacheLock.Lock()
+	defer s.cacheLock.Unlock()
+	s.cache = s.cache[:0]
+}
+
 func (s *Stream) write(m Msg) (err error) {
-	s.l.Lock()
-	defer s.l.Unlock()
+	s.cacheLock.Lock()
+	defer s.cacheLock.Unlock()
 	if len(s.cache) > 10240 {
 		err = errors.Errorf("The cache size exceeds the limit:%d", len(s.cache))
 		return
 	}
 	s.cache = append(s.cache, m)
 	select {
-	case s.c <- struct{}{}:
+	case s.cacheCh <- struct{}{}:
 	default:
 	}
 	return
@@ -119,7 +138,7 @@ func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, calle
 	stream = &Stream{
 		codec:     c,
 		callID:    callID,
-		c:         make(chan struct{}),
+		cacheCh:   make(chan struct{}),
 		connectAt: time.Now().Unix(),
 		caller:    caller,
 	}
@@ -175,7 +194,7 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, 
 				codec:     c,
 				callID:    header.CallID,
 				callSN:    header.CallSN,
-				c:         make(chan struct{}),
+				cacheCh:   make(chan struct{}),
 				bSvc:      true,
 				connectAt: time.Now().Unix(),
 			}
@@ -194,6 +213,7 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, 
 		}
 	}
 
+	stream.deadline = time.Now().Unix() + 1*60*60 // 最新一个请求之后一个小时都没有新的请求就删除
 	req := stream.caller.NewReq()
 	err = proto.Unmarshal(bsBody, req)
 	if err != nil {

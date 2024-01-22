@@ -108,7 +108,7 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 				codec:     c,
 				callID:    header.CallID,
 				callSN:    header.CallSN,
-				c:         make(chan struct{}),
+				cacheCh:   make(chan struct{}),
 				bSvc:      true,
 				connectAt: time.Now().Unix(),
 			}
@@ -120,6 +120,21 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 		if err != nil {
 			return
 		}
+	case base.CmdReq_StreamClose:
+		func() {
+			key := respsKey(header.CallSN)
+			c.streamsLock.Lock()
+			defer c.streamsLock.Unlock()
+			delete(c.streams, key)
+		}()
+		res := &base.CmdRsp{
+			Status: base.CmdRsp_Succ,
+		}
+		err = c.SendMsg(ctx, VerCmdResp, header.Channel, header.CallID, header.CallSN, res)
+		if err != nil {
+			return
+		}
+		log.Ctx(ctx).Info().Caller().Interface("header", header).Msg("stream close by peer")
 	case base.CmdReq_Auth:
 	case base.CmdReq_CallIDs:
 		res := &base.CmdRsp{

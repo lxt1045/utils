@@ -119,6 +119,14 @@ func respsKey(callSN uint32) uint64 {
 	return uint64(callSN)
 }
 
+func (c *Codec) Heartbeat(ctx context.Context) {
+	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 30)) // 心跳包; client 发送
+	defer tickerHeartbeat.Stop()
+	for {
+		<-tickerHeartbeat.C
+		c.SendHeartbeatMsg(ctx)
+	}
+}
 func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Caller) {
 	var err error
 	defer func() {
@@ -140,12 +148,13 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 
 	rbuf := make([]byte, 0, math.MaxUint16)
 	for {
-		header, bsBody, err1 := ReadPack(ctx, c.rwc, rbuf)
-		if err1 != nil {
-			if err1 == io.EOF || err1 == io.ErrUnexpectedEOF {
+		var header Header
+		var bsBody []byte
+		header, bsBody, err = ReadPack(ctx, c.rwc, rbuf)
+		if err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return
 			}
-			err = err1
 			return
 		}
 
@@ -172,6 +181,9 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 		}
 
 		switch header.Ver {
+		case VerHeartbeat:
+			log.Ctx(ctx).Trace().Caller().Msg("heartbeat by peer")
+			return
 		case VerCallReq:
 			err = c.VerCallReq(ctx, header, bsBody, fNewCaller)
 			if err != nil {
@@ -250,6 +262,22 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 	wbuf := make([]byte, HeaderSize)
 	h := Header{
 		Ver:          VerClose,
+		Channel:      0,
+		Len:          uint16(len(wbuf)),
+		SegmentCount: 0,
+		SegmentIdx:   0,
+		CallID:       0,
+		CallSN:       0,
+	}
+	h.FormatCall(wbuf)
+	c.rwc.Write(wbuf)
+	return
+}
+
+func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
+	wbuf := make([]byte, HeaderSize)
+	h := Header{
+		Ver:          VerHeartbeat,
 		Channel:      0,
 		Len:          uint16(len(wbuf)),
 		SegmentCount: 0,

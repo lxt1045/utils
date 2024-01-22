@@ -44,6 +44,7 @@ func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interf
 		return
 	}
 	go c.Codec.ReadLoop(ctx, nil)
+	go c.Codec.Heartbeat(ctx)
 
 	req := &base.CmdReq{
 		Cmd: base.CmdReq_CallIDs,

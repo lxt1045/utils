@@ -27,6 +27,7 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		},
 	}
 
+	clientCallIDs := make([]string, 0, 16)
 	for _, fRegister := range cliRegisters {
 		if fRegister == nil {
 			err = errors.Errorf("fRegister should not been nil")
@@ -45,6 +46,7 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		for _, m := range methods {
 			rpc.svcInterfaces[m.Name] = uint32(len(rpc.svcMethods))
 			rpc.svcMethods = append(rpc.svcMethods, m.Method)
+			clientCallIDs = append(clientCallIDs, m.Name)
 		}
 	}
 
@@ -78,9 +80,11 @@ func NewRPC(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, cl
 		m := rpc.svcMethods[callID]
 		return m
 	})
+	go rpc.Client.Codec.Heartbeat(ctx)
 
 	req := &base.CmdReq{
-		Cmd: base.CmdReq_CallIDs,
+		Cmd:    base.CmdReq_CallIDs,
+		Fields: clientCallIDs,
 	}
 
 	res, err := rpc.Client.SendCmd(ctx, 0, req)

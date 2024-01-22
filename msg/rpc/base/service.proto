@@ -25,8 +25,9 @@ message BenchmarkRsp {}
 message CmdReq {
   enum CMD {
     Stream = 0;
-    Auth = 1;
-    CallIDs = 2;
+    StreamClose = 1;
+    Auth = 2;
+    CallIDs = 3;
   }
   CMD cmd = 1;
   repeated string fields = 2;

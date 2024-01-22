@@ -135,6 +135,7 @@ func TestPipeStream(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	}
+	stream.Close(ctx)
 }
 
 func TestConn(t *testing.T) {
@@ -212,7 +213,6 @@ func testClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal("!ok")
 	}
 	t.Logf("resp.Msg:\"%s\"", resp.Msg)
-
 }
 
 type server struct {
