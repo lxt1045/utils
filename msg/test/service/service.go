@@ -55,6 +55,7 @@ func main() {
 		return
 	}
 	defer listener.Close()
+	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.TCP).Send()
 
 	for i := 0; ; i++ {
 		select {
@@ -75,7 +76,7 @@ func main() {
 		}
 
 		svc := NewServer(conn.RemoteAddr().String())
-		svc.Peer, err = rpc.NewPeer(ctx, conn, svc, []interface{}{pb.RegisterClientServer}, []interface{}{pb.RegisterServiceServer})
+		svc.Peer, err = rpc.NewPeer(ctx, conn, svc, pb.NewClientClient, pb.RegisterServiceServer)
 		if err != nil {
 			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		}
@@ -84,15 +85,15 @@ func main() {
 }
 
 var (
-	clients     map[string]*server
+	clients     = make(map[string]*server)
 	clientsLock sync.Mutex
 )
 
 type server struct {
 	MyName     string
 	RemoteAddr string
+	Network    pb.Network
 	Peer       rpc.Peer
-	*pb.ClientInfo
 }
 
 func NewServer(remoteAddr string) *server {
@@ -122,9 +123,17 @@ func (s *server) Clients(ctx context.Context, in *pb.ClientsReq) (out *pb.Client
 	clients := func() []*pb.ClientInfo {
 		clientsLock.Lock()
 		defer clientsLock.Unlock()
-		m := make([]*pb.ClientInfo, len(clients))
-		for _, v := range clients {
-			m = append(m, v.ClientInfo)
+		m := make([]*pb.ClientInfo, 0, len(clients))
+		for k, v := range clients {
+			if v.Peer.Client.Codec.IsClosed() {
+				delete(clients, k)
+				continue
+			}
+			m = append(m, &pb.ClientInfo{
+				Name:    v.MyName,
+				Addr:    v.RemoteAddr,
+				Network: pb.Network_TCP,
+			})
 		}
 		clients[s.MyName] = s
 		return m
@@ -150,6 +159,60 @@ func (s *server) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 	}
 
 	// 这里注意可以先探测一下网络延时
+	detaTar, err := getLatency(ctx, target.Peer)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	detaSvs, err := getLatency(ctx, s.Peer)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	tsNow := time.Now().UnixNano() + int64(time.Second)
+	tsTar, tsSvs := tsNow+detaTar, tsNow+detaSvs
+	go func() {
+		req := &pb.ConnToReq{
+			Timestamp: tsTar,
+			Client: &pb.ClientInfo{
+				Name:    s.MyName,
+				Addr:    s.RemoteAddr,
+				Network: s.Network,
+			},
+		}
+		resp := &pb.ConnToRsp{}
+		err := target.Peer.Invoke(ctx, "ConnTo", req, resp)
+		if err != nil {
+			return
+		}
+		log.Ctx(ctx).Info().Caller().Interface("resp", resp).Send()
+	}()
 
-	return &pb.ConnToRsp{}, nil
+	out = &pb.ConnToRsp{
+		Timestamp: tsSvs,
+		Client: &pb.ClientInfo{
+			Name:    target.MyName,
+			Addr:    target.RemoteAddr,
+			Network: target.Network,
+		},
+	}
+	return
+}
+
+// deta == 对方时钟 - 我方时钟； 用于对时
+func getLatency(ctx context.Context, peer rpc.Peer) (deta int64, err error) {
+	reqLatency := &pb.LatencyReq{
+		Ts: time.Now().UnixNano(),
+	}
+	respLatency := &pb.LatencyRsp{}
+	err = peer.Invoke(ctx, "Latency", reqLatency, respLatency)
+	if err != nil {
+		return
+	}
+
+	tsNow := time.Now().UnixNano()
+
+	half := (tsNow + reqLatency.Ts) / 2
+	deta = respLatency.Ts - half
+	return
 }

@@ -15,7 +15,7 @@ func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req M
 		// resp 发送放 defer 中，及时panic也有返回值
 		e := recover()
 		if e != nil {
-			err = errors.Errorf("recover: %v", e)
+			err = errors.Errorf("func: %s, recover: %v", caller.FuncName(), e)
 		}
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()

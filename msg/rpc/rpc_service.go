@@ -37,7 +37,7 @@ func NewService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}
 
 		for _, m := range methods {
 			s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
-			s.svcMethods = append(s.svcMethods, m.Method)
+			s.svcMethods = append(s.svcMethods, m)
 			callIDs = append(callIDs, m.Name)
 		}
 	}
@@ -74,7 +74,7 @@ func (s *Service) AddService(ctx context.Context, fRegister interface{}, service
 			return
 		}
 		s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
-		s.svcMethods = append(s.svcMethods, m.Method)
+		s.svcMethods = append(s.svcMethods, m)
 		callIDs = append(callIDs, m.Name)
 	}
 
@@ -110,16 +110,6 @@ func (s Service) Call(ctx context.Context, methodIdx uint32, req unsafe.Pointer)
 	return
 }
 
-func (s Service) AllInterfaces() (is []MethodFull) {
-	names := make(map[int]string)
-	for k, v := range s.svcInterfaces {
-		names[int(v)] = k
-	}
-	for i, m := range s.svcMethods {
-		is = append(is, MethodFull{
-			Method: m,
-			Name:   names[i],
-		})
-	}
-	return
+func (s Service) AllInterfaces() (is []Method) {
+	return s.svcMethods
 }

@@ -12,7 +12,7 @@ protoc -I=. *.proto --gogofast_out=plugins=grpc:./gogofastgen
 ```ps1
 $env:dir="D:/project/go/src/github.com/lxt1045/utils"
 protoc -I="$env:dir" $env:dir/msg/test/pb/*.proto --gogofast_out=plugins=grpc:"$env:dir/msg/test/pb/" 
-protoc -I="$env:dir" $env:dir/msg/test/pb/*.proto --go_out=plugins=grpc:"$env:dir/msg/test/pb/" 
 
+protoc -I="$env:dir" $env:dir/msg/test/pb/*.proto --go_out=plugins=grpc:"$env:dir/msg/test/pb/" 
 ```
 

@@ -19,6 +19,8 @@ type Method struct {
 	reqType    reflect.Type
 	respType   reflect.Type
 	// bStream    bool // 是否双向流
+	CallID uint16
+	Name   string
 }
 
 func (m Method) ReqType() reflect.Type {
@@ -39,6 +41,9 @@ func (m Method) NewResp() codec.Msg {
 	msg := reflect.New(m.respType).Interface().(codec.Msg)
 	return msg
 }
+func (m Method) FuncName() string {
+	return m.Name
+}
 
 func (m Method) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
 	p := (*[2]unsafe.Pointer)(unsafe.Pointer(&req))[1]
@@ -50,14 +55,8 @@ func (m Method) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, e
 	return
 }
 
-type MethodFull struct {
-	Method
-	Name   string
-	CallID uint16
-}
-
 // RegisterServiceServer(s *grpc.Server, srv ServiceServer)
-func getMethods(ctx context.Context, fRegister interface{}, service interface{}) (methods []MethodFull, err error) {
+func getMethods(ctx context.Context, fRegister interface{}, service interface{}) (methods []Method, err error) {
 	regMethodType := reflect.TypeOf(fRegister)
 	if regMethodType.Kind() != reflect.Func {
 		err = errors.Errorf("arg fun must be func")
@@ -118,12 +117,10 @@ func getMethods(ctx context.Context, fRegister interface{}, service interface{})
 			}
 		}
 
-		m := MethodFull{
-			Method: Method{
-				reqType:  reqType,
-				respType: respType,
-			},
-			Name: ifaceType.String() + "." + method.Name, // ifaceType.PkgPath() + "." +
+		m := Method{
+			reqType:  reqType,
+			respType: respType,
+			Name:     ifaceType.String() + "." + method.Name, // ifaceType.PkgPath() + "." +
 		}
 
 		if service != nil {
@@ -182,6 +179,9 @@ func (m MethodClient) NewResp() codec.Msg {
 	}
 	msg := reflect.New(m.respType).Interface().(codec.Msg)
 	return msg
+}
+func (m MethodClient) FuncName() string {
+	return m.Name
 }
 
 func (m MethodClient) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {

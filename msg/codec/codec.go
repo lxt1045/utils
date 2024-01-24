@@ -35,6 +35,7 @@ type Caller interface {
 	NewReq() Msg
 	NewResp() Msg
 	SvcInvoke(ctx context.Context, req Msg) (resp Msg, err error)
+	FuncName() string
 }
 
 type Codec struct {
@@ -96,8 +97,17 @@ func NewCodec(ctx context.Context, rwc io.ReadWriteCloser) (c *Codec, err error)
 }
 
 func (c *Codec) Close() (err error) {
+	if c.rwc == nil {
+		err = errors.Errorf("has been closed")
+		return
+	}
 	err = c.rwc.Close()
+	c.rwc = nil
 	return
+}
+
+func (c *Codec) IsClosed() (yes bool) {
+	return c.rwc == nil
 }
 
 func (c *Codec) SetCallIDs(callIDs []string) {
@@ -135,9 +145,10 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 			err = errors.Errorf("recove:%v", e)
 		}
 		if err != nil {
-			log.Ctx(ctx).Error().Err(err).Caller().Msg("defer")
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("defer")
 		} else {
-			log.Ctx(ctx).Debug().Caller().Msg("defer")
+			err = errors.Errorf("defer")
+			log.Ctx(ctx).Debug().Caller().Err(err).Msg("defer")
 		}
 
 		if c.rwc != nil {
@@ -183,16 +194,16 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 		switch header.Ver {
 		case VerHeartbeat:
 			log.Ctx(ctx).Trace().Caller().Msg("heartbeat by peer")
-			return
+
 		case VerCallReq:
 			err = c.VerCallReq(ctx, header, bsBody, fNewCaller)
 			if err != nil {
-				return
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerCallResp:
 			err = c.VerCallResp(ctx, header, bsBody)
 			if err != nil {
-				return
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerClose:
 			log.Ctx(ctx).Debug().Caller().Msg("close by peer")
@@ -200,24 +211,25 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 		case VerCmdReq:
 			err = c.VerCmdReq(ctx, header, bsBody)
 			if err != nil {
-				return
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerCmdResp:
 			err = c.VerCallResp(ctx, header, bsBody)
 			if err != nil {
-				return
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerStreamReq:
 			err = c.VerStreamReq(ctx, header, bsBody, fNewCaller)
 			if err != nil {
-				return
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerStreamResp:
 			err = c.VerStreamResp(ctx, header, bsBody)
 			if err != nil {
-				return
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		default:
+			log.Ctx(ctx).Error().Caller().Interface("header", header).Send()
 		}
 	}
 }
@@ -270,6 +282,10 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 		CallSN:       0,
 	}
 	h.FormatCall(wbuf)
+	if c.rwc == nil {
+		err = errors.Errorf("has been closed")
+		return
+	}
 	c.rwc.Write(wbuf)
 	return
 }
@@ -286,6 +302,10 @@ func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
 		CallSN:       0,
 	}
 	h.FormatCall(wbuf)
+	if c.rwc == nil {
+		err = errors.Errorf("has been closed")
+		return
+	}
 	c.rwc.Write(wbuf)
 	return
 }
@@ -359,6 +379,10 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 			CallSN:       callSN,
 		}
 		h.FormatCall(wbuf)
+		if c.rwc == nil {
+			err = errors.Errorf("has been closed")
+			return
+		}
 		_, err = c.rwc.Write(wbuf)
 		return
 	}
@@ -376,6 +400,10 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 			CallSN:       callSN,
 		}
 		h.FormatCall(wbuf0)
+		if c.rwc == nil {
+			err = errors.Errorf("has been closed")
+			return
+		}
 		_, err = c.rwc.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
 		if err != nil {
 			return
@@ -393,6 +421,10 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 		CallSN:       callSN,
 	}
 	h.FormatCall(wbuf0)
+	if c.rwc == nil {
+		err = errors.Errorf("has been closed")
+		return
+	}
 	_, err = c.rwc.Write(wbuf0)
 	return
 }

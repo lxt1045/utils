@@ -76,7 +76,7 @@ func NewPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, f
 
 		for _, m := range methods {
 			rpc.svcInterfaces[m.Name] = uint32(len(rpc.svcMethods))
-			rpc.svcMethods = append(rpc.svcMethods, m.Method)
+			rpc.svcMethods = append(rpc.svcMethods, m)
 			callIDs = append(callIDs, m.Name)
 		}
 	}

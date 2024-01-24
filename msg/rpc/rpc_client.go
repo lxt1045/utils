@@ -79,7 +79,7 @@ func (c Client) Close(ctx context.Context) (err error) {
 	return
 }
 
-func (c Client) Invoke(ctx context.Context, method string, req codec.Msg) (resp codec.Msg, err error) {
+func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp codec.Msg) (err error) {
 	m, ok := c.Methods[method]
 	if !ok {
 		err = errors.Errorf("method not found: %s", method)
@@ -90,7 +90,11 @@ func (c Client) Invoke(ctx context.Context, method string, req codec.Msg) (resp 
 		err = errors.Errorf("req type error: should be %s, not %s", m.reqType.String(), t.String())
 		return
 	}
-	resp = m.NewResp()
+	if t := reflect.TypeOf(resp); resp != nil && t.Elem() != m.respType {
+		err = errors.Errorf("req type error: should be %s, not %s", m.reqType.String(), t.String())
+		return
+	}
+	// resp = m.NewResp()
 	done, err := c.Codec.ClientCall(ctx, 0, m.CallID, req, resp)
 	if err != nil {
 		return
@@ -113,7 +117,7 @@ func (c *Client) Stream(ctx context.Context, method string) (stream *codec.Strea
 }
 
 type mockClient struct {
-	Methods map[string]MethodFull
+	Methods map[string]Method
 }
 
 // NewClient fun: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
@@ -122,7 +126,7 @@ func NewMockClient(ctx context.Context, fun interface{}, s interface{}) (c mockC
 	if err != nil {
 		return
 	}
-	c.Methods = make(map[string]MethodFull)
+	c.Methods = make(map[string]Method)
 	for _, m := range methods {
 		i := strings.LastIndex(m.Name, ".")
 		if i >= 0 {

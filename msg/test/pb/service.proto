@@ -40,19 +40,19 @@ message AuthRsp {
   Err err = 2;
 }
 
-message ClientsReq {
-  string my_name = 1;
-  repeated string names = 2;
-}
-
-enum Protocol {
+enum Network {
   TCP = 0;
   UDP = 1;
 }
 message ClientInfo {
   string name = 1;
   string addr = 2;
-  Protocol protocol = 3;
+  Network network = 3;
+}
+
+message ClientsReq {
+  string my_name = 1;
+  repeated string names = 2;
 }
 
 message ClientsRsp {
@@ -70,8 +70,10 @@ message ConnToRsp {
     Succ = 0;
     Fail = 1;
   }
-  STATUS status = 1;
-  Err err = 2;
+  ClientInfo client = 1;
+  int64 timestamp = 2;
+  STATUS status = 3;
+  Err err = 4;
 }
 
 // 定义服务
