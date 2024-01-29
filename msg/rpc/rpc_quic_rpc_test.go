@@ -150,15 +150,11 @@ func rpcClient(ctx context.Context, t *testing.T, addr string) {
 	req := base.HelloReq{
 		Name: "call by quic 007",
 	}
+	resp := &base.HelloRsp{}
 
-	ir, err := client.Invoke(ctx, "SayHello", &req)
+	err = client.Invoke(ctx, "SayHello", &req, resp)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	resp, ok := ir.(*base.HelloRsp)
-	if !ok {
-		t.Fatal("!ok")
 	}
 	t.Logf("resp.Msg:\"%s\"", resp.Msg)
 }

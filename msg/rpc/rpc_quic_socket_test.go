@@ -2,7 +2,9 @@ package rpc
 
 import (
 	"context"
+	"crypto/tls"
 	"io/fs"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -12,24 +14,25 @@ import (
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/msg/conn"
 	base "github.com/lxt1045/utils/msg/rpc/base"
+	"github.com/lxt1045/utils/msg/socket"
 	"github.com/lxt1045/utils/msg/test/filesystem"
 	"github.com/quic-go/quic-go"
 )
 
-func TestQuic(t *testing.T) {
+func TestQuicSocket(t *testing.T) {
 	ctx := context.Background()
 	addr := ":18080"
 	ch := make(chan struct{})
 	go func() {
-		quicService(ctx, t, addr, ch)
+		quicServiceSocket(ctx, t, addr, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Second * 1)
-	quicClient(ctx, t, addr)
+	quicClientSocket(ctx, t, addr)
 }
 
-type Config struct {
+type ConfigSocket struct {
 	Debug      bool
 	Pprof      bool
 	Dev        bool
@@ -38,8 +41,8 @@ type Config struct {
 	Log        config.Log
 }
 
-func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
-	conf := &Config{}
+func quicServiceSocket(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+	conf := &ConfigSocket{}
 	file := "static/conf/default.yml"
 	bs, err := fs.ReadFile(filesystem.Static, file)
 	if err != nil {
@@ -62,7 +65,8 @@ func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
-	listener, err := quic.ListenAddr(conf.Conn.TCP, tlsConfig, nil)
+	// listener, err := quic.ListenAddr(conf.Conn.Addr, tlsConfig, nil)
+	listener, err := quicListenAddr(ctx, conf.Conn.Addr, tlsConfig, nil)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
@@ -106,7 +110,7 @@ func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 	}
 }
 
-func quicClient(ctx context.Context, t *testing.T, addr string) {
+func quicClientSocket(ctx context.Context, t *testing.T, addr string) {
 	// 解析配置文件
 	conf := &Config{}
 	file := "static/conf/default.yml"
@@ -133,11 +137,14 @@ func quicClient(ctx context.Context, t *testing.T, addr string) {
 	}
 	tlsConfig.ServerName = conf.ClientConn.Host
 
-	c, err := quic.DialAddr(ctx, conf.ClientConn.Addr, tlsConfig, nil)
+	// c, err := quic.DialAddr(ctx, conf.ClientConn.Addr, tlsConfig, nil)
+	c, err := quicDialAddr(ctx, conf.ClientConn.Addr, tlsConfig, nil)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
+	log.Ctx(ctx).Info().Caller().Str("local", c.LocalAddr().String()).Str("remote", c.RemoteAddr().String()).Send()
+
 	cli, err := conn.WrapQuicClient(ctx, c)
 	if err != nil {
 		t.Fatal(err)
@@ -167,4 +174,77 @@ func quicClient(ctx context.Context, t *testing.T, addr string) {
 	}
 
 	t.Logf("resp.Msg:\"%s\"", resp.Msg)
+}
+
+func quicListenAddr(ctx context.Context, addr string, tlsConf *tls.Config, config *quic.Config) (ln *quic.Listener, err error) {
+	conn, err := socket.ListenPacket(ctx, "udp4", addr)
+	if err != nil {
+		return
+	}
+	ln, err = quic.Listen(conn, tlsConf, config)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	return
+}
+
+// listener, err := quic.ListenAddr(conf.Conn.TCP, tlsConfig, nil)
+func quicListenAddr1(addr string, tlsConf *tls.Config, config *quic.Config) (ln *quic.Listener, err error) {
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	conn, err := net.ListenUDP("udp", udpAddr)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	ln, err = quic.Listen(conn, tlsConf, config)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	return
+}
+
+// c, err := quicDialAddr(ctx, conf.ClientConn.Addr, tlsConfig, nil)
+func quicDialAddr(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (conn quic.Connection, err error) {
+	// udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// udpConn, err := socket.ListenPacket(ctx, "udp4", "0.0.0.0:0")  // 端口 0 会自动分配一个
+	udpConn, err := socket.ListenPacket(ctx, "udp4", "0.0.0.0:8081")
+	if err != nil {
+		return
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return
+	}
+	conn, err = quic.Dial(ctx, udpConn, udpAddr, tlsConf, conf)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// c, err := quicDialAddr(ctx, conf.ClientConn.Addr, tlsConfig, nil)
+func quicDialAddr1(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (conn quic.Connection, err error) {
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	if err != nil {
+		return nil, err
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return
+	}
+	conn, err = quic.Dial(ctx, udpConn, udpAddr, tlsConf, conf)
+	if err != nil {
+		return
+	}
+	return
 }

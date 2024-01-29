@@ -4,32 +4,51 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"syscall"
 
+	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/log"
 )
 
-func ListenPacket(ctx context.Context, network, addr string) {
-	cfg := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
-			// windows
-			if TCP_SYNCNT == 0 {
-				return c.Control(func(fd uintptr) {
-					h := newHandle(fd).H
-					syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEADDR, 1)
-					syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEPORT, 1)
-				})
-			}
-			// linux
-			return c.Control(func(fd uintptr) {
-				h := newHandle(fd).H
-				syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEADDR, 1)
-				syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEPORT, 1)
-				syscall.SetsockoptInt(h, syscall.IPPROTO_TCP, TCP_SYNCNT, 1)
-			})
-		},
+func ListenPacket(ctx context.Context, network, addr string) (conn net.PacketConn, err error) {
+	if network != "udp" && network != "udp4" {
+		err = errors.Errorf("network error: %s", network)
+		return
 	}
-	udp, err := cfg.ListenPacket(ctx, network, addr)
+	cfg := net.ListenConfig{
+		Control: control,
+	}
+	conn, err = cfg.ListenPacket(ctx, network, addr)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	return
+}
+
+func DialPacket(ctx context.Context, network, addr string) (conn *net.UDPConn, err error) {
+	if network != "udp" && network != "udp4" {
+		err = errors.Errorf("network error: %s", network)
+		return
+	}
+	cfg := net.Dialer{
+		Control: control,
+	}
+	// net.DialUDP("udp", nil, addr)
+	c, err := cfg.DialContext(ctx, network, addr)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	conn, ok := c.(*net.UDPConn)
+	if !ok {
+		err = errors.Errorf("conn type error: %T", c)
+		return
+	}
+	return
+}
+
+func ListenPacketAndRead(ctx context.Context, network, addr string) {
+	udp, err := ListenPacket(ctx, network, addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("listen failed")
 		return
@@ -47,34 +66,22 @@ func ListenPacket(ctx context.Context, network, addr string) {
 	}
 }
 
-func ConnectPacket(ctx context.Context, network, addr string) {
-	cfg := net.Dialer{
-		Control: func(network, address string, c syscall.RawConn) error {
-			// windows
-			if TCP_SYNCNT == 0 {
-				return c.Control(func(fd uintptr) {
-					h := newHandle(fd).H
-					syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEADDR, 1)
-					syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEPORT, 1)
-				})
-			}
-			// linux
-			return c.Control(func(fd uintptr) {
-				h := newHandle(fd).H
-				syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEADDR, 1)
-				syscall.SetsockoptInt(h, syscall.SOL_SOCKET, SO_REUSEPORT, 1)
-				syscall.SetsockoptInt(h, syscall.IPPROTO_TCP, TCP_SYNCNT, 1)
-			})
-		},
-	}
-	// net.DialUDP("udp", nil, addr)
-	conn, err := cfg.DialContext(ctx, network, addr)
+func ConnectPacketAndSend(ctx context.Context, network, addr string) {
+	// cfg := net.Dialer{
+	// 	Control: control,
+	// }
+	// // net.DialUDP("udp", nil, addr)
+	// conn, err := cfg.DialContext(ctx, network, addr)
+	// if err != nil {
+	// 	log.Ctx(ctx).Error().Caller().Err(err).Msg("listen failed")
+	// 	return
+	// }
+
+	udpconn, err := DialPacket(ctx, network, addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("listen failed")
 		return
 	}
-
-	udpconn := conn.(*net.UDPConn)
 	buf := make([]byte, 1024)
 	for {
 		n, caddr, err := udpconn.ReadFrom(buf)

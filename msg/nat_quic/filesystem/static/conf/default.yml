@@ -4,7 +4,6 @@ dev: false
 
 conn:
   tcp: ":8080"
-  addr: ":8080"
   host: "lxt1045.com"
   enable-tls: true
   read-concurrency: 1
