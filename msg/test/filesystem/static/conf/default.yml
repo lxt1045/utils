@@ -29,3 +29,7 @@ client-conn:
     ca-cert: "static/ca/root-cert.pem"
     client-cert: "static/ca/client-cert.pem"
     client-key: "static/ca/client-key.pem"
+
+broadcast:
+  addr: ":18080"
+  heartbeat: 3

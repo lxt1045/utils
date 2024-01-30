@@ -2,11 +2,13 @@ package rpc
 
 import (
 	"context"
+	"net"
 	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/lxt1045/utils/cert/test/grpc/pb"
+	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/msg/rpc/base"
 )
 
@@ -116,4 +118,54 @@ func BenchmarkMethod(b *testing.B) {
 			}
 		}
 	})
+}
+
+func TestIps(t *testing.T) {
+	ctx := context.Background()
+	addrs, err := GetBroadcastAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log.Ctx(ctx).Info().Caller().Interface("addrs", addrs).Send()
+}
+
+type Addr struct {
+	MAC string
+	IPs []string
+}
+
+// 返回广播地址列表
+func GetBroadcastAddress() (addrs []Addr, err error) {
+	interfaces, err := net.Interfaces() // 获取所有网络接口
+	if err != nil {
+		return
+	}
+
+	for _, face := range interfaces {
+		// 选择 已启用的、能广播的、非回环 的接口
+		if (face.Flags & (net.FlagUp | net.FlagBroadcast | net.FlagLoopback)) == (net.FlagBroadcast | net.FlagUp) {
+			ips, err := face.Addrs() // 获取该接口下IP地址
+			if err != nil {
+				return nil, err
+			}
+			addr := Addr{
+				MAC: face.HardwareAddr.String(),
+			}
+			for _, ip := range ips {
+				if ipnet, ok := ip.(*net.IPNet); ok { // 转换成 IPNet { IP Mask } 形式
+					if ipnet.IP.To4() != nil { // 只取IPv4的
+						var fields net.IP // 用于存放广播地址字段（共4个字段）
+						for i := 0; i < 4; i++ {
+							fields = append(fields, (ipnet.IP.To4())[i]|(^ipnet.Mask[i])) // 计算广播地址各个字段
+						}
+						addr.IPs = append(addr.IPs, fields.String()) // 转换为字符串形式
+					}
+				}
+			}
+			addrs = append(addrs, addr) // 转换为字符串形式
+		}
+	}
+
+	return
 }

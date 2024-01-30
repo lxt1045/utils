@@ -45,6 +45,7 @@ type Conn struct {
 	ReadWindow       int
 	WriteWindow      int
 	FlushTime        int
+	Heartbeat        int
 	TLS              struct {
 		CACert     string
 		ServerCert string
