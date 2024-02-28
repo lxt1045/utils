@@ -113,7 +113,7 @@ func (s *server) StreamRespHello(req *pb.HelloReq, stream pb.Hello_StreamRespHel
 	return nil
 }
 
-func main() {
+func main1() {
 	ln, err := net.Listen("tcp", ":10088")
 	if err != nil {
 		fmt.Println("network error", err)
@@ -185,5 +185,34 @@ func main() {
 	}
 
 	fmt.Println("end")
+	time.Sleep(time.Second)
+}
+
+func main() {
+	ctx := context.Background()
+	conf := config.GRPC{
+		Protocol:   "tcp",
+		Addr:       ":10087",
+		ServerCert: "static/ca/server-cert.pem",
+		ServerKey:  "static/ca/server-key.pem",
+		CACert:     "static/ca/root-cert.pem",
+	}
+	svc, err := wegrpc.NewServer(ctx, conf, filesystem.Static)
+	if err != nil {
+		fmt.Println("network error", err)
+	}
+
+	//注册服务
+	pb.RegisterHelloServer(svc.GRPC, &server{})
+	sinfo := svc.GRPC.GetServiceInfo()
+	log.Ctx(context.TODO()).Info().Caller().Interface("sinfo", sinfo).Send()
+
+	err = svc.Run(ctx, nil)
+	if err != nil {
+		log.Ctx(context.TODO()).Error().Caller().Err(err).Msg("Service error")
+		time.Sleep(time.Second)
+	}
+
+	svc.GracefulStop()
 	time.Sleep(time.Second)
 }

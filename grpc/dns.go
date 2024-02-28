@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"math/rand"
 	"sync"
 
 	"github.com/lxt1045/errors"
@@ -60,11 +61,15 @@ func (r *grpcResolver) start() {
 	addrStrs := r.addrsStore[ep]
 	lock.RUnlock()
 
+	idx := rand.Intn(len(addrStrs))
 	addrs := make([]resolver.Address, len(addrStrs))
 	for i, s := range addrStrs {
-		addrs[i] = resolver.Address{Addr: s}
+		addrs[(i+idx)%len(addrStrs)] = resolver.Address{Addr: s}
 	}
 	r.cc.UpdateState(resolver.State{Addresses: addrs})
 }
-func (*grpcResolver) ResolveNow(o resolver.ResolveNowOptions) {}
-func (*grpcResolver) Close()                                  {}
+func (r *grpcResolver) ResolveNow(o resolver.ResolveNowOptions) {
+	// 重新解析一次，可能会多次调用
+	r.start()
+}
+func (*grpcResolver) Close() {}

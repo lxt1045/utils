@@ -14,7 +14,7 @@ var (
 	lastID     int64
 	gidLock    sync.RWMutex
 
-	timeMonotonic, tsMonotonic, tsTuntimeNano = func() (time.Time, int64, int64) {
+	timeMonotonic, tsMonotonic, tsRuntimeNano = func() (time.Time, int64, int64) {
 		tNow := time.Now()
 		return tNow, tNow.Unix(), RuntimeNano()
 	}()
@@ -103,7 +103,7 @@ func GetTsNow() int64 {
 	// 这里使用用单调时间
 	// return int64(time.Since(timeMonotonic)/time.Second) + tsMonotonic
 
-	return (RuntimeNano()-tsTuntimeNano)/int64(time.Second) + tsMonotonic
+	return (RuntimeNano()-tsRuntimeNano)/int64(time.Second) + tsMonotonic
 
 }
 

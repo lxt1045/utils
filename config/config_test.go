@@ -43,14 +43,16 @@ mqtt:
 func TestCamel2Case(t *testing.T) {
 	t.Run("Camel2Case", func(t *testing.T) {
 		cases := map[string]string{
-			"TCP":          "tcp",
-			"CanDo":        "can_do",
-			"CBACanDo":     "cba_can_do",
-			"CBAC-anDo":    "cbac_an_do",
-			"xxxCBAC-anDo": "xxx_cbac_an_do",
-			"TLSConf":      "tls_conf",
-			"tls-conf":     "tls_conf",
-			"Mqtt":         "mqtt",
+			"TCP":           "tcp",
+			"CanDo":         "can_do",
+			"CBACanDo":      "cba_can_do",
+			"CBAC-anDo":     "cbac_an_do",
+			"CBAC-AnDo":     "cbac_an_do",
+			"xxxCBAC-anDo":  "xxx_cbac_an_do",
+			"xxx-CBAC-anDo": "xxx_cbac_an_do",
+			"TLSConf":       "tls_conf",
+			"tls-conf":      "tls_conf",
+			"Mqtt":          "mqtt",
 		}
 		for k, v := range cases {
 			vv := Camel2Case(k)

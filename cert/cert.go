@@ -74,8 +74,8 @@ func New(keyPem, certPem []byte) (cert *Cert, err error) {
 	return
 }
 
-// MakeEcdsa clientMode: root, inner, leaf
-func (c *Cert) MakeEcdsa(clientMode string, ips, hosts []string) (privPEM, certPEM []byte, err error) {
+// MakeEcdsa certMode: root, inner, leaf
+func (c *Cert) MakeEcdsa(certMode CertMode, ips, hosts []string) (privPEM, certPEM []byte, err error) {
 	defer func() {
 		if ec, ok := err.(*errors.Code); !ok && err != nil && ec.Code() == 0 {
 			err = errors.Errorf(err.Error())
@@ -109,20 +109,20 @@ func (c *Cert) MakeEcdsa(clientMode string, ips, hosts []string) (privPEM, certP
 		BasicConstraintsValid: true,
 	}
 
-	switch clientMode {
-	case "root":
+	switch certMode {
+	case CertModeRoot:
 		unsignedCert.Subject.CommonName = "Lxt Root CA"
 		unsignedCert.IsCA = true
 		unsignedCert.MaxPathLen = 1
 		unsignedCert.MaxPathLenZero = false
 		unsignedCert.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
-	case "inner":
+	case CertModeInner:
 		unsignedCert.Subject.CommonName = "Lxt Organization CA" // 中间证书
 		unsignedCert.IsCA = true
 		unsignedCert.MaxPathLen = 0
 		unsignedCert.MaxPathLenZero = true
 		unsignedCert.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
-	case "leaf":
+	case CertModeLeaf:
 		unsignedCert.Subject.CommonName = "lxt1045.com"
 		unsignedCert.IsCA = false
 		unsignedCert.KeyUsage = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
@@ -137,7 +137,7 @@ func (c *Cert) MakeEcdsa(clientMode string, ips, hosts []string) (privPEM, certP
 			}
 		}
 	default:
-		err = errors.Errorf("clientMode[%s] error, only support: root, inner, leaf", clientMode)
+		err = errors.Errorf("certMode[%d] error, only support: CertModeRoot, CertModeInner, CertModeLeaf", certMode)
 		return
 	}
 

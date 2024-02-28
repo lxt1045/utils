@@ -19,7 +19,7 @@ func init() {
 
 func main() {
 
-	dir, _ := filepath.Abs("../ca")
+	dir, _ := filepath.Abs("../../ca")
 	caCert, err := os.ReadFile(filepath.Join(dir, "root-cert.pem")) // 加载CA, 添加进 caCertPool
 	if err != nil {
 		log.Println("try to load ca err", err)

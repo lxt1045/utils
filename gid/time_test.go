@@ -14,7 +14,7 @@ func TestTime(t *testing.T) {
 
 		ts1 := time.Now().Unix()
 		ts2 := int64(time.Since(timeMonotonic)/time.Second) + tsMonotonic
-		ts3 := (RuntimeNano()-tsTuntimeNano)/int64(time.Second) + tsMonotonic
+		ts3 := (RuntimeNano()-tsRuntimeNano)/int64(time.Second) + tsMonotonic
 		t.Logf("time.Now():%d", ts1)
 		t.Logf("time.Since():%d", ts2)
 		t.Logf("time.runtimeNano():%d", ts3)

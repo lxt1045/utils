@@ -20,7 +20,7 @@ func init() {
 }
 
 func main() {
-	dir, _ := filepath.Abs("../ca")
+	dir, _ := filepath.Abs("../../ca")
 	log.Println("root", dir)
 
 	// 加载CA证书(生产环境不需要这一步)

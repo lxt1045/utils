@@ -33,6 +33,7 @@ type GRPC struct {
 	Protocol   string
 	Addr       string
 	Host       string
+	HostAddrs  []string
 }
 
 type Conn struct {
@@ -140,7 +141,9 @@ func Camel2Case(name string) string {
 				continue
 			}
 			if lastUpperRun == 0 {
-				buf.WriteByte('_')
+				if bs := buf.Bytes(); len(bs) == 0 || bs[len(bs)-1] != '_' {
+					buf.WriteByte('_')
+				}
 				lastUpperRun = r
 				continue
 			}
