@@ -18,18 +18,17 @@ import (
 
 func TestQuicRPC(t *testing.T) {
 	ctx := context.Background()
-	addr := ":18080"
 	ch := make(chan struct{})
 	go func() {
-		rpcService(ctx, t, addr, ch)
+		rpcService(ctx, t, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Second * 1)
-	rpcClient(ctx, t, addr)
+	rpcClient(ctx, t)
 }
 
-func rpcService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+func rpcService(ctx context.Context, t *testing.T, ch chan struct{}) {
 	conf := &Config{}
 	file := "static/conf/default.yml"
 	bs, err := fs.ReadFile(filesystem.Static, file)
@@ -60,6 +59,11 @@ func rpcService(ctx context.Context, t *testing.T, addr string, ch chan struct{}
 	}
 	defer listener.Close()
 
+	gPeer, err := StartPeer(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ch <- struct{}{}
 	for i := 0; ; i++ {
 		select {
@@ -78,9 +82,6 @@ func rpcService(ctx context.Context, t *testing.T, addr string, ch chan struct{}
 			continue
 		}
 
-		if err != nil {
-			t.Fatal(err)
-		}
 		svc, err := conn.WrapQuic(ctx, c)
 		if err != nil {
 			t.Fatal(err)
@@ -90,14 +91,15 @@ func rpcService(ctx context.Context, t *testing.T, addr string, ch chan struct{}
 			t.Fatal(err)
 		}
 
-		_, err = NewPeer(ctx, zsvc, &server{Str: "test"}, nil, []interface{}{base.RegisterHelloServer})
+		peer, err := gPeer.Clone(ctx, zsvc)
 		if err != nil {
 			t.Fatal(err)
 		}
+		_ = peer
 	}
 }
 
-func rpcClient(ctx context.Context, t *testing.T, addr string) {
+func rpcClient(ctx context.Context, t *testing.T) {
 	// 解析配置文件
 	conf := &Config{}
 	file := "static/conf/default.yml"
@@ -138,14 +140,11 @@ func rpcClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewPeer(ctx, zcli, nil, []interface{}{base.NewHelloClient}, nil)
+	client, err := StartPeer(ctx, zcli, nil, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer client.Close(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	req := base.HelloReq{
 		Name: "call by quic 007",

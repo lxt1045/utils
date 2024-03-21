@@ -18,15 +18,14 @@ import (
 
 func TestQuic(t *testing.T) {
 	ctx := context.Background()
-	addr := ":18080"
 	ch := make(chan struct{})
 	go func() {
-		quicService(ctx, t, addr, ch)
+		quicService(ctx, t, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Second * 1)
-	quicClient(ctx, t, addr)
+	quicClient(ctx, t)
 }
 
 type Config struct {
@@ -38,7 +37,7 @@ type Config struct {
 	Log        config.Log
 }
 
-func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+func quicService(ctx context.Context, t *testing.T, ch chan struct{}) {
 	conf := &Config{}
 	file := "static/conf/default.yml"
 	bs, err := fs.ReadFile(filesystem.Static, file)
@@ -64,11 +63,15 @@ func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 	}
 	listener, err := quic.ListenAddr(conf.Conn.TCP, tlsConfig, nil)
 	if err != nil {
-		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+		log.Ctx(ctx).Fatal().Caller().Err(errors.Errorf(err.Error())).Send()
 		return
 	}
 	defer listener.Close()
 
+	gPeer, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ch <- struct{}{}
 	for i := 0; ; i++ {
 		select {
@@ -87,9 +90,6 @@ func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 			continue
 		}
 
-		if err != nil {
-			t.Fatal(err)
-		}
 		svc, err := conn.WrapQuic(ctx, c)
 		if err != nil {
 			t.Fatal(err)
@@ -99,14 +99,14 @@ func quicService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 			t.Fatal(err)
 		}
 
-		_, err = NewService(ctx, zsvc, &server{Str: "test"}, base.RegisterHelloServer)
+		_, err = gPeer.Clone(ctx, zsvc)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 }
 
-func quicClient(ctx context.Context, t *testing.T, addr string) {
+func quicClient(ctx context.Context, t *testing.T) {
 	// 解析配置文件
 	conf := &Config{}
 	file := "static/conf/default.yml"
@@ -147,7 +147,7 @@ func quicClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewClient(ctx, zcli, base.NewHelloClient)
+	client, err := StartClient(ctx, zcli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

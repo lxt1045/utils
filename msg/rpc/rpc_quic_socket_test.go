@@ -91,9 +91,6 @@ func quicServiceSocket(ctx context.Context, t *testing.T, addr string, ch chan s
 			continue
 		}
 
-		if err != nil {
-			t.Fatal(err)
-		}
 		svc, err := conn.WrapQuic(ctx, c)
 		if err != nil {
 			t.Fatal(err)
@@ -103,7 +100,7 @@ func quicServiceSocket(ctx context.Context, t *testing.T, addr string, ch chan s
 			t.Fatal(err)
 		}
 
-		_, err = NewService(ctx, zsvc, &server{Str: "test"}, base.RegisterHelloServer)
+		_, err = StartService(ctx, zsvc, &server{Str: "test"}, base.RegisterHelloServer)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +151,7 @@ func quicClientSocket(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewClient(ctx, zcli, base.NewHelloClient)
+	client, err := StartClient(ctx, zcli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

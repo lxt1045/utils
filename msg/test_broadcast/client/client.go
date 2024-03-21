@@ -85,7 +85,7 @@ func Client(ctx context.Context, conf *Config) {
 	}
 
 	cli := NewClient("")
-	cli.Peer, err = rpc.NewPeer(ctx, conn, cli, pb.RegisterClientServer, pb.NewServiceClient)
+	cli.Peer, err = rpc.StartPeer(ctx, conn, cli, pb.RegisterClientServer, pb.NewServiceClient)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return

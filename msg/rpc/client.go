@@ -14,50 +14,72 @@ import (
 
 type Client struct {
 	*codec.Codec
-	Methods map[string]MethodClient // CallID 需要连接握手后从service端获取
-
+	cliMethods map[string]CliMethod // CallID 需要连接握手后从service端获取
+	svcMethods map[string]CliMethod // CallID 需要连接握手后从service端获取
 }
 
-// NewClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
-func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
+// StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
+func StartClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
+	rpc, err := StartPeer(ctx, rwc, nil, fRegisters...)
+	if err != nil {
+		return
+	}
+	c = rpc.Client
+	return
+}
+
+// StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
+func startClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
 	c = Client{
-		Methods: make(map[string]MethodClient),
+		cliMethods: make(map[string]CliMethod),
+		svcMethods: make(map[string]CliMethod),
 	}
 	for _, fRegister := range fRegisters {
 		if fRegister == nil {
 			err = errors.Errorf("fRegister should not been nil")
 			return
 		}
-		methods, err1 := getClientMethods(ctx, fRegister)
+		methods, err1 := getCliMethods(fRegister)
 		if err1 != nil {
 			err = err1
 			return
 		}
 		for i, m := range methods {
 			m.CallID = uint16(i)
-			c.Methods[m.Name] = m
+			c.cliMethods[m.Name] = m
 		}
 	}
 
-	c.Codec, err = codec.NewCodec(ctx, rwc)
+	c.Codec, err = codec.NewCodec(ctx, rwc, nil)
 	if err != nil {
 		return
 	}
 	go c.Codec.ReadLoop(ctx, nil)
 	go c.Codec.Heartbeat(ctx)
 
+	err = c.getMethodsFromSvc(ctx)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (c *Client) getMethodsFromSvc(ctx context.Context) (err error) {
 	req := &base.CmdReq{
 		Cmd: base.CmdReq_CallIDs,
 	}
 	res, err := c.SendCmd(ctx, 0, req)
 	if err != nil {
-		c.Codec.Close()
+		return
+	}
+	if len(res.Fields) == 0 {
+		err = errors.Errorf("service func is empty")
 		return
 	}
 
-	methodsNew := make(map[string]MethodClient)
+	methodsNew := make(map[string]CliMethod)
 	for i, name := range res.Fields {
-		m, ok := c.Methods[name]
+		m, ok := c.cliMethods[name]
 		if !ok {
 			continue
 		}
@@ -69,7 +91,7 @@ func NewClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interf
 		}
 		methodsNew[name] = m
 	}
-	c.Methods = methodsNew
+	c.svcMethods = methodsNew
 	return
 }
 
@@ -80,10 +102,22 @@ func (c Client) Close(ctx context.Context) (err error) {
 }
 
 func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp codec.Msg) (err error) {
-	m, ok := c.Methods[method]
+	m, ok := c.svcMethods[method]
 	if !ok {
-		err = errors.Errorf("method not found: %s", method)
-		return
+		if false {
+			cc := c
+			err = cc.getMethodsFromSvc(ctx)
+			if err == nil {
+				for k, v := range cc.svcMethods {
+					c.svcMethods[k] = v // map 是指针，所以 c 不是指针也可以新增
+				}
+				m, ok = c.svcMethods[method]
+			}
+		}
+		if !ok {
+			err = errors.Errorf("method not found: %s", method)
+			return
+		}
 	}
 
 	if t := reflect.TypeOf(req); req != nil && t.Elem() != m.reqType {
@@ -107,7 +141,7 @@ func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp c
 
 // Stream 流式调用
 func (c *Client) Stream(ctx context.Context, method string) (stream *codec.Stream, err error) {
-	m, ok := c.Methods[method]
+	m, ok := c.svcMethods[method]
 	if !ok {
 		err = errors.Errorf("method not found: %s", method)
 		return
@@ -117,16 +151,16 @@ func (c *Client) Stream(ctx context.Context, method string) (stream *codec.Strea
 }
 
 type mockClient struct {
-	Methods map[string]Method
+	Methods map[string]SvcMethod
 }
 
 // NewClient fun: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
 func NewMockClient(ctx context.Context, fun interface{}, s interface{}) (c mockClient, err error) {
-	methods, err := getMethods(ctx, fun, s)
+	methods, err := getSvcMethods(fun, s)
 	if err != nil {
 		return
 	}
-	c.Methods = make(map[string]Method)
+	c.Methods = make(map[string]SvcMethod)
 	for _, m := range methods {
 		i := strings.LastIndex(m.Name, ".")
 		if i >= 0 {

@@ -14,13 +14,14 @@ import (
 
 func TestAddService(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer, base.RegisterTestServer)
+	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer, base.RegisterTestServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	all := s.AllInterfaces()
-	for i, m := range all {
+	for i, s := range all {
+		m := s.(SvcMethod)
 		svc := (*server)(m.SvcPointer)
 		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
 			i, svc.Str, m.Name, m.reqType.String())
@@ -49,13 +50,14 @@ func TestAddService(t *testing.T) {
 
 func TestMake(t *testing.T) {
 	ctx := context.Background()
-	s, err := NewService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	all := s.AllInterfaces()
-	for i, m := range all {
+	for i, s := range all {
+		m := s.(SvcMethod)
 		svc := (*server)(m.SvcPointer)
 		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
 			i, svc.Str, m.Name, m.reqType.String())
@@ -79,7 +81,7 @@ func TestMake(t *testing.T) {
 
 func BenchmarkMethod(b *testing.B) {
 	ctx := context.Background()
-	s, err := NewService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		b.Fatal(err)
 	}

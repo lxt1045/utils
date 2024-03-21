@@ -22,7 +22,7 @@ func Type() reflect.Type {
 }
 
 func TestPipe(t *testing.T) {
-	if (Method{}).RespType() == nil {
+	if (SvcMethod{}).RespType() == nil {
 		t.Log("nil")
 	}
 
@@ -37,13 +37,13 @@ func TestPipe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = NewService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
+	_, err = StartService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := NewClient(ctx, cli, base.NewHelloClient)
+	client, err := StartClient(ctx, cli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,13 +83,13 @@ func TestPipeStream(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = NewService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
+	_, err = StartService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := NewClient(ctx, cli, base.NewHelloClient)
+	client, err := StartClient(ctx, cli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,13 +159,14 @@ func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 			t.Fatal(err)
 		}
 
-		s, err := NewService(ctx, conn, &server{Str: "test"}, base.RegisterHelloServer)
+		s, err := StartService(ctx, conn, &server{Str: "test"}, base.RegisterHelloServer)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		all := s.AllInterfaces()
-		for i, m := range all {
+		for i, s := range all {
+			m := s.(SvcMethod)
 			svc := (*server)(m.SvcPointer)
 			t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
 				i, svc.Str, m.Name, m.reqType.String())
@@ -184,7 +185,7 @@ func testClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := NewClient(ctx, conn, base.NewHelloClient)
+	client, err := StartClient(ctx, conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

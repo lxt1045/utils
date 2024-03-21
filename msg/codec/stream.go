@@ -183,7 +183,7 @@ func GetStream(ctx context.Context) (stream *Stream) {
 	return
 }
 
-func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, fNewCaller func(callID uint16) Caller) (err error) {
+func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, svcMethods []Caller) (err error) {
 	stream := func() (stream *Stream) {
 		key := respsKey(header.CallSN)
 		c.streamsLock.Lock()
@@ -202,11 +202,11 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, 
 		return
 	}()
 	if stream.caller == nil {
-		if fNewCaller == nil {
-			log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, fNewCaller is nil")
+		if uint16(len(svcMethods)) <= header.CallID {
+			log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 			return
 		}
-		stream.caller = fNewCaller(header.CallID)
+		stream.caller = svcMethods[header.CallID]
 		if stream.caller == nil {
 			log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 			return

@@ -85,13 +85,14 @@ func (d post) Post() {
 	}
 }
 
-func NewCodec(ctx context.Context, rwc io.ReadWriteCloser) (c *Codec, err error) {
+func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callIDs []string) (c *Codec, err error) {
 	c = &Codec{
 		rwc:      rwc,
 		resps:    make(map[uint64]resp),
 		segments: make(map[uint64][]byte),
 		delay:    delay.New[post](64, int64(time.Minute), false),
 		streams:  make(map[uint64]*Stream),
+		callIDs:  callIDs,
 	}
 	return
 }
@@ -108,12 +109,6 @@ func (c *Codec) Close() (err error) {
 
 func (c *Codec) IsClosed() (yes bool) {
 	return c.rwc == nil
-}
-
-func (c *Codec) SetCallIDs(callIDs []string) {
-	c.callIDsLock.Lock()
-	defer c.callIDsLock.Unlock()
-	c.callIDs = callIDs
 }
 
 func (c *Codec) ClientCall(ctx context.Context, channel, callID uint16, req, res Msg) (done <-chan error, err error) {
@@ -137,7 +132,7 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 		c.SendHeartbeatMsg(ctx)
 	}
 }
-func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Caller) {
+func (c *Codec) ReadLoop(ctx context.Context, svcMethods []Caller) {
 	var err error
 	defer func() {
 		e := recover()
@@ -196,7 +191,7 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 			log.Ctx(ctx).Trace().Caller().Msg("heartbeat by peer")
 
 		case VerCallReq:
-			err = c.VerCallReq(ctx, header, bsBody, fNewCaller)
+			err = c.VerCallReq(ctx, header, bsBody, svcMethods)
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
@@ -219,7 +214,7 @@ func (c *Codec) ReadLoop(ctx context.Context, fNewCaller func(callID uint16) Cal
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerStreamReq:
-			err = c.VerStreamReq(ctx, header, bsBody, fNewCaller)
+			err = c.VerStreamReq(ctx, header, bsBody, svcMethods)
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}

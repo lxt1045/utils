@@ -76,7 +76,7 @@ func main() {
 	ctx := context.Background()
 	conf := config.GRPC{
 		Host:       "lxt1045.com",
-		HostAddrs:  []string{"127.0.0.1:10087", "127.0.0.1:10088"},
+		HostAddrs:  []string{"127.0.0.1:10088", "127.0.0.1:10087"},
 		ServerCert: "static/ca/client-cert.pem",
 		ServerKey:  "static/ca/client-key.pem",
 		CACert:     "static/ca/root-cert.pem",

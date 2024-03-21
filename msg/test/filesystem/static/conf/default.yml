@@ -3,8 +3,8 @@ pprof: false
 dev: false
 
 conn:
-  tcp: ":8080"
-  addr: ":8080"
+  tcp: ":18086"
+  addr: ":18086"
   host: "lxt1045.com"
   enable-tls: true
   read-concurrency: 1
@@ -23,7 +23,7 @@ client-conn:
   write-concurrency: 1
   read-window: 20 # 1 << 20
   write-window: 21 # 1 << 21
-  addr: "127.0.0.1:8080"
+  addr: "127.0.0.1:18086"
   host: lxt1045.com
   tls:
     ca-cert: "static/ca/root-cert.pem"
@@ -31,5 +31,5 @@ client-conn:
     client-key: "static/ca/client-key.pem"
 
 broadcast:
-  addr: ":18080"
+  addr: ":18086"
   heartbeat: 3

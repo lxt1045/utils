@@ -192,7 +192,7 @@ func main() {
 	ctx := context.Background()
 	conf := config.GRPC{
 		Protocol:   "tcp",
-		Addr:       ":10087",
+		Addr:       ":10088",
 		ServerCert: "static/ca/server-cert.pem",
 		ServerKey:  "static/ca/server-key.pem",
 		CACert:     "static/ca/root-cert.pem",

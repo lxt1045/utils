@@ -3,33 +3,51 @@ package rpc
 import (
 	"context"
 	"io"
-	"net"
 	"unsafe"
 
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/msg/codec"
 )
 
+type status uint8
+
+const (
+	statusInit    status = 0
+	statusRunning status = 0
+)
+
 type Service struct {
 	*codec.Codec
 
-	svcMethods    []Method
+	svcMethods    []codec.Caller
 	svcInterfaces map[string]uint32
+	status        status
+	callIDs       []string
 }
 
-// NewService fRegister: pb.RegisterHelloService, service: implementation
-func NewService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
-	s = Service{
-		svcMethods:    make([]Method, 0, 32),
-		svcInterfaces: make(map[string]uint32),
+// StartService fRegister: pb.RegisterHelloService, service: implementation
+func StartService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
+	rpc, err := StartPeer(ctx, rwc, service, fRegisters...)
+	if err != nil {
+		return
 	}
-	callIDs := make([]string, 0, 16)
+	s = rpc.Service
+	return
+}
+
+// StartService fRegister: pb.RegisterHelloService, service: implementation
+func startService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
+	s = Service{
+		svcMethods:    make([]codec.Caller, 0, 32),
+		svcInterfaces: make(map[string]uint32),
+		callIDs:       make([]string, 0, 16), // service 的 callID 列表
+	}
 	for _, fRegister := range fRegisters {
 		if fRegister == nil {
 			err = errors.Errorf("fRegister should not been nil")
 			return
 		}
-		methods, err1 := getMethods(ctx, fRegister, service)
+		methods, err1 := getSvcMethods(fRegister, service)
 		if err1 != nil {
 			err = err1
 			return
@@ -38,20 +56,19 @@ func NewService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}
 		for _, m := range methods {
 			s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
 			s.svcMethods = append(s.svcMethods, m)
-			callIDs = append(callIDs, m.Name)
+			s.callIDs = append(s.callIDs, m.Name)
 		}
 	}
 
-	s.Codec, err = codec.NewCodec(ctx, rwc)
-	if err != nil {
-		return
-	}
-	s.Codec.SetCallIDs(callIDs)
+	if rwc != nil {
+		s.Codec, err = codec.NewCodec(ctx, rwc, s.callIDs)
+		if err != nil {
+			return
+		}
 
-	go s.Codec.ReadLoop(ctx, func(callID uint16) codec.Caller {
-		m := s.svcMethods[callID]
-		return m
-	})
+		go s.Codec.ReadLoop(ctx, s.svcMethods)
+	}
+
 	return
 }
 
@@ -62,12 +79,11 @@ func (c Service) Close(ctx context.Context) (err error) {
 }
 
 func (s *Service) AddService(ctx context.Context, fRegister interface{}, service interface{}) (err error) {
-	methods, err := getMethods(ctx, fRegister, service)
+	methods, err := getSvcMethods(fRegister, service)
 	if err != nil {
 		return
 	}
 
-	callIDs := make([]string, 0, len(methods))
 	for _, m := range methods {
 		if _, ok := s.svcInterfaces[m.Name]; ok {
 			err = errors.Errorf("%s already exists", m.Name)
@@ -75,22 +91,18 @@ func (s *Service) AddService(ctx context.Context, fRegister interface{}, service
 		}
 		s.svcInterfaces[m.Name] = uint32(len(s.svcMethods))
 		s.svcMethods = append(s.svcMethods, m)
-		callIDs = append(callIDs, m.Name)
+		s.callIDs = append(s.callIDs, m.Name)
 	}
 
-	s.Codec.SetCallIDs(callIDs)
 	return
 }
 
-func (s Service) Clone(ctx context.Context, conn net.Conn) (sNew Service, err error) {
-	s.Codec, err = codec.NewCodec(ctx, conn)
+func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser) (sNew Service, err error) {
+	s.Codec, err = codec.NewCodec(ctx, rwc, s.callIDs)
 	if err != nil {
 		return
 	}
-	go s.Codec.ReadLoop(ctx, func(callID uint16) codec.Caller {
-		m := s.svcMethods[callID]
-		return m
-	})
+	go s.Codec.ReadLoop(ctx, s.svcMethods)
 	return s, nil
 }
 
@@ -105,11 +117,11 @@ func (s Service) Call(ctx context.Context, methodIdx uint32, req unsafe.Pointer)
 	// 	return
 	// }
 
-	m := s.svcMethods[methodIdx]
+	m := s.svcMethods[methodIdx].(SvcMethod)
 	resp, err = m.Func(m.SvcPointer, ctx, req)
 	return
 }
 
-func (s Service) AllInterfaces() (is []Method) {
+func (s Service) AllInterfaces() (is []codec.Caller) {
 	return s.svcMethods
 }

@@ -11,41 +11,16 @@ import (
 	"google.golang.org/grpc"
 )
 
-var _ codec.Caller = Method{} // 检查是由实现接口
+var _ codec.Caller = SvcMethod{} // 检查是由实现接口
 
-type Method struct {
+type SvcMethod struct {
+	CliMethod
 	Func       func(unsafe.Pointer, context.Context, unsafe.Pointer) (unsafe.Pointer, error)
 	SvcPointer unsafe.Pointer
-	reqType    reflect.Type
-	respType   reflect.Type
 	// bStream    bool // 是否双向流
-	CallID uint16
-	Name   string
 }
 
-func (m Method) ReqType() reflect.Type {
-	return m.reqType
-}
-func (m Method) RespType() reflect.Type {
-	return m.respType
-}
-
-func (m Method) NewReq() codec.Msg {
-	msg := reflect.New(m.reqType).Interface().(codec.Msg)
-	return msg
-}
-func (m Method) NewResp() codec.Msg {
-	if m.respType == nil {
-		return nil
-	}
-	msg := reflect.New(m.respType).Interface().(codec.Msg)
-	return msg
-}
-func (m Method) FuncName() string {
-	return m.Name
-}
-
-func (m Method) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
+func (m SvcMethod) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
 	p := (*[2]unsafe.Pointer)(unsafe.Pointer(&req))[1]
 	pr, err := m.Func(m.SvcPointer, ctx, p)
 	if err != nil || pr == nil {
@@ -55,8 +30,41 @@ func (m Method) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, e
 	return
 }
 
+type CliMethod struct {
+	reqType  reflect.Type
+	respType reflect.Type
+	Name     string
+	CallID   uint16
+}
+
+func (m CliMethod) ReqType() reflect.Type {
+	return m.reqType
+}
+func (m CliMethod) RespType() reflect.Type {
+	return m.respType
+}
+
+func (m CliMethod) NewReq() codec.Msg {
+	msg := reflect.New(m.reqType).Interface().(codec.Msg)
+	return msg
+}
+func (m CliMethod) NewResp() codec.Msg {
+	if m.respType == nil {
+		return nil
+	}
+	msg := reflect.New(m.respType).Interface().(codec.Msg)
+	return msg
+}
+func (m CliMethod) FuncName() string {
+	return m.Name
+}
+
+func (m CliMethod) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
+	return
+}
+
 // RegisterServiceServer(s *grpc.Server, srv ServiceServer)
-func getMethods(ctx context.Context, fRegister interface{}, service interface{}) (methods []Method, err error) {
+func getSvcMethods(fRegister interface{}, service interface{}) (methods []SvcMethod, err error) {
 	regMethodType := reflect.TypeOf(fRegister)
 	if regMethodType.Kind() != reflect.Func {
 		err = errors.Errorf("arg fun must be func")
@@ -117,10 +125,12 @@ func getMethods(ctx context.Context, fRegister interface{}, service interface{})
 			}
 		}
 
-		m := Method{
-			reqType:  reqType,
-			respType: respType,
-			Name:     ifaceType.String() + "." + method.Name, // ifaceType.PkgPath() + "." +
+		m := SvcMethod{
+			CliMethod: CliMethod{
+				reqType:  reqType,
+				respType: respType,
+				Name:     ifaceType.String() + "." + method.Name, // ifaceType.PkgPath() + "." +
+			},
 		}
 
 		if service != nil {
@@ -155,41 +165,8 @@ func getMethods(ctx context.Context, fRegister interface{}, service interface{})
 	return
 }
 
-type MethodClient struct {
-	reqType  reflect.Type
-	respType reflect.Type
-	Name     string
-	CallID   uint16
-}
-
-func (m MethodClient) ReqType() reflect.Type {
-	return m.reqType
-}
-func (m MethodClient) RespType() reflect.Type {
-	return m.respType
-}
-
-func (m MethodClient) NewReq() codec.Msg {
-	msg := reflect.New(m.reqType).Interface().(codec.Msg)
-	return msg
-}
-func (m MethodClient) NewResp() codec.Msg {
-	if m.respType == nil {
-		return nil
-	}
-	msg := reflect.New(m.respType).Interface().(codec.Msg)
-	return msg
-}
-func (m MethodClient) FuncName() string {
-	return m.Name
-}
-
-func (m MethodClient) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg, err error) {
-	return
-}
-
 // NewClientClient(cc *grpc.ClientConn) ClientClient
-func getClientMethods(ctx context.Context, fRegister interface{}) (methods []MethodClient, err error) {
+func getCliMethods(fRegister interface{}) (methods []CliMethod, err error) {
 	regMethodType := reflect.TypeOf(fRegister)
 	if regMethodType.Kind() != reflect.Func {
 		err = errors.Errorf("arg fun must be func")
@@ -246,7 +223,7 @@ func getClientMethods(ctx context.Context, fRegister interface{}) (methods []Met
 			}
 		}
 
-		m := MethodClient{
+		m := CliMethod{
 			reqType:  reqType,
 			respType: respType,
 			Name:     ifaceName + "." + method.Name, // ifaceType.PkgPath() + "." +

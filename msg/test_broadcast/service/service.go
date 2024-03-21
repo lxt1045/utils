@@ -95,7 +95,7 @@ func Service(ctx context.Context, conf *Config) {
 		}
 
 		svc := NewServer(conn.RemoteAddr().String())
-		svc.Peer, err = rpc.NewPeer(ctx, conn, svc, pb.NewClientClient, pb.RegisterServiceServer)
+		svc.Peer, err = rpc.StartPeer(ctx, conn, svc, pb.NewClientClient, pb.RegisterServiceServer)
 		if err != nil {
 			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		}

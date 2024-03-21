@@ -42,11 +42,12 @@ func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req M
 }
 
 // 收到 Req
-func (c *Codec) VerCallReq(ctx context.Context, header Header, bsBody []byte, fNewCaller func(callID uint16) Caller) (err error) {
-	if fNewCaller == nil {
+func (c *Codec) VerCallReq(ctx context.Context, header Header, bsBody []byte, svcMethods []Caller) (err error) {
+	if uint16(len(svcMethods)) <= header.CallID {
+		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 		return
 	}
-	caller := fNewCaller(header.CallID)
+	caller := svcMethods[header.CallID]
 	if caller == nil {
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 		return
