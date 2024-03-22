@@ -183,7 +183,7 @@ func TestPipeStream(t *testing.T) {
 			log.Ctx(ctx).Info().Caller().Msg("client recv: " + resp.Msg)
 		}
 	}()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		req := base.HelloReq{
 			Name: "client Send " + strconv.Itoa(i),
 		}

@@ -126,7 +126,11 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 			key := respsKey(header.CallSN)
 			c.streamsLock.Lock()
 			defer c.streamsLock.Unlock()
-			delete(c.streams, key)
+			stream := c.streams[key]
+			if stream != nil {
+				stream.close()
+				delete(c.streams, key)
+			}
 		}()
 		res := &base.CmdRsp{
 			Status: base.CmdRsp_Succ,

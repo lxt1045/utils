@@ -115,6 +115,16 @@ func (c *Codec) ClientCall(ctx context.Context, channel, callID uint16, req, res
 }
 
 func (c *Codec) StreamCall(ctx context.Context, ver, channel, callID uint16, callSN uint32, req Msg) (err error) {
+	yes := func() bool {
+		key := respsKey(callSN)
+		c.streamsLock.Lock()
+		defer c.streamsLock.Unlock()
+		stream := c.streams[key]
+		return stream != nil
+	}()
+	if !yes {
+		return errors.Errorf("stream has been closed by peer")
+	}
 	_, err = c.clientCall(ctx, ver, channel, callID, callSN, req, nil)
 	return
 }

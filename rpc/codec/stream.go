@@ -55,7 +55,15 @@ func (s *Stream) Close(ctx context.Context) {
 	delete(c.streams, key)
 
 	// 3. 关闭标志
+	s.close()
+}
+
+func (s *Stream) close() {
 	s.bClosed = true
+	select {
+	case s.cacheCh <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Stream) Method() (method string) {
