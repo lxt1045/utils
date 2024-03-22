@@ -12,7 +12,7 @@ import (
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/test/filesystem"
-	"github.com/lxt1045/utils/rpc/test/pb"
+	"github.com/lxt1045/utils/rpc/test/socks/pb"
 )
 
 type Config struct {
@@ -55,6 +55,11 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.TCP).Send()
 
+	gPeer, err := rpc.StartPeer(ctx, nil, &service{}, pb.NewClientClient, pb.RegisterServiceServer)
+	if err != nil {
+		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+		return
+	}
 	for i := 0; ; i++ {
 		select {
 		case <-ctx.Done():
@@ -73,11 +78,16 @@ func main() {
 			continue
 		}
 
-		svc := NewServer(conn.RemoteAddr().String())
-		svc.Peer, err = rpc.StartPeer(ctx, conn, svc, pb.NewClientClient, pb.RegisterServiceServer)
+		svc := &service{
+			RemoteAddr: conn.RemoteAddr().String(),
+		}
+		peer, err := gPeer.Clone(ctx, conn, svc)
 		if err != nil {
 			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+			continue
 		}
+		svc.Peer = peer
+
 		continue
 	}
 }

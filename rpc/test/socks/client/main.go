@@ -8,10 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
-	"time"
 
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/config"
@@ -20,7 +17,7 @@ import (
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/socket"
 	"github.com/lxt1045/utils/rpc/test/filesystem"
-	"github.com/lxt1045/utils/rpc/test/pb"
+	"github.com/lxt1045/utils/rpc/test/socks/pb"
 	"github.com/lxt1045/utils/socks"
 )
 
@@ -34,6 +31,21 @@ type Config struct {
 }
 
 func main() {
+	var flags struct {
+		Client  string
+		Server  string
+		Verbose bool
+		Socks   string
+		Proxy   bool
+	}
+
+	flag.BoolVar(&flags.Verbose, "verbose", true, "verbose mode")
+	flag.BoolVar(&flags.Proxy, "proxy", false, "verbose mode")
+	flag.StringVar(&flags.Server, "s", "", "server listen address or url")
+	flag.StringVar(&flags.Client, "c", "", "client connect address or url")
+	flag.StringVar(&flags.Socks, "socks", ":10086", "(client-only) SOCKS listen address")
+	flag.Parse()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
@@ -71,25 +83,33 @@ func main() {
 		return
 	}
 
-	cli := NewClient("")
+	cli := &client{
+		Name: "client-9527",
+	}
 	cli.Peer, err = rpc.StartPeer(ctx, conn, cli, pb.RegisterClientServer, pb.NewServiceClient)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 
-	req := &pb.ClientsReq{
-		MyName: "client-" + strconv.Itoa(int(time.Now().UnixNano())),
-	}
-	resp := &pb.ClientsRsp{}
-	err = cli.Peer.Invoke(ctx, "Clients", req, resp)
+	err = cli.Auth(ctx)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
-	log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
 
-	addrs := strings.Split(conn.LocalAddr().String(), ":")
+	clients, err := cli.Clients(ctx)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	if len(clients) == 0 {
+		log.Ctx(ctx).Error().Caller().Msg("peer client is not exist")
+		return
+	}
+
+	log.Ctx(ctx).Info().Caller().Interface("clients", clients).Send()
+
 	go func(addr string) {
 		ln, err := socket.Listen(ctx, "tcp4", addr)
 		if err != nil {
@@ -114,33 +134,43 @@ func main() {
 					Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 			}
 		}
-	}(":" + addrs[len(addrs)-1])
+	}(":" + localPort(conn))
 
-	if len(resp.Clients) > 0 {
-		target := resp.Clients[0]
-		req := &pb.ConnToReq{
-			Client: target,
-		}
-		resp := &pb.ConnToRsp{}
-		err = cli.Peer.Invoke(ctx, "ConnTo", req, resp)
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
-		}
-		log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
+	target := clients[0]
+	req := &pb.ConnToReq{
+		Client: target,
+	}
+	resp := &pb.ConnToRsp{}
+	err = cli.Peer.Invoke(ctx, "ConnTo", req, resp)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
 
-		_, err = cli.ConnTo(ctx, &pb.ConnToReq{
-			Client:    target,
-			Timestamp: resp.Timestamp,
-		})
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
-		}
+	connPeer, err := cli.ConnTo(ctx, &pb.ConnToReq{
+		Client:    target,
+		Timestamp: resp.Timestamp,
+	})
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	me := &peer{}
+	me.Peer, err = rpc.StartPeer(ctx, connPeer, me, pb.RegisterClientServer, pb.NewServiceClient)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
 	}
 
-	select {}
-	return
+	log.Ctx(ctx).Error().Caller().Msgf("SOCKS proxy on %s", flags.Socks)
+	go socks.TCPLocalOnly(ctx, flags.Socks, func(c net.Conn) (socks.Addr, error) {
+		return socks.Handshake(c)
+	})
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
 }
 
 func main1() {

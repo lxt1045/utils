@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"reflect"
 	"unsafe"
 
 	"github.com/lxt1045/errors"
@@ -21,6 +22,7 @@ type Service struct {
 
 	svcMethods    []SvcMethod
 	svcInterfaces map[string]uint32
+	_type         reflect.Type
 }
 
 func (s Service) Callers() []codec.Caller {

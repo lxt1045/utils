@@ -2,39 +2,36 @@ package main
 
 import (
 	"context"
+	"net"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/socket"
-	"github.com/lxt1045/utils/rpc/test/pb"
+	"github.com/lxt1045/utils/rpc/test/socks/pb"
 )
 
 type client struct {
-	MyName     string
-	RemoteAddr string
-	Peer       rpc.Peer
+	Name string
+	Peer rpc.Peer
 	*pb.ClientInfo
 }
 
-func NewClient(remoteAddr string) *client {
-	return &client{
-		RemoteAddr: remoteAddr,
-		// ClientInfo
-	}
-}
-
-func (s *client) Latency(ctx context.Context, in *pb.LatencyReq) (out *pb.LatencyRsp, err error) {
+func (c *client) Latency(ctx context.Context, in *pb.LatencyReq) (out *pb.LatencyRsp, err error) {
 	return &pb.LatencyRsp{
 		Ts: time.Now().UnixNano(),
 	}, nil
 }
-func (s *client) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
-	return &pb.CloseRsp{}, nil
+
+func (c *client) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
+	err = c.Peer.Close(ctx)
+	return &pb.CloseRsp{}, err
 }
-func (s *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRsp, err error) {
+
+func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (conn net.Conn, err error) {
 	// 先 listen
 
 	// 再 连接
@@ -55,7 +52,7 @@ func (s *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 		runtime.Gosched()
 	}
 
-	conn, err := socket.Dial(ctx, "tcp4", in.Client.Addr)
+	conn, err = socket.Dial(ctx, "tcp4", in.Client.Addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
 		return
@@ -70,26 +67,39 @@ func (s *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 	log.Ctx(ctx).Info().Caller().Str("read", str).
 		Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
-	out = &pb.ConnToRsp{
-		Status: pb.ConnToRsp_Succ,
-	}
 	return
 }
 
-// deta == 对方时钟 - 我方时钟； 用于对时
-func getLatency(ctx context.Context, peer rpc.Peer) (deta int64, err error) {
-	reqLatency := &pb.LatencyReq{
-		Ts: time.Now().UnixNano(),
+func (c *client) Auth(ctx context.Context) (err error) {
+	req := &pb.AuthReq{
+		Name: c.Name,
 	}
-	respLatency := &pb.LatencyRsp{}
-
-	err = peer.Invoke(ctx, "Latency", reqLatency, respLatency)
+	resp := &pb.AuthRsp{}
+	err = c.Peer.Invoke(ctx, "Auth", req, resp)
 	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
-	tsNow := time.Now().UnixNano()
 
-	half := (tsNow + reqLatency.Ts) / 2
-	deta = respLatency.Ts - half
 	return
+}
+
+func (c *client) Clients(ctx context.Context) (clients []*pb.ClientInfo, err error) {
+	req := &pb.ClientsReq{
+		MyName: c.Name,
+	}
+	resp := &pb.ClientsRsp{}
+	err = c.Peer.Invoke(ctx, "Clients", req, resp)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+
+	clients = resp.Clients
+	return
+}
+
+func localPort(conn net.Conn) string {
+	addrs := strings.Split(conn.LocalAddr().String(), ":")
+	return addrs[len(addrs)-1]
 }

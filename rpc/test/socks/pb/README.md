@@ -11,8 +11,8 @@ protoc -I=. *.proto --gogofast_out=plugins=grpc:./gogofastgen
 ## 2. windows下需要全路径:
 ```ps1
 $env:dir="D:/project/go/src/github.com/lxt1045/utils"
-protoc -I="$env:dir" $env:dir/rpc/test/pb/*.proto --gogofast_out=plugins=grpc:"$env:dir/rpc/test/pb/" 
+protoc -I="$env:dir" $env:dir/rpc/test/socks/pb/*.proto --gogofast_out=plugins=grpc:"$env:dir/rpc/test/socks/pb/" 
 
-protoc -I="$env:dir" $env:dir/rpc/test/pb/*.proto --go_out=plugins=grpc:"$env:dir/rpc/test/pb/" 
+protoc -I="$env:dir" $env:dir/rpc/test/socks/pb/*.proto --go_out=plugins=grpc:"$env:dir/rpc/test/socks/pb/" 
 ```
 

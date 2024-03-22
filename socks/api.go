@@ -12,10 +12,10 @@ import (
 )
 
 // Listen on addr and proxy to server to reach target from getAddr.
-func TCPLocalOnly(ctx context.Context, addr string, getAddr func(net.Conn) (Addr, error)) {
-	l, err := net.Listen("tcp", addr)
+func TCPLocalOnly(ctx context.Context, socksAddr string, getAddr func(net.Conn) (Addr, error)) {
+	l, err := net.Listen("tcp", socksAddr)
 	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", addr, err)
+		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
 		return
 	}
 
@@ -59,7 +59,7 @@ func TCPLocalOnly(ctx context.Context, addr string, getAddr func(net.Conn) (Addr
 			rc.(*net.TCPConn).SetKeepAlive(true)
 
 			log.Ctx(ctx).Error().Caller().Err(err).Msgf("proxy %s <-> %s", c.RemoteAddr(), tgt)
-			_, _, err = relay(ctx, c, rc)
+			_, _, err = Relay(ctx, c, rc)
 			if err != nil {
 				if err, ok := err.(net.Error); ok && err.Timeout() {
 					return // ignore i/o timeout
@@ -70,9 +70,9 @@ func TCPLocalOnly(ctx context.Context, addr string, getAddr func(net.Conn) (Addr
 	}
 }
 
-// relay copies between left and right bidirectionally. Returns number of
+// Relay copies between left and right bidirectionally. Returns number of
 // bytes copied from right to left, from left to right, and any error occurred.
-func relay(ctx context.Context, left, right net.Conn) (int64, int64, error) {
+func Relay(ctx context.Context, left, right net.Conn) (int64, int64, error) {
 	type res struct {
 		N   int64
 		Err error

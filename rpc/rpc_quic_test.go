@@ -100,7 +100,7 @@ func quicService(ctx context.Context, t *testing.T, ch chan struct{}) {
 			t.Fatal(err)
 		}
 
-		_, err = gPeer.Clone(ctx, zsvc)
+		_, err = gPeer.Clone(ctx, zsvc, &server{Str: "hello"})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -13,8 +13,8 @@ import (
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
-	"github.com/lxt1045/utils/rpc/nat/filesystem"
-	"github.com/lxt1045/utils/rpc/nat/pb"
+	"github.com/lxt1045/utils/rpc/test/nat/filesystem"
+	"github.com/lxt1045/utils/rpc/test/nat/pb"
 )
 
 type Config struct {

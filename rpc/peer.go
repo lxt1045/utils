@@ -24,6 +24,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 		Service: Service{
 			svcMethods:    make([]SvcMethod, 0, 32),
 			svcInterfaces: make(map[string]uint32),
+			_type:         reflect.TypeOf(service),
 		},
 	}
 
@@ -95,7 +96,11 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 	return
 }
 
-func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser) (out Peer, err error) {
+func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, service interface{}) (out Peer, err error) {
+	if reflect.TypeOf(service) != rpc.Service._type {
+		err = errors.Errorf("service type is not equal")
+		return
+	}
 	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.Callers())
 	if err != nil {
 		return

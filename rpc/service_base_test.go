@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"net"
+	"reflect"
 	"strconv"
 	"sync"
 	"testing"
@@ -228,4 +229,17 @@ func GetBroadcastAddress() (addrs []Addr, err error) {
 	}
 
 	return
+}
+
+func TestCmp(t *testing.T) {
+	s1, s2 := &server{}, &server{}
+	i1 := 1
+	ts := []reflect.Type{
+		reflect.TypeOf(s1),
+		reflect.TypeOf(s2),
+		reflect.TypeOf(&i1),
+	}
+
+	t.Logf("1:%v", ts[0] == ts[1])
+	t.Logf("1:%v", ts[0] == ts[2])
 }

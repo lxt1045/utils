@@ -7,101 +7,110 @@ import (
 
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
-	"github.com/lxt1045/utils/rpc/test/pb"
+	"github.com/lxt1045/utils/rpc/test/socks/pb"
 )
 
 var (
-	clients     = make(map[string]*server)
-	clientsLock sync.Mutex
+	svcs     = make(map[string]*service)
+	svcsLock sync.RWMutex
 )
 
-type server struct {
-	MyName     string
+func AddSvc(svc *service) {
+	svcsLock.Lock()
+	defer svcsLock.Unlock()
+	svcs[svc.Name] = svc
+}
+
+type service struct {
+	Name       string
 	RemoteAddr string
 	Network    pb.Network
 	Peer       rpc.Peer
 }
 
-func NewServer(remoteAddr string) *server {
-	return &server{
-		RemoteAddr: remoteAddr,
-		// ClientInfo
-	}
-}
-
-func (s *server) Latency(ctx context.Context, in *pb.LatencyReq) (out *pb.LatencyRsp, err error) {
-	return &pb.LatencyRsp{
-		Ts: time.Now().UnixNano(),
-	}, nil
-}
-func (s *server) Auth(ctx context.Context, in *pb.AuthReq) (out *pb.AuthRsp, err error) {
-	return &pb.AuthRsp{}, nil
-}
-func (s *server) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
-	clientsLock.Lock()
-	defer clientsLock.Unlock()
-	delete(clients, s.MyName)
+func (s *service) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.CloseRsp, err error) {
+	svcsLock.Lock()
+	defer svcsLock.Unlock()
+	delete(svcs, s.Name)
 	return &pb.CloseRsp{}, nil
 }
-func (s *server) Clients(ctx context.Context, in *pb.ClientsReq) (out *pb.ClientsRsp, err error) {
-	s.MyName = in.MyName
 
+func (s *service) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, err error) {
+	s.Name = req.Name
+	resp = &pb.AuthRsp{}
+	svcsLock.Lock()
+	defer svcsLock.Unlock()
+	svcs[s.Name] = s
+	return
+}
+
+func (s *service) Clients(ctx context.Context, req *pb.ClientsReq) (resp *pb.ClientsRsp, err error) {
 	clients := func() []*pb.ClientInfo {
-		clientsLock.Lock()
-		defer clientsLock.Unlock()
-		m := make([]*pb.ClientInfo, 0, len(clients))
-		for k, v := range clients {
+		m := make([]*pb.ClientInfo, 0, len(svcs))
+		svcsLock.RLock()
+		defer svcsLock.RUnlock()
+		for k, v := range svcs {
 			if v.Peer.Client.Codec.IsClosed() {
-				delete(clients, k)
+				delete(svcs, k)
+				continue
+			}
+			if s.Name == v.Name {
 				continue
 			}
 			m = append(m, &pb.ClientInfo{
-				Name:    v.MyName,
+				Name:    v.Name,
 				Addr:    v.RemoteAddr,
 				Network: pb.Network_TCP,
 			})
 		}
-		clients[s.MyName] = s
 		return m
 	}()
 
 	return &pb.ClientsRsp{Clients: clients}, nil
 }
 
-func (s *server) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRsp, err error) {
-	target := func() *server {
-		clientsLock.Lock()
-		defer clientsLock.Unlock()
-		return clients[in.Client.Name]
+func (s *service) Latency(ctx context.Context, req *pb.LatencyReq) (resp *pb.LatencyRsp, err error) {
+	return &pb.LatencyRsp{
+		Ts: time.Now().UnixNano(),
+	}, nil
+}
+
+func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnToRsp, err error) {
+	target := func() *service {
+		svcsLock.Lock()
+		defer svcsLock.Unlock()
+		return svcs[req.Client.Name]
 	}()
 	if target == nil {
-		out = &pb.ConnToRsp{
+		resp = &pb.ConnToRsp{
 			Status: pb.ConnToRsp_Fail,
 			Err: &pb.Err{
-				Msg: in.Client.Name + " not exist",
+				Msg: req.Client.Name + " not exist",
 			},
 		}
 		return
 	}
 
 	// 这里注意可以先探测一下网络延时
-	detaTar, err := getLatency(ctx, target.Peer)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
+	latencys := getLatencys(ctx, target.Peer, s.Peer)
+	for _, latency := range latencys {
+		if latency.err != nil {
+			log.Ctx(ctx).Error().Caller().Err(latency.err).Send()
+			return
+		}
+		if latency.deta == 0 {
+			log.Ctx(ctx).Error().Caller().Msgf("deta is %d", latency.deta)
+			return
+		}
 	}
-	detaSvs, err := getLatency(ctx, s.Peer)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
+	detaTar, detaSvs := latencys[0].deta, latencys[1].deta
 	tsNow := time.Now().UnixNano() + int64(time.Second)
 	tsTar, tsSvs := tsNow+detaTar, tsNow+detaSvs
 	go func() {
 		req := &pb.ConnToReq{
 			Timestamp: tsTar,
 			Client: &pb.ClientInfo{
-				Name:    s.MyName,
+				Name:    s.Name,
 				Addr:    s.RemoteAddr,
 				Network: s.Network,
 			},
@@ -114,14 +123,36 @@ func (s *server) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 		log.Ctx(ctx).Info().Caller().Interface("resp", resp).Send()
 	}()
 
-	out = &pb.ConnToRsp{
+	resp = &pb.ConnToRsp{
 		Timestamp: tsSvs,
 		Client: &pb.ClientInfo{
-			Name:    target.MyName,
+			Name:    target.Name,
 			Addr:    target.RemoteAddr,
 			Network: target.Network,
 		},
 	}
+	return
+}
+
+type respLatency struct {
+	deta int64
+	err  error
+}
+
+// deta == 对方时钟 - 我方时钟； 用于对时
+func getLatencys(ctx context.Context, peers ...rpc.Peer) (resps []respLatency) {
+
+	resps = make([]respLatency, len(peers))
+	wg := sync.WaitGroup{}
+
+	for i := range peers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			resps[i].deta, resps[i].err = getLatency(ctx, peers[i])
+		}(i)
+	}
+	wg.Wait()
 	return
 }
 
