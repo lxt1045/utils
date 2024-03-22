@@ -22,9 +22,8 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 			svcMethods: make(map[string]CliMethod),
 		},
 		Service: Service{
-			svcMethods:    make([]codec.Caller, 0, 32),
+			svcMethods:    make([]SvcMethod, 0, 32),
 			svcInterfaces: make(map[string]uint32),
-			callIDs:       make([]string, 0, 16), // service 的 callID 列表
 		},
 	}
 
@@ -64,7 +63,6 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 			for _, m := range methods {
 				rpc.svcInterfaces[m.Name] = uint32(len(rpc.Service.svcMethods))
 				rpc.Service.svcMethods = append(rpc.Service.svcMethods, m)
-				rpc.callIDs = append(rpc.callIDs, m.Name)
 			}
 			continue
 		}
@@ -76,7 +74,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 	}
 
 	if rwc != nil {
-		pCodec, err1 := codec.NewCodec(ctx, rwc, rpc.Service.callIDs)
+		pCodec, err1 := codec.NewCodec(ctx, rwc, rpc.Service.Callers())
 		if err1 != nil {
 			err = err1
 			return
@@ -84,7 +82,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 		rpc.Client.Codec = pCodec
 		rpc.Service.Codec = pCodec
 
-		go pCodec.ReadLoop(ctx, rpc.Service.svcMethods)
+		go pCodec.ReadLoop(ctx)
 
 		if len(rpc.Client.cliMethods) > 0 {
 			go pCodec.Heartbeat(ctx)
@@ -98,14 +96,14 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 }
 
 func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser) (out Peer, err error) {
-	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.callIDs)
+	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.Callers())
 	if err != nil {
 		return
 	}
 	rpc.Client.Codec = pCodec
 	rpc.Service.Codec = pCodec
 
-	go pCodec.ReadLoop(ctx, rpc.Service.svcMethods)
+	go pCodec.ReadLoop(ctx)
 
 	if len(rpc.Client.cliMethods) > 0 {
 		go pCodec.Heartbeat(ctx)

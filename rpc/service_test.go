@@ -8,47 +8,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/lxt1045/utils/cert/test/grpc/pb"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc/base"
 	"github.com/lxt1045/utils/rpc/conn"
 )
-
-func TestAddService(t *testing.T) {
-	ctx := context.Background()
-	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer, base.RegisterTestServer)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	all := s.AllInterfaces()
-	for i, s := range all {
-		m := s.(SvcMethod)
-		svc := (*server)(m.SvcPointer)
-		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
-			i, svc.Str, m.Name, m.reqType.String())
-	}
-
-	err = s.AddService(ctx, pb.RegisterHelloServer, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	idx, exist := s.MethodIdx("base.HelloServer.SayHello")
-	if !exist {
-		t.Fatal("exist")
-	}
-
-	req := base.HelloReq{
-		Name: "call 1",
-	}
-	r, err := s.Call(ctx, idx, unsafe.Pointer(&req))
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp := (*base.HelloRsp)(r)
-	t.Logf("resp.Msg:\"%s\"", resp.Msg)
-}
 
 func TestCall(t *testing.T) {
 	ctx := context.Background()
@@ -58,8 +21,7 @@ func TestCall(t *testing.T) {
 	}
 
 	all := s.AllInterfaces()
-	for i, s := range all {
-		m := s.(SvcMethod)
+	for i, m := range all {
 		svc := (*server)(m.SvcPointer)
 		t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
 			i, svc.Str, m.Name, m.reqType.String())

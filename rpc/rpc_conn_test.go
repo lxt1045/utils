@@ -42,8 +42,7 @@ func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 		}
 
 		all := s.AllInterfaces()
-		for i, s := range all {
-			m := s.(SvcMethod)
+		for i, m := range all {
 			svc := (*server)(m.SvcPointer)
 			t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
 				i, svc.Str, m.Name, m.reqType.String())

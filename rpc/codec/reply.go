@@ -42,12 +42,12 @@ func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req M
 }
 
 // 收到 Req
-func (c *Codec) VerCallReq(ctx context.Context, header Header, bsBody []byte, svcMethods []Caller) (err error) {
-	if uint16(len(svcMethods)) <= header.CallID {
+func (c *Codec) VerCallReq(ctx context.Context, header Header, bsBody []byte) (err error) {
+	if uint16(len(c.callers)) <= header.CallID {
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 		return
 	}
-	caller := svcMethods[header.CallID]
+	caller := c.callers[header.CallID]
 	if caller == nil {
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 		return
@@ -142,9 +142,9 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 			Status: base.CmdRsp_Succ,
 			// Fields: c.callIDs,
 		}
-		c.callIDsLock.Lock()
-		res.Fields = c.callIDs
-		c.callIDsLock.Unlock()
+		for _, caller := range c.callers {
+			res.Fields = append(res.Fields, caller.FuncName())
+		}
 
 		err = c.SendMsg(ctx, VerCmdResp, header.Channel, header.CallID, header.CallSN, res)
 		if err != nil {

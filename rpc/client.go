@@ -54,7 +54,7 @@ func startClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...inte
 	if err != nil {
 		return
 	}
-	go c.Codec.ReadLoop(ctx, nil)
+	go c.Codec.ReadLoop(ctx)
 	go c.Codec.Heartbeat(ctx)
 
 	err = c.getMethodsFromSvc(ctx)

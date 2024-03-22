@@ -59,10 +59,7 @@ func (s *Stream) Close(ctx context.Context) {
 }
 
 func (s *Stream) Method() (method string) {
-	s.codec.callIDsLock.Lock()
-	defer s.codec.callIDsLock.Unlock()
-
-	return s.codec.callIDs[s.callID]
+	return s.codec.callers[s.callID].FuncName()
 }
 
 func (s *Stream) Recv(ctx context.Context) (resp Msg, err error) {
@@ -184,7 +181,7 @@ func GetStream(ctx context.Context) (stream *Stream) {
 	return
 }
 
-func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, svcMethods []Caller) (err error) {
+func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte) (err error) {
 	stream := func() (stream *Stream) {
 		key := respsKey(header.CallSN)
 		c.streamsLock.Lock()
@@ -203,11 +200,11 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte, 
 		return
 	}()
 	if stream.caller == nil {
-		if uint16(len(svcMethods)) <= header.CallID {
+		if uint16(len(c.callers)) <= header.CallID {
 			log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 			return
 		}
-		stream.caller = svcMethods[header.CallID]
+		stream.caller = c.callers[header.CallID]
 		if stream.caller == nil {
 			log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
 			return

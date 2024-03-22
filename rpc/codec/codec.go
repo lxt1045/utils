@@ -47,8 +47,7 @@ type Codec struct {
 	segments  map[uint64][]byte // 分片
 	delay     *delay.Queue[post]
 
-	callIDsLock sync.Mutex
-	callIDs     []string
+	callers []Caller
 
 	streamsLock sync.Mutex
 	streams     map[uint64]*Stream
@@ -85,14 +84,14 @@ func (d post) Post() {
 	}
 }
 
-func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callIDs []string) (c *Codec, err error) {
+func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Caller) (c *Codec, err error) {
 	c = &Codec{
 		rwc:      rwc,
 		resps:    make(map[uint64]resp),
 		segments: make(map[uint64][]byte),
 		delay:    delay.New[post](64, int64(time.Minute), false),
 		streams:  make(map[uint64]*Stream),
-		callIDs:  callIDs,
+		callers:  callers,
 	}
 	return
 }
@@ -133,7 +132,7 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 	}
 }
 
-func (c *Codec) ReadLoop(ctx context.Context, svcMethods []Caller) {
+func (c *Codec) ReadLoop(ctx context.Context) {
 	var err error
 	defer func() {
 		e := recover()
@@ -192,7 +191,7 @@ func (c *Codec) ReadLoop(ctx context.Context, svcMethods []Caller) {
 			log.Ctx(ctx).Trace().Caller().Msg("heartbeat by peer")
 
 		case VerCallReq:
-			err = c.VerCallReq(ctx, header, bsBody, svcMethods)
+			err = c.VerCallReq(ctx, header, bsBody)
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
@@ -215,7 +214,7 @@ func (c *Codec) ReadLoop(ctx context.Context, svcMethods []Caller) {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		case VerStreamReq:
-			err = c.VerStreamReq(ctx, header, bsBody, svcMethods)
+			err = c.VerStreamReq(ctx, header, bsBody)
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
