@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/lxt1045/errors"
@@ -29,6 +30,10 @@ type Config struct {
 	ClientConn config.Conn
 	Log        config.Log
 }
+
+var (
+	nConnect uint32
+)
 
 func main() {
 	var flags struct {
@@ -119,19 +124,24 @@ func main() {
 
 		buf := make([]byte, 1024)
 		for {
-			conn, err := ln.Accept()
+			connPeer, err := ln.Accept()
 			if err != nil {
 				fmt.Println("accept failed", err)
 				continue
 			}
 			for {
-				n, err := conn.Read(buf)
+				n, err := connPeer.Read(buf)
 				if err != nil {
 					fmt.Println("read failed", err)
 					break
 				}
 				log.Ctx(ctx).Info().Caller().Str("read", string(buf[:n])).
-					Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+					Str("local", connPeer.LocalAddr().String()).Str("remote", connPeer.RemoteAddr().String()).Send()
+			}
+			err = connectPeer(ctx, connPeer)
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+				return
 			}
 		}
 	}(":" + localPort(conn))
@@ -148,20 +158,21 @@ func main() {
 	}
 	log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
 
-	connPeer, err := cli.ConnTo(ctx, &pb.ConnToReq{
-		Client:    target,
-		Timestamp: resp.Timestamp,
-	})
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-	me := &peer{}
-	me.Peer, err = rpc.StartPeer(ctx, connPeer, me, pb.RegisterClientServer, pb.NewServiceClient)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
+	go func() {
+		connPeer, err := cli.ConnTo(ctx, &pb.ConnToReq{
+			Client:    target,
+			Timestamp: resp.Timestamp,
+		})
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
+		err = connectPeer(ctx, connPeer)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
+	}()
 
 	log.Ctx(ctx).Error().Caller().Msgf("SOCKS proxy on %s", flags.Socks)
 	go socks.TCPLocalOnly(ctx, flags.Socks, func(c net.Conn) (socks.Addr, error) {
@@ -171,6 +182,26 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
+}
+
+func connectPeer(ctx context.Context, conn net.Conn) (err error) {
+	me := &peer{}
+	me.Peer, err = rpc.StartPeer(ctx, conn, me, pb.RegisterClientServer, pb.NewServiceClient)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+
+	n := atomic.AddUint32(&nConnect, 1)
+	if n > 1 {
+		err = me.Peer.Close(ctx)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
+	}
+
+	return
 }
 
 func main1() {
