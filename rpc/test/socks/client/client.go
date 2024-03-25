@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"runtime"
 	"strings"
@@ -15,8 +16,10 @@ import (
 )
 
 type client struct {
-	Name string
-	Peer rpc.Peer
+	Name       string
+	LocalAddr  string
+	RemoteAddr string
+	Peer       rpc.Peer
 	*pb.ClientInfo
 }
 
@@ -31,7 +34,7 @@ func (c *client) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, 
 	return &pb.CloseRsp{}, err
 }
 
-func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (conn net.Conn, err error) {
+func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (resp *pb.ConnToRsp, err error) {
 	// 先 listen
 
 	// 再 连接
@@ -52,7 +55,7 @@ func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (conn net.Conn, e
 		runtime.Gosched()
 	}
 
-	conn, err = socket.Dial(ctx, "tcp4", in.Client.Addr)
+	conn, err := socket.Dial(ctx, "tcp4", c.LocalAddr, in.Client.Addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
 		return
@@ -64,9 +67,25 @@ func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (conn net.Conn, e
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
 		return
 	}
-	log.Ctx(ctx).Info().Caller().Str("read", str).
+	log.Ctx(ctx).Info().Caller().Str("Write", str).
 		Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
+	for {
+		buf := []byte("hello")
+		n, err := conn.Write(buf)
+		if err != nil {
+			fmt.Println("write failed", err)
+			break
+		}
+		log.Ctx(ctx).Info().Caller().Str("write", string(buf[:n])).
+			Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+		time.Sleep(time.Second)
+	}
+	err = connectPeer(ctx, conn)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
 	return
 }
 

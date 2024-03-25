@@ -66,7 +66,7 @@ func main() {
 		return
 	}
 
-	cli := NewClient("")
+	cli := NewClient(conn.LocalAddr().String(), conn.RemoteAddr().String())
 	cli.Peer, err = rpc.StartPeer(ctx, conn, cli, pb.RegisterClientServer, pb.NewServiceClient)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -141,14 +141,15 @@ func main() {
 type client struct {
 	MyName     string
 	RemoteAddr string
+	LocalAddr  string
 	Peer       rpc.Peer
 	*pb.ClientInfo
 }
 
-func NewClient(remoteAddr string) *client {
+func NewClient(localAddr, remoteAddr string) *client {
 	return &client{
 		RemoteAddr: remoteAddr,
-		// ClientInfo
+		LocalAddr:  localAddr,
 	}
 }
 

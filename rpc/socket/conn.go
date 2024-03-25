@@ -39,11 +39,16 @@ func Listen(ctx context.Context, network, addr string) (ln net.Listener, err err
 	return
 }
 
-func Dial(ctx context.Context, network, addr string) (conn net.Conn, err error) {
-	cfg := net.Dialer{
-		Control: control,
+func Dial(ctx context.Context, network, localAddr, remoteAddr string) (conn net.Conn, err error) {
+	la, err := net.ResolveTCPAddr("tcp4", localAddr)
+	if err != nil {
+		return
 	}
-	conn, err = cfg.DialContext(ctx, network, addr)
+	cfg := net.Dialer{
+		Control:   control,
+		LocalAddr: la,
+	}
+	conn, err = cfg.DialContext(ctx, network, remoteAddr)
 	if err != nil {
 		err = errors.Errorf(err.Error())
 		return

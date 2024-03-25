@@ -78,6 +78,8 @@ func main() {
 			continue
 		}
 
+		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+
 		svc := &service{
 			RemoteAddr: conn.RemoteAddr().String(),
 		}

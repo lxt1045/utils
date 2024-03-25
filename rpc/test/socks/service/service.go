@@ -100,7 +100,7 @@ func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnT
 		}
 		if latency.deta == 0 {
 			log.Ctx(ctx).Error().Caller().Msgf("deta is %d", latency.deta)
-			return
+			// return
 		}
 	}
 	detaTar, detaSvs := latencys[0].deta, latencys[1].deta
@@ -118,6 +118,7 @@ func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnT
 		resp := &pb.ConnToRsp{}
 		err := target.Peer.Invoke(ctx, "ConnTo", req, resp)
 		if err != nil {
+			log.Ctx(ctx).Info().Caller().Err(err).Interface("resp", resp).Send()
 			return
 		}
 		log.Ctx(ctx).Info().Caller().Interface("resp", resp).Send()
@@ -131,6 +132,8 @@ func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnT
 			Network: target.Network,
 		},
 	}
+
+	log.Ctx(ctx).Info().Caller().Interface("from", s.RemoteAddr).Interface("to", target.RemoteAddr).Send()
 	return
 }
 

@@ -101,7 +101,7 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, service inter
 		err = errors.Errorf("service type is not equal")
 		return
 	}
-	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.Callers())
+	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.CloneCallers(service))
 	if err != nil {
 		return
 	}

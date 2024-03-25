@@ -107,7 +107,7 @@ func (c *Codec) Close() (err error) {
 }
 
 func (c *Codec) IsClosed() (yes bool) {
-	return c.rwc == nil
+	return c == nil || c.rwc == nil
 }
 
 func (c *Codec) ClientCall(ctx context.Context, channel, callID uint16, req, res Msg) (done <-chan error, err error) {
@@ -171,6 +171,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return
 			}
+			err = errors.Errorf(err.Error())
 			return
 		}
 

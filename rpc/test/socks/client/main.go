@@ -47,7 +47,7 @@ func main() {
 	flag.BoolVar(&flags.Verbose, "verbose", true, "verbose mode")
 	flag.BoolVar(&flags.Proxy, "proxy", false, "verbose mode")
 	flag.StringVar(&flags.Server, "s", "", "server listen address or url")
-	flag.StringVar(&flags.Client, "c", "", "client connect address or url")
+	flag.StringVar(&flags.Client, "c", "client-9527", "client connect address or url")
 	flag.StringVar(&flags.Socks, "socks", ":10086", "(client-only) SOCKS listen address")
 	flag.Parse()
 
@@ -87,10 +87,14 @@ func main() {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
+	log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
 	cli := &client{
-		Name: "client-9527",
+		Name:       flags.Client,
+		LocalAddr:  conn.LocalAddr().String(),
+		RemoteAddr: conn.RemoteAddr().String(),
 	}
+	var _ pb.ClientServer = cli
 	cli.Peer, err = rpc.StartPeer(ctx, conn, cli, pb.RegisterClientServer, pb.NewServiceClient)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -110,6 +114,10 @@ func main() {
 	}
 	if len(clients) == 0 {
 		log.Ctx(ctx).Error().Caller().Msg("peer client is not exist")
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
 		return
 	}
 
@@ -129,6 +137,7 @@ func main() {
 				fmt.Println("accept failed", err)
 				continue
 			}
+			log.Ctx(ctx).Info().Caller().Str("local", connPeer.LocalAddr().String()).Str("remote", connPeer.RemoteAddr().String()).Send()
 			for {
 				n, err := connPeer.Read(buf)
 				if err != nil {
@@ -159,19 +168,17 @@ func main() {
 	log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
 
 	go func() {
-		connPeer, err := cli.ConnTo(ctx, &pb.ConnToReq{
-			Client:    target,
+		req := &pb.ConnToReq{
 			Timestamp: resp.Timestamp,
-		})
+			Client:    target,
+		}
+		resp, err := cli.ConnTo(ctx, req)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
-		err = connectPeer(ctx, connPeer)
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
-		}
+		_ = resp
+
 	}()
 
 	log.Ctx(ctx).Error().Caller().Msgf("SOCKS proxy on %s", flags.Socks)
@@ -186,9 +193,8 @@ func main() {
 
 func connectPeer(ctx context.Context, conn net.Conn) (err error) {
 	me := &peer{}
-	me.Peer, err = rpc.StartPeer(ctx, conn, me, pb.RegisterClientServer, pb.NewServiceClient)
+	me.Peer, err = rpc.StartPeer(ctx, conn, me, pb.RegisterPeerServer, pb.NewPeerClient)
 	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 

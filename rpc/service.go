@@ -32,6 +32,15 @@ func (s Service) Callers() []codec.Caller {
 	}
 	return callers
 }
+func (s Service) CloneCallers(service interface{}) []codec.Caller {
+	svcPointer := reflect.ValueOf(service).UnsafePointer()
+	callers := make([]codec.Caller, len(s.svcMethods))
+	for i, m := range s.svcMethods {
+		m.SvcPointer = svcPointer
+		callers[i] = m
+	}
+	return callers
+}
 
 // StartService fRegister: pb.RegisterHelloService, service: implementation
 func StartService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
@@ -84,8 +93,8 @@ func (c Service) Close(ctx context.Context) (err error) {
 	return
 }
 
-func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser) (sNew Service, err error) {
-	s.Codec, err = codec.NewCodec(ctx, rwc, s.Callers())
+func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser, service interface{}) (sNew Service, err error) {
+	s.Codec, err = codec.NewCodec(ctx, rwc, s.CloneCallers(service))
 	if err != nil {
 		return
 	}
