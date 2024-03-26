@@ -75,15 +75,15 @@ func (s *service) Latency(ctx context.Context, req *pb.LatencyReq) (resp *pb.Lat
 	}, nil
 }
 
-func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnToRsp, err error) {
+func (s *service) ConnPeer(ctx context.Context, req *pb.ConnPeerReq) (resp *pb.ConnPeerRsp, err error) {
 	target := func() *service {
 		svcsLock.Lock()
 		defer svcsLock.Unlock()
 		return svcs[req.Client.Name]
 	}()
 	if target == nil {
-		resp = &pb.ConnToRsp{
-			Status: pb.ConnToRsp_Fail,
+		resp = &pb.ConnPeerRsp{
+			Status: pb.ConnPeerRsp_Fail,
 			Err: &pb.Err{
 				Msg: req.Client.Name + " not exist",
 			},
@@ -107,7 +107,7 @@ func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnT
 	tsNow := time.Now().UnixNano() + int64(time.Second)
 	tsTar, tsSvs := tsNow+detaTar, tsNow+detaSvs
 	go func() {
-		req := &pb.ConnToReq{
+		req := &pb.ConnPeerReq{
 			Timestamp: tsTar,
 			Client: &pb.ClientInfo{
 				Name:    s.Name,
@@ -115,8 +115,8 @@ func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnT
 				Network: s.Network,
 			},
 		}
-		resp := &pb.ConnToRsp{}
-		err := target.Peer.Invoke(ctx, "ConnTo", req, resp)
+		resp := &pb.ConnPeerRsp{}
+		err := target.Peer.Invoke(ctx, "ConnPeer", req, resp)
 		if err != nil {
 			log.Ctx(ctx).Info().Caller().Err(err).Interface("resp", resp).Send()
 			return
@@ -124,7 +124,7 @@ func (s *service) ConnTo(ctx context.Context, req *pb.ConnToReq) (resp *pb.ConnT
 		log.Ctx(ctx).Info().Caller().Interface("resp", resp).Send()
 	}()
 
-	resp = &pb.ConnToRsp{
+	resp = &pb.ConnPeerRsp{
 		Timestamp: tsSvs,
 		Client: &pb.ClientInfo{
 			Name:    target.Name,

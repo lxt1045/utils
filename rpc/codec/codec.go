@@ -373,6 +373,11 @@ func (c *Codec) SendMsg(ctx context.Context, ver, channel, callID uint16, callSN
 }
 
 func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint16, callSN uint32) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = errors.Errorf("%+v", e)
+		}
+	}()
 	if len(wbuf) <= math.MaxUint16 {
 		h := Header{
 			Ver:          ver,

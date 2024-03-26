@@ -76,28 +76,28 @@ func (AuthRsp_STATUS) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_7f250e3d2ca1f0b6, []int{6, 0}
 }
 
-type ConnToRsp_STATUS int32
+type ConnPeerRsp_STATUS int32
 
 const (
-	ConnToRsp_Succ ConnToRsp_STATUS = 0
-	ConnToRsp_Fail ConnToRsp_STATUS = 1
+	ConnPeerRsp_Succ ConnPeerRsp_STATUS = 0
+	ConnPeerRsp_Fail ConnPeerRsp_STATUS = 1
 )
 
-var ConnToRsp_STATUS_name = map[int32]string{
+var ConnPeerRsp_STATUS_name = map[int32]string{
 	0: "Succ",
 	1: "Fail",
 }
 
-var ConnToRsp_STATUS_value = map[string]int32{
+var ConnPeerRsp_STATUS_value = map[string]int32{
 	"Succ": 0,
 	"Fail": 1,
 }
 
-func (x ConnToRsp_STATUS) String() string {
-	return proto.EnumName(ConnToRsp_STATUS_name, int32(x))
+func (x ConnPeerRsp_STATUS) String() string {
+	return proto.EnumName(ConnPeerRsp_STATUS_name, int32(x))
 }
 
-func (ConnToRsp_STATUS) EnumDescriptor() ([]byte, []int) {
+func (ConnPeerRsp_STATUS) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_7f250e3d2ca1f0b6, []int{11, 0}
 }
 
@@ -603,7 +603,7 @@ func (m *ClientsRsp) GetClients() []*ClientInfo {
 	return nil
 }
 
-type ConnToReq struct {
+type ConnPeerReq struct {
 	Client               *ClientInfo `protobuf:"bytes,1,opt,name=client,proto3" json:"client,omitempty"`
 	Timestamp            int64       `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	Frequency            int32       `protobuf:"varint,3,opt,name=frequency,proto3" json:"frequency,omitempty"`
@@ -612,18 +612,18 @@ type ConnToReq struct {
 	XXX_sizecache        int32       `json:"-"`
 }
 
-func (m *ConnToReq) Reset()         { *m = ConnToReq{} }
-func (m *ConnToReq) String() string { return proto.CompactTextString(m) }
-func (*ConnToReq) ProtoMessage()    {}
-func (*ConnToReq) Descriptor() ([]byte, []int) {
+func (m *ConnPeerReq) Reset()         { *m = ConnPeerReq{} }
+func (m *ConnPeerReq) String() string { return proto.CompactTextString(m) }
+func (*ConnPeerReq) ProtoMessage()    {}
+func (*ConnPeerReq) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f250e3d2ca1f0b6, []int{10}
 }
-func (m *ConnToReq) XXX_Unmarshal(b []byte) error {
+func (m *ConnPeerReq) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ConnToReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *ConnPeerReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ConnToReq.Marshal(b, m, deterministic)
+		return xxx_messageInfo_ConnPeerReq.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -633,61 +633,61 @@ func (m *ConnToReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *ConnToReq) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConnToReq.Merge(m, src)
+func (m *ConnPeerReq) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ConnPeerReq.Merge(m, src)
 }
-func (m *ConnToReq) XXX_Size() int {
+func (m *ConnPeerReq) XXX_Size() int {
 	return m.Size()
 }
-func (m *ConnToReq) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConnToReq.DiscardUnknown(m)
+func (m *ConnPeerReq) XXX_DiscardUnknown() {
+	xxx_messageInfo_ConnPeerReq.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ConnToReq proto.InternalMessageInfo
+var xxx_messageInfo_ConnPeerReq proto.InternalMessageInfo
 
-func (m *ConnToReq) GetClient() *ClientInfo {
+func (m *ConnPeerReq) GetClient() *ClientInfo {
 	if m != nil {
 		return m.Client
 	}
 	return nil
 }
 
-func (m *ConnToReq) GetTimestamp() int64 {
+func (m *ConnPeerReq) GetTimestamp() int64 {
 	if m != nil {
 		return m.Timestamp
 	}
 	return 0
 }
 
-func (m *ConnToReq) GetFrequency() int32 {
+func (m *ConnPeerReq) GetFrequency() int32 {
 	if m != nil {
 		return m.Frequency
 	}
 	return 0
 }
 
-type ConnToRsp struct {
-	Client               *ClientInfo      `protobuf:"bytes,1,opt,name=client,proto3" json:"client,omitempty"`
-	Timestamp            int64            `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Status               ConnToRsp_STATUS `protobuf:"varint,3,opt,name=status,proto3,enum=pb.ConnToRsp_STATUS" json:"status,omitempty"`
-	Err                  *Err             `protobuf:"bytes,4,opt,name=err,proto3" json:"err,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
-	XXX_unrecognized     []byte           `json:"-"`
-	XXX_sizecache        int32            `json:"-"`
+type ConnPeerRsp struct {
+	Client               *ClientInfo        `protobuf:"bytes,1,opt,name=client,proto3" json:"client,omitempty"`
+	Timestamp            int64              `protobuf:"varint,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Status               ConnPeerRsp_STATUS `protobuf:"varint,3,opt,name=status,proto3,enum=pb.ConnPeerRsp_STATUS" json:"status,omitempty"`
+	Err                  *Err               `protobuf:"bytes,4,opt,name=err,proto3" json:"err,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}           `json:"-"`
+	XXX_unrecognized     []byte             `json:"-"`
+	XXX_sizecache        int32              `json:"-"`
 }
 
-func (m *ConnToRsp) Reset()         { *m = ConnToRsp{} }
-func (m *ConnToRsp) String() string { return proto.CompactTextString(m) }
-func (*ConnToRsp) ProtoMessage()    {}
-func (*ConnToRsp) Descriptor() ([]byte, []int) {
+func (m *ConnPeerRsp) Reset()         { *m = ConnPeerRsp{} }
+func (m *ConnPeerRsp) String() string { return proto.CompactTextString(m) }
+func (*ConnPeerRsp) ProtoMessage()    {}
+func (*ConnPeerRsp) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f250e3d2ca1f0b6, []int{11}
 }
-func (m *ConnToRsp) XXX_Unmarshal(b []byte) error {
+func (m *ConnPeerRsp) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ConnToRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *ConnPeerRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ConnToRsp.Marshal(b, m, deterministic)
+		return xxx_messageInfo_ConnPeerRsp.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -697,47 +697,47 @@ func (m *ConnToRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *ConnToRsp) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConnToRsp.Merge(m, src)
+func (m *ConnPeerRsp) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ConnPeerRsp.Merge(m, src)
 }
-func (m *ConnToRsp) XXX_Size() int {
+func (m *ConnPeerRsp) XXX_Size() int {
 	return m.Size()
 }
-func (m *ConnToRsp) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConnToRsp.DiscardUnknown(m)
+func (m *ConnPeerRsp) XXX_DiscardUnknown() {
+	xxx_messageInfo_ConnPeerRsp.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ConnToRsp proto.InternalMessageInfo
+var xxx_messageInfo_ConnPeerRsp proto.InternalMessageInfo
 
-func (m *ConnToRsp) GetClient() *ClientInfo {
+func (m *ConnPeerRsp) GetClient() *ClientInfo {
 	if m != nil {
 		return m.Client
 	}
 	return nil
 }
 
-func (m *ConnToRsp) GetTimestamp() int64 {
+func (m *ConnPeerRsp) GetTimestamp() int64 {
 	if m != nil {
 		return m.Timestamp
 	}
 	return 0
 }
 
-func (m *ConnToRsp) GetStatus() ConnToRsp_STATUS {
+func (m *ConnPeerRsp) GetStatus() ConnPeerRsp_STATUS {
 	if m != nil {
 		return m.Status
 	}
-	return ConnToRsp_Succ
+	return ConnPeerRsp_Succ
 }
 
-func (m *ConnToRsp) GetErr() *Err {
+func (m *ConnPeerRsp) GetErr() *Err {
 	if m != nil {
 		return m.Err
 	}
 	return nil
 }
 
-type ConnectReq struct {
+type StreamReq struct {
 	Addr                 string   `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
 	Network              Network  `protobuf:"varint,2,opt,name=network,proto3,enum=pb.Network" json:"network,omitempty"`
 	Body                 []byte   `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
@@ -746,18 +746,18 @@ type ConnectReq struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ConnectReq) Reset()         { *m = ConnectReq{} }
-func (m *ConnectReq) String() string { return proto.CompactTextString(m) }
-func (*ConnectReq) ProtoMessage()    {}
-func (*ConnectReq) Descriptor() ([]byte, []int) {
+func (m *StreamReq) Reset()         { *m = StreamReq{} }
+func (m *StreamReq) String() string { return proto.CompactTextString(m) }
+func (*StreamReq) ProtoMessage()    {}
+func (*StreamReq) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f250e3d2ca1f0b6, []int{12}
 }
-func (m *ConnectReq) XXX_Unmarshal(b []byte) error {
+func (m *StreamReq) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ConnectReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *StreamReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ConnectReq.Marshal(b, m, deterministic)
+		return xxx_messageInfo_StreamReq.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -767,40 +767,40 @@ func (m *ConnectReq) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *ConnectReq) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConnectReq.Merge(m, src)
+func (m *StreamReq) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StreamReq.Merge(m, src)
 }
-func (m *ConnectReq) XXX_Size() int {
+func (m *StreamReq) XXX_Size() int {
 	return m.Size()
 }
-func (m *ConnectReq) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConnectReq.DiscardUnknown(m)
+func (m *StreamReq) XXX_DiscardUnknown() {
+	xxx_messageInfo_StreamReq.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ConnectReq proto.InternalMessageInfo
+var xxx_messageInfo_StreamReq proto.InternalMessageInfo
 
-func (m *ConnectReq) GetAddr() string {
+func (m *StreamReq) GetAddr() string {
 	if m != nil {
 		return m.Addr
 	}
 	return ""
 }
 
-func (m *ConnectReq) GetNetwork() Network {
+func (m *StreamReq) GetNetwork() Network {
 	if m != nil {
 		return m.Network
 	}
 	return Network_TCP
 }
 
-func (m *ConnectReq) GetBody() []byte {
+func (m *StreamReq) GetBody() []byte {
 	if m != nil {
 		return m.Body
 	}
 	return nil
 }
 
-type ConnectRsp struct {
+type StreamRsp struct {
 	Body                 []byte   `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
 	Err                  *Err     `protobuf:"bytes,2,opt,name=err,proto3" json:"err,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -808,18 +808,18 @@ type ConnectRsp struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ConnectRsp) Reset()         { *m = ConnectRsp{} }
-func (m *ConnectRsp) String() string { return proto.CompactTextString(m) }
-func (*ConnectRsp) ProtoMessage()    {}
-func (*ConnectRsp) Descriptor() ([]byte, []int) {
+func (m *StreamRsp) Reset()         { *m = StreamRsp{} }
+func (m *StreamRsp) String() string { return proto.CompactTextString(m) }
+func (*StreamRsp) ProtoMessage()    {}
+func (*StreamRsp) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7f250e3d2ca1f0b6, []int{13}
 }
-func (m *ConnectRsp) XXX_Unmarshal(b []byte) error {
+func (m *StreamRsp) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ConnectRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *StreamRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ConnectRsp.Marshal(b, m, deterministic)
+		return xxx_messageInfo_StreamRsp.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -829,26 +829,26 @@ func (m *ConnectRsp) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *ConnectRsp) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ConnectRsp.Merge(m, src)
+func (m *StreamRsp) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StreamRsp.Merge(m, src)
 }
-func (m *ConnectRsp) XXX_Size() int {
+func (m *StreamRsp) XXX_Size() int {
 	return m.Size()
 }
-func (m *ConnectRsp) XXX_DiscardUnknown() {
-	xxx_messageInfo_ConnectRsp.DiscardUnknown(m)
+func (m *StreamRsp) XXX_DiscardUnknown() {
+	xxx_messageInfo_StreamRsp.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ConnectRsp proto.InternalMessageInfo
+var xxx_messageInfo_StreamRsp proto.InternalMessageInfo
 
-func (m *ConnectRsp) GetBody() []byte {
+func (m *StreamRsp) GetBody() []byte {
 	if m != nil {
 		return m.Body
 	}
 	return nil
 }
 
-func (m *ConnectRsp) GetErr() *Err {
+func (m *StreamRsp) GetErr() *Err {
 	if m != nil {
 		return m.Err
 	}
@@ -858,7 +858,7 @@ func (m *ConnectRsp) GetErr() *Err {
 func init() {
 	proto.RegisterEnum("pb.Network", Network_name, Network_value)
 	proto.RegisterEnum("pb.AuthRsp_STATUS", AuthRsp_STATUS_name, AuthRsp_STATUS_value)
-	proto.RegisterEnum("pb.ConnToRsp_STATUS", ConnToRsp_STATUS_name, ConnToRsp_STATUS_value)
+	proto.RegisterEnum("pb.ConnPeerRsp_STATUS", ConnPeerRsp_STATUS_name, ConnPeerRsp_STATUS_value)
 	proto.RegisterType((*Err)(nil), "pb.Err")
 	proto.RegisterType((*CloseReq)(nil), "pb.CloseReq")
 	proto.RegisterType((*CloseRsp)(nil), "pb.CloseRsp")
@@ -869,56 +869,57 @@ func init() {
 	proto.RegisterType((*ClientInfo)(nil), "pb.ClientInfo")
 	proto.RegisterType((*ClientsReq)(nil), "pb.ClientsReq")
 	proto.RegisterType((*ClientsRsp)(nil), "pb.ClientsRsp")
-	proto.RegisterType((*ConnToReq)(nil), "pb.ConnToReq")
-	proto.RegisterType((*ConnToRsp)(nil), "pb.ConnToRsp")
-	proto.RegisterType((*ConnectReq)(nil), "pb.ConnectReq")
-	proto.RegisterType((*ConnectRsp)(nil), "pb.ConnectRsp")
+	proto.RegisterType((*ConnPeerReq)(nil), "pb.ConnPeerReq")
+	proto.RegisterType((*ConnPeerRsp)(nil), "pb.ConnPeerRsp")
+	proto.RegisterType((*StreamReq)(nil), "pb.StreamReq")
+	proto.RegisterType((*StreamRsp)(nil), "pb.StreamRsp")
 }
 
 func init() { proto.RegisterFile("rpc/test/socks/pb/service.proto", fileDescriptor_7f250e3d2ca1f0b6) }
 
 var fileDescriptor_7f250e3d2ca1f0b6 = []byte{
-	// 629 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x54, 0x4f, 0x6b, 0x13, 0x41,
-	0x14, 0xcf, 0xec, 0x26, 0xbb, 0xcd, 0x4b, 0x5b, 0xc2, 0x50, 0x68, 0x8c, 0xb5, 0x86, 0x81, 0x4a,
-	0x68, 0x25, 0x81, 0x08, 0x5e, 0x7a, 0xaa, 0xb1, 0x82, 0x20, 0xa5, 0x4c, 0xd2, 0x8b, 0x1e, 0x24,
-	0xbb, 0x99, 0x6a, 0x68, 0xb3, 0x33, 0x99, 0x99, 0x28, 0xbd, 0x78, 0xf4, 0x33, 0xf9, 0x11, 0x3c,
-	0x7a, 0xf4, 0x28, 0xfd, 0x24, 0x32, 0x7f, 0x92, 0xdd, 0x6a, 0x2b, 0x41, 0xf4, 0xf6, 0xfe, 0xbf,
-	0xdf, 0xbc, 0xdf, 0x7b, 0x03, 0x0f, 0xa5, 0x48, 0xbb, 0x9a, 0x29, 0xdd, 0x55, 0x3c, 0xbd, 0x50,
-	0x5d, 0x91, 0x74, 0x15, 0x93, 0x1f, 0x26, 0x29, 0xeb, 0x08, 0xc9, 0x35, 0xc7, 0x81, 0x48, 0xc8,
-	0x01, 0x84, 0xc7, 0x52, 0x62, 0x0c, 0xe5, 0x94, 0x8f, 0x59, 0x03, 0xb5, 0x50, 0x3b, 0xa4, 0x56,
-	0xc6, 0x75, 0x08, 0xa7, 0xea, 0x5d, 0x23, 0x68, 0xa1, 0x76, 0x95, 0x1a, 0x91, 0x00, 0xac, 0xf5,
-	0x2f, 0xb9, 0x62, 0x94, 0xcd, 0xc8, 0xde, 0x42, 0x56, 0x02, 0xdf, 0x83, 0x90, 0x49, 0x69, 0x93,
-	0x6b, 0xbd, 0xb8, 0x23, 0x92, 0xce, 0xb1, 0x94, 0xd4, 0xd8, 0xc8, 0x0e, 0xc0, 0xab, 0x91, 0x66,
-	0x59, 0x7a, 0x45, 0xd9, 0x0c, 0x6f, 0x42, 0xa0, 0x95, 0x6f, 0x12, 0x68, 0x55, 0xf4, 0x2a, 0xf1,
-	0x9b, 0xf7, 0x01, 0xc4, 0x47, 0x73, 0xfd, 0xde, 0x24, 0x62, 0x28, 0x67, 0xa3, 0xa9, 0xc3, 0x57,
-	0xa5, 0x56, 0x26, 0x99, 0x77, 0x2b, 0x81, 0xf7, 0x21, 0x52, 0x7a, 0xa4, 0xe7, 0x2e, 0x7b, 0xb3,
-	0x87, 0x0d, 0x06, 0xef, 0xec, 0x0c, 0x86, 0x47, 0xc3, 0xb3, 0x01, 0xf5, 0x11, 0x0b, 0xb0, 0xc1,
-	0xad, 0x60, 0x23, 0x17, 0x8c, 0xd7, 0xa0, 0x3c, 0x98, 0xa7, 0x69, 0xbd, 0x64, 0xa4, 0x17, 0xa3,
-	0xc9, 0x65, 0x1d, 0x91, 0x37, 0x00, 0xfd, 0xcb, 0x09, 0xcb, 0xf4, 0xcb, 0xec, 0x9c, 0xdf, 0x86,
-	0xc8, 0xd8, 0x46, 0xe3, 0xb1, 0xf4, 0x23, 0xb3, 0x32, 0xde, 0x83, 0x38, 0x63, 0xfa, 0x23, 0x97,
-	0x17, 0x8d, 0xd0, 0x62, 0xab, 0x99, 0x96, 0x27, 0xce, 0x44, 0x17, 0x3e, 0x72, 0xb8, 0x28, 0xae,
-	0xcc, 0x73, 0xb7, 0x21, 0x9e, 0x5e, 0xbd, 0x2d, 0xd4, 0x8f, 0xa6, 0x57, 0x27, 0xa6, 0xc3, 0x16,
-	0x54, 0x8c, 0x55, 0x35, 0x82, 0x56, 0xd8, 0xae, 0x52, 0xa7, 0x90, 0xa7, 0x79, 0xb2, 0x12, 0xb8,
-	0x0d, 0x71, 0xea, 0xb4, 0x06, 0x6a, 0x85, 0xed, 0x5a, 0x6f, 0xd3, 0x74, 0xcc, 0xa1, 0xd3, 0x85,
-	0x9b, 0x70, 0xa8, 0xf6, 0x79, 0x96, 0x0d, 0xb9, 0xe9, 0xf9, 0x08, 0x22, 0x67, 0xf7, 0x3c, 0xfe,
-	0x9a, 0xe5, 0xbd, 0x78, 0x07, 0xaa, 0x7a, 0x32, 0x65, 0x4a, 0x8f, 0xa6, 0xc2, 0xbe, 0x34, 0xa4,
-	0xb9, 0xc1, 0x78, 0xcf, 0x25, 0x9b, 0xcd, 0x0d, 0xa7, 0xf6, 0xc1, 0x15, 0x9a, 0x1b, 0xc8, 0x17,
-	0xb4, 0xec, 0xa8, 0xc4, 0x3f, 0xea, 0xf8, 0x78, 0xc9, 0xbd, 0x9b, 0xef, 0x96, 0xad, 0xb2, 0x68,
-	0x72, 0x07, 0xfb, 0xe5, 0xbf, 0x62, 0x9f, 0x67, 0x19, 0x4b, 0xb5, 0xdf, 0x47, 0xcb, 0x34, 0xba,
-	0x9d, 0xe9, 0xe0, 0x6e, 0xa6, 0x4d, 0x6a, 0xc2, 0xc7, 0x6e, 0x38, 0xeb, 0xd4, 0xca, 0x96, 0x7d,
-	0x5f, 0x5c, 0x89, 0x65, 0x04, 0xca, 0x23, 0xfe, 0xb0, 0xb5, 0xfb, 0xf7, 0x21, 0xf6, 0x4d, 0x70,
-	0x0c, 0xe1, 0xb0, 0x7f, 0x5a, 0x2f, 0x19, 0xe1, 0xec, 0xf9, 0x69, 0x1d, 0xf5, 0xbe, 0x23, 0x88,
-	0x07, 0xee, 0xea, 0xf1, 0x1e, 0x54, 0xec, 0xc9, 0xe2, 0x75, 0x37, 0x68, 0x77, 0xc9, 0xcd, 0x82,
-	0xa6, 0x04, 0x29, 0xe1, 0x03, 0x88, 0xfd, 0x51, 0x62, 0xcb, 0x48, 0x7e, 0xbf, 0xcd, 0x1b, 0xba,
-	0x0d, 0x26, 0x50, 0x36, 0x77, 0x86, 0x6b, 0xcb, 0x8b, 0x63, 0xb3, 0x66, 0xad, 0x70, 0x7e, 0xae,
-	0xa0, 0x5f, 0x4f, 0x5c, 0xa0, 0x58, 0x2d, 0x0b, 0xe6, 0xbb, 0x4b, 0x4a, 0xb8, 0x0d, 0x91, 0x23,
-	0x0f, 0x6f, 0x14, 0x88, 0x64, 0xb3, 0xe6, 0xc6, 0x0d, 0x5e, 0x49, 0xa9, 0xf7, 0x19, 0x41, 0xe4,
-	0x52, 0xff, 0xcb, 0xcb, 0x56, 0x07, 0xf2, 0x09, 0xca, 0xa7, 0x8c, 0xc9, 0x55, 0x51, 0xac, 0x3a,
-	0x32, 0xb7, 0x10, 0x7e, 0x64, 0xcb, 0xd5, 0x6b, 0xde, 0xd0, 0x4d, 0xf0, 0xb3, 0xed, 0xaf, 0xd7,
-	0xbb, 0xe8, 0xdb, 0xf5, 0x2e, 0xfa, 0x71, 0xbd, 0x8b, 0x20, 0x10, 0xc9, 0xeb, 0x4a, 0xa7, 0x7b,
-	0x28, 0x92, 0x24, 0xb2, 0xff, 0xfc, 0x93, 0x9f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x89, 0x66, 0x82,
-	0xfc, 0x0a, 0x06, 0x00, 0x00,
+	// 651 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x55, 0x5f, 0x6b, 0x13, 0x41,
+	0x10, 0xcf, 0xde, 0x25, 0x77, 0xcd, 0xa4, 0xb6, 0x61, 0x11, 0x1b, 0x63, 0xad, 0x61, 0xa1, 0x12,
+	0x5a, 0xb8, 0x48, 0x04, 0x1f, 0xec, 0x53, 0x8d, 0x15, 0x04, 0x29, 0x65, 0xd3, 0xbe, 0xd4, 0x07,
+	0xb9, 0xbb, 0x6c, 0x35, 0x34, 0x77, 0xb7, 0xd9, 0xdd, 0x54, 0xfa, 0xe2, 0x27, 0xf0, 0x23, 0xf9,
+	0x01, 0x7c, 0xf4, 0x13, 0x88, 0xf4, 0x93, 0xc8, 0xee, 0x5e, 0x72, 0xd7, 0xda, 0x4a, 0x0b, 0xfa,
+	0x36, 0x33, 0xbf, 0xf9, 0xb7, 0xf3, 0x9b, 0x61, 0xe1, 0x89, 0xe0, 0x71, 0x4f, 0x31, 0xa9, 0x7a,
+	0x32, 0x8b, 0x4f, 0x65, 0x8f, 0x47, 0x3d, 0xc9, 0xc4, 0xd9, 0x38, 0x66, 0x01, 0x17, 0x99, 0xca,
+	0xb0, 0xc3, 0x23, 0xb2, 0x0d, 0xee, 0x9e, 0x10, 0x18, 0x43, 0x35, 0xce, 0x46, 0xac, 0x85, 0x3a,
+	0xa8, 0xeb, 0x52, 0x23, 0xe3, 0x26, 0xb8, 0x89, 0xfc, 0xd8, 0x72, 0x3a, 0xa8, 0x5b, 0xa7, 0x5a,
+	0x24, 0x00, 0x4b, 0x83, 0x49, 0x26, 0x19, 0x65, 0x53, 0xb2, 0x39, 0x97, 0x25, 0xc7, 0x0f, 0xc1,
+	0x65, 0x42, 0x98, 0xe0, 0x46, 0xdf, 0x0f, 0x78, 0x14, 0xec, 0x09, 0x41, 0xb5, 0x8d, 0xac, 0x03,
+	0xbc, 0x0b, 0x15, 0x4b, 0xe3, 0x73, 0xca, 0xa6, 0x78, 0x05, 0x1c, 0x25, 0xf3, 0x22, 0x8e, 0x92,
+	0x65, 0x54, 0xf2, 0x3f, 0xd0, 0xc7, 0xe0, 0xef, 0xce, 0xd4, 0x27, 0x1d, 0x88, 0xa1, 0x9a, 0x86,
+	0x89, 0xed, 0xaf, 0x4e, 0x8d, 0x4c, 0xd2, 0x1c, 0x96, 0x1c, 0x6f, 0x81, 0x27, 0x55, 0xa8, 0x66,
+	0x36, 0x7a, 0xa5, 0x8f, 0x75, 0x0f, 0x39, 0x18, 0x0c, 0x0f, 0x77, 0x0f, 0x8f, 0x86, 0x34, 0xf7,
+	0x98, 0x37, 0xeb, 0x5c, 0xdb, 0xac, 0x67, 0x9d, 0xf1, 0x12, 0x54, 0x87, 0xb3, 0x38, 0x6e, 0x56,
+	0xb4, 0xf4, 0x26, 0x1c, 0x4f, 0x9a, 0x88, 0xbc, 0x07, 0x18, 0x4c, 0xc6, 0x2c, 0x55, 0x6f, 0xd3,
+	0x93, 0xec, 0xba, 0x8e, 0xb4, 0x2d, 0x1c, 0x8d, 0x44, 0x3e, 0x32, 0x23, 0xe3, 0x4d, 0xf0, 0x53,
+	0xa6, 0x3e, 0x67, 0xe2, 0xb4, 0xe5, 0x9a, 0xde, 0x1a, 0xba, 0xe4, 0xbe, 0x35, 0xd1, 0x39, 0x46,
+	0x76, 0xe6, 0xc9, 0xa5, 0x7e, 0xee, 0x1a, 0xf8, 0xc9, 0xf9, 0x87, 0x52, 0x7e, 0x2f, 0x39, 0xdf,
+	0xd7, 0x15, 0xee, 0x43, 0x4d, 0x5b, 0x65, 0xcb, 0xe9, 0xb8, 0xdd, 0x3a, 0xb5, 0x0a, 0x79, 0x51,
+	0x04, 0x4b, 0x8e, 0xbb, 0xe0, 0xc7, 0x56, 0x6b, 0xa1, 0x8e, 0xdb, 0x6d, 0xf4, 0x57, 0x74, 0xc5,
+	0xa2, 0x75, 0x3a, 0x87, 0xc9, 0x14, 0x1a, 0x83, 0x2c, 0x4d, 0x0f, 0x18, 0x13, 0xba, 0xea, 0x53,
+	0xf0, 0x2c, 0x92, 0x33, 0x79, 0x35, 0x2e, 0x47, 0xf1, 0x3a, 0xd4, 0xd5, 0x38, 0x61, 0x52, 0x85,
+	0x09, 0x37, 0x6f, 0x75, 0x69, 0x61, 0xd0, 0xe8, 0x89, 0x60, 0xd3, 0x99, 0x66, 0xd5, 0x3c, 0xb9,
+	0x46, 0x0b, 0x03, 0xf9, 0x86, 0x4a, 0x35, 0x25, 0xff, 0x47, 0x35, 0x83, 0x05, 0xff, 0x76, 0xc6,
+	0x0f, 0x4c, 0x96, 0xa2, 0xcc, 0x0d, 0x3b, 0x50, 0xbd, 0xf3, 0x0e, 0x1c, 0x43, 0x7d, 0xa8, 0x04,
+	0x0b, 0x93, 0x7c, 0x29, 0x0d, 0xdd, 0xe8, 0x7a, 0xba, 0x9d, 0x9b, 0xe9, 0xd6, 0xa1, 0x51, 0x36,
+	0xb2, 0xf3, 0x59, 0xa6, 0x46, 0x26, 0x2f, 0x17, 0xb9, 0x25, 0x5f, 0x38, 0xa0, 0xc2, 0xe1, 0x2f,
+	0x9b, 0xbb, 0xf5, 0x08, 0xfc, 0xbc, 0x06, 0xf6, 0xc1, 0x3d, 0x1c, 0x1c, 0x34, 0x2b, 0x5a, 0x38,
+	0x7a, 0x7d, 0xd0, 0x44, 0xfd, 0x9f, 0x08, 0xfc, 0xa1, 0xbd, 0x7c, 0xbc, 0x09, 0x35, 0x73, 0xb6,
+	0x78, 0xd9, 0x0e, 0xda, 0x5e, 0x73, 0xbb, 0xa4, 0x49, 0x4e, 0x2a, 0x78, 0x1b, 0xfc, 0xfc, 0x30,
+	0xb1, 0x61, 0xa4, 0xb8, 0xe1, 0xf6, 0x25, 0xdd, 0x38, 0x13, 0xa8, 0xea, 0x5b, 0xc3, 0x8d, 0xc5,
+	0xd5, 0xb1, 0x69, 0xbb, 0x51, 0x3a, 0x41, 0x9b, 0x30, 0x5f, 0x51, 0x5c, 0xa2, 0x58, 0x2e, 0x12,
+	0x16, 0xfb, 0x4b, 0x2a, 0x38, 0x80, 0xa5, 0x39, 0x79, 0x78, 0xf5, 0x12, 0x95, 0x6c, 0xda, 0x5e,
+	0xbd, 0xc2, 0x2d, 0xa9, 0xf4, 0xbf, 0x22, 0xf0, 0x6c, 0x82, 0xff, 0xf2, 0xbe, 0xbb, 0xb6, 0xf3,
+	0x0c, 0x7c, 0xad, 0x0c, 0x26, 0xe3, 0x5b, 0xb6, 0xd3, 0xff, 0x62, 0x23, 0x86, 0x67, 0xf1, 0x6d,
+	0x1f, 0x70, 0x9b, 0x99, 0x77, 0xc1, 0xb3, 0x0b, 0x85, 0xef, 0x69, 0x60, 0xb1, 0xb8, 0xed, 0xb2,
+	0xaa, 0x3d, 0x5f, 0xad, 0x7d, 0xbf, 0xd8, 0x40, 0x3f, 0x2e, 0x36, 0xd0, 0xaf, 0x8b, 0x0d, 0x04,
+	0x0e, 0x8f, 0x8e, 0x6b, 0x41, 0x6f, 0x87, 0x47, 0x91, 0x67, 0x7e, 0x8a, 0xe7, 0xbf, 0x03, 0x00,
+	0x00, 0xff, 0xff, 0xda, 0xfa, 0x48, 0x07, 0x4c, 0x06, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -937,7 +938,7 @@ type ServiceClient interface {
 	Latency(ctx context.Context, in *LatencyReq, opts ...grpc.CallOption) (*LatencyRsp, error)
 	Auth(ctx context.Context, in *AuthReq, opts ...grpc.CallOption) (*AuthRsp, error)
 	Clients(ctx context.Context, in *ClientsReq, opts ...grpc.CallOption) (*ClientsRsp, error)
-	ConnTo(ctx context.Context, in *ConnToReq, opts ...grpc.CallOption) (*ConnToRsp, error)
+	ConnPeer(ctx context.Context, in *ConnPeerReq, opts ...grpc.CallOption) (*ConnPeerRsp, error)
 }
 
 type serviceClient struct {
@@ -984,9 +985,9 @@ func (c *serviceClient) Clients(ctx context.Context, in *ClientsReq, opts ...grp
 	return out, nil
 }
 
-func (c *serviceClient) ConnTo(ctx context.Context, in *ConnToReq, opts ...grpc.CallOption) (*ConnToRsp, error) {
-	out := new(ConnToRsp)
-	err := c.cc.Invoke(ctx, "/pb.Service/ConnTo", in, out, opts...)
+func (c *serviceClient) ConnPeer(ctx context.Context, in *ConnPeerReq, opts ...grpc.CallOption) (*ConnPeerRsp, error) {
+	out := new(ConnPeerRsp)
+	err := c.cc.Invoke(ctx, "/pb.Service/ConnPeer", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -999,7 +1000,7 @@ type ServiceServer interface {
 	Latency(context.Context, *LatencyReq) (*LatencyRsp, error)
 	Auth(context.Context, *AuthReq) (*AuthRsp, error)
 	Clients(context.Context, *ClientsReq) (*ClientsRsp, error)
-	ConnTo(context.Context, *ConnToReq) (*ConnToRsp, error)
+	ConnPeer(context.Context, *ConnPeerReq) (*ConnPeerRsp, error)
 }
 
 // UnimplementedServiceServer can be embedded to have forward compatible implementations.
@@ -1018,8 +1019,8 @@ func (*UnimplementedServiceServer) Auth(ctx context.Context, req *AuthReq) (*Aut
 func (*UnimplementedServiceServer) Clients(ctx context.Context, req *ClientsReq) (*ClientsRsp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Clients not implemented")
 }
-func (*UnimplementedServiceServer) ConnTo(ctx context.Context, req *ConnToReq) (*ConnToRsp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ConnTo not implemented")
+func (*UnimplementedServiceServer) ConnPeer(ctx context.Context, req *ConnPeerReq) (*ConnPeerRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConnPeer not implemented")
 }
 
 func RegisterServiceServer(s *grpc.Server, srv ServiceServer) {
@@ -1098,20 +1099,20 @@ func _Service_Clients_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Service_ConnTo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ConnToReq)
+func _Service_ConnPeer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnPeerReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ServiceServer).ConnTo(ctx, in)
+		return srv.(ServiceServer).ConnPeer(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/pb.Service/ConnTo",
+		FullMethod: "/pb.Service/ConnPeer",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ServiceServer).ConnTo(ctx, req.(*ConnToReq))
+		return srv.(ServiceServer).ConnPeer(ctx, req.(*ConnPeerReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1137,8 +1138,8 @@ var _Service_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Service_Clients_Handler,
 		},
 		{
-			MethodName: "ConnTo",
-			Handler:    _Service_ConnTo_Handler,
+			MethodName: "ConnPeer",
+			Handler:    _Service_ConnPeer_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -1151,7 +1152,7 @@ var _Service_serviceDesc = grpc.ServiceDesc{
 type ClientClient interface {
 	Close(ctx context.Context, in *CloseReq, opts ...grpc.CallOption) (*CloseRsp, error)
 	Latency(ctx context.Context, in *LatencyReq, opts ...grpc.CallOption) (*LatencyRsp, error)
-	ConnTo(ctx context.Context, in *ConnToReq, opts ...grpc.CallOption) (*ConnToRsp, error)
+	ConnPeer(ctx context.Context, in *ConnPeerReq, opts ...grpc.CallOption) (*ConnPeerRsp, error)
 }
 
 type clientClient struct {
@@ -1180,9 +1181,9 @@ func (c *clientClient) Latency(ctx context.Context, in *LatencyReq, opts ...grpc
 	return out, nil
 }
 
-func (c *clientClient) ConnTo(ctx context.Context, in *ConnToReq, opts ...grpc.CallOption) (*ConnToRsp, error) {
-	out := new(ConnToRsp)
-	err := c.cc.Invoke(ctx, "/pb.Client/ConnTo", in, out, opts...)
+func (c *clientClient) ConnPeer(ctx context.Context, in *ConnPeerReq, opts ...grpc.CallOption) (*ConnPeerRsp, error) {
+	out := new(ConnPeerRsp)
+	err := c.cc.Invoke(ctx, "/pb.Client/ConnPeer", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1193,7 +1194,7 @@ func (c *clientClient) ConnTo(ctx context.Context, in *ConnToReq, opts ...grpc.C
 type ClientServer interface {
 	Close(context.Context, *CloseReq) (*CloseRsp, error)
 	Latency(context.Context, *LatencyReq) (*LatencyRsp, error)
-	ConnTo(context.Context, *ConnToReq) (*ConnToRsp, error)
+	ConnPeer(context.Context, *ConnPeerReq) (*ConnPeerRsp, error)
 }
 
 // UnimplementedClientServer can be embedded to have forward compatible implementations.
@@ -1206,8 +1207,8 @@ func (*UnimplementedClientServer) Close(ctx context.Context, req *CloseReq) (*Cl
 func (*UnimplementedClientServer) Latency(ctx context.Context, req *LatencyReq) (*LatencyRsp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Latency not implemented")
 }
-func (*UnimplementedClientServer) ConnTo(ctx context.Context, req *ConnToReq) (*ConnToRsp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ConnTo not implemented")
+func (*UnimplementedClientServer) ConnPeer(ctx context.Context, req *ConnPeerReq) (*ConnPeerRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConnPeer not implemented")
 }
 
 func RegisterClientServer(s *grpc.Server, srv ClientServer) {
@@ -1250,20 +1251,20 @@ func _Client_Latency_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Client_ConnTo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ConnToReq)
+func _Client_ConnPeer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnPeerReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ClientServer).ConnTo(ctx, in)
+		return srv.(ClientServer).ConnPeer(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/pb.Client/ConnTo",
+		FullMethod: "/pb.Client/ConnPeer",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClientServer).ConnTo(ctx, req.(*ConnToReq))
+		return srv.(ClientServer).ConnPeer(ctx, req.(*ConnPeerReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1281,152 +1282,224 @@ var _Client_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Client_Latency_Handler,
 		},
 		{
-			MethodName: "ConnTo",
-			Handler:    _Client_ConnTo_Handler,
+			MethodName: "ConnPeer",
+			Handler:    _Client_ConnPeer_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "rpc/test/socks/pb/service.proto",
 }
 
-// PeerClient is the client API for Peer service.
+// PeerCliClient is the client API for PeerCli service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type PeerClient interface {
+type PeerCliClient interface {
 	Close(ctx context.Context, in *CloseReq, opts ...grpc.CallOption) (*CloseRsp, error)
-	Auth(ctx context.Context, in *AuthReq, opts ...grpc.CallOption) (*AuthRsp, error)
-	Connect(ctx context.Context, in *ConnectReq, opts ...grpc.CallOption) (*ConnectRsp, error)
 }
 
-type peerClient struct {
+type peerCliClient struct {
 	cc *grpc.ClientConn
 }
 
-func NewPeerClient(cc *grpc.ClientConn) PeerClient {
-	return &peerClient{cc}
+func NewPeerCliClient(cc *grpc.ClientConn) PeerCliClient {
+	return &peerCliClient{cc}
 }
 
-func (c *peerClient) Close(ctx context.Context, in *CloseReq, opts ...grpc.CallOption) (*CloseRsp, error) {
+func (c *peerCliClient) Close(ctx context.Context, in *CloseReq, opts ...grpc.CallOption) (*CloseRsp, error) {
 	out := new(CloseRsp)
-	err := c.cc.Invoke(ctx, "/pb.Peer/Close", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/pb.PeerCli/Close", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *peerClient) Auth(ctx context.Context, in *AuthReq, opts ...grpc.CallOption) (*AuthRsp, error) {
-	out := new(AuthRsp)
-	err := c.cc.Invoke(ctx, "/pb.Peer/Auth", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *peerClient) Connect(ctx context.Context, in *ConnectReq, opts ...grpc.CallOption) (*ConnectRsp, error) {
-	out := new(ConnectRsp)
-	err := c.cc.Invoke(ctx, "/pb.Peer/Connect", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// PeerServer is the server API for Peer service.
-type PeerServer interface {
+// PeerCliServer is the server API for PeerCli service.
+type PeerCliServer interface {
 	Close(context.Context, *CloseReq) (*CloseRsp, error)
-	Auth(context.Context, *AuthReq) (*AuthRsp, error)
-	Connect(context.Context, *ConnectReq) (*ConnectRsp, error)
 }
 
-// UnimplementedPeerServer can be embedded to have forward compatible implementations.
-type UnimplementedPeerServer struct {
+// UnimplementedPeerCliServer can be embedded to have forward compatible implementations.
+type UnimplementedPeerCliServer struct {
 }
 
-func (*UnimplementedPeerServer) Close(ctx context.Context, req *CloseReq) (*CloseRsp, error) {
+func (*UnimplementedPeerCliServer) Close(ctx context.Context, req *CloseReq) (*CloseRsp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Close not implemented")
 }
-func (*UnimplementedPeerServer) Auth(ctx context.Context, req *AuthReq) (*AuthRsp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Auth not implemented")
-}
-func (*UnimplementedPeerServer) Connect(ctx context.Context, req *ConnectReq) (*ConnectRsp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Connect not implemented")
+
+func RegisterPeerCliServer(s *grpc.Server, srv PeerCliServer) {
+	s.RegisterService(&_PeerCli_serviceDesc, srv)
 }
 
-func RegisterPeerServer(s *grpc.Server, srv PeerServer) {
-	s.RegisterService(&_Peer_serviceDesc, srv)
-}
-
-func _Peer_Close_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _PeerCli_Close_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CloseReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(PeerServer).Close(ctx, in)
+		return srv.(PeerCliServer).Close(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/pb.Peer/Close",
+		FullMethod: "/pb.PeerCli/Close",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PeerServer).Close(ctx, req.(*CloseReq))
+		return srv.(PeerCliServer).Close(ctx, req.(*CloseReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Peer_Auth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+var _PeerCli_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "pb.PeerCli",
+	HandlerType: (*PeerCliServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Close",
+			Handler:    _PeerCli_Close_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "rpc/test/socks/pb/service.proto",
+}
+
+// PeerSvcClient is the client API for PeerSvc service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type PeerSvcClient interface {
+	Close(ctx context.Context, in *CloseReq, opts ...grpc.CallOption) (*CloseRsp, error)
+	Auth(ctx context.Context, in *AuthReq, opts ...grpc.CallOption) (*AuthRsp, error)
+	Stream(ctx context.Context, in *StreamReq, opts ...grpc.CallOption) (*StreamRsp, error)
+}
+
+type peerSvcClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewPeerSvcClient(cc *grpc.ClientConn) PeerSvcClient {
+	return &peerSvcClient{cc}
+}
+
+func (c *peerSvcClient) Close(ctx context.Context, in *CloseReq, opts ...grpc.CallOption) (*CloseRsp, error) {
+	out := new(CloseRsp)
+	err := c.cc.Invoke(ctx, "/pb.PeerSvc/Close", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *peerSvcClient) Auth(ctx context.Context, in *AuthReq, opts ...grpc.CallOption) (*AuthRsp, error) {
+	out := new(AuthRsp)
+	err := c.cc.Invoke(ctx, "/pb.PeerSvc/Auth", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *peerSvcClient) Stream(ctx context.Context, in *StreamReq, opts ...grpc.CallOption) (*StreamRsp, error) {
+	out := new(StreamRsp)
+	err := c.cc.Invoke(ctx, "/pb.PeerSvc/Stream", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PeerSvcServer is the server API for PeerSvc service.
+type PeerSvcServer interface {
+	Close(context.Context, *CloseReq) (*CloseRsp, error)
+	Auth(context.Context, *AuthReq) (*AuthRsp, error)
+	Stream(context.Context, *StreamReq) (*StreamRsp, error)
+}
+
+// UnimplementedPeerSvcServer can be embedded to have forward compatible implementations.
+type UnimplementedPeerSvcServer struct {
+}
+
+func (*UnimplementedPeerSvcServer) Close(ctx context.Context, req *CloseReq) (*CloseRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Close not implemented")
+}
+func (*UnimplementedPeerSvcServer) Auth(ctx context.Context, req *AuthReq) (*AuthRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Auth not implemented")
+}
+func (*UnimplementedPeerSvcServer) Stream(ctx context.Context, req *StreamReq) (*StreamRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Stream not implemented")
+}
+
+func RegisterPeerSvcServer(s *grpc.Server, srv PeerSvcServer) {
+	s.RegisterService(&_PeerSvc_serviceDesc, srv)
+}
+
+func _PeerSvc_Close_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloseReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PeerSvcServer).Close(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pb.PeerSvc/Close",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PeerSvcServer).Close(ctx, req.(*CloseReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PeerSvc_Auth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AuthReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(PeerServer).Auth(ctx, in)
+		return srv.(PeerSvcServer).Auth(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/pb.Peer/Auth",
+		FullMethod: "/pb.PeerSvc/Auth",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PeerServer).Auth(ctx, req.(*AuthReq))
+		return srv.(PeerSvcServer).Auth(ctx, req.(*AuthReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Peer_Connect_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ConnectReq)
+func _PeerSvc_Stream_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StreamReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(PeerServer).Connect(ctx, in)
+		return srv.(PeerSvcServer).Stream(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/pb.Peer/Connect",
+		FullMethod: "/pb.PeerSvc/Stream",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PeerServer).Connect(ctx, req.(*ConnectReq))
+		return srv.(PeerSvcServer).Stream(ctx, req.(*StreamReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-var _Peer_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "pb.Peer",
-	HandlerType: (*PeerServer)(nil),
+var _PeerSvc_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "pb.PeerSvc",
+	HandlerType: (*PeerSvcServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Close",
-			Handler:    _Peer_Close_Handler,
+			Handler:    _PeerSvc_Close_Handler,
 		},
 		{
 			MethodName: "Auth",
-			Handler:    _Peer_Auth_Handler,
+			Handler:    _PeerSvc_Auth_Handler,
 		},
 		{
-			MethodName: "Connect",
-			Handler:    _Peer_Connect_Handler,
+			MethodName: "Stream",
+			Handler:    _PeerSvc_Stream_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -1810,7 +1883,7 @@ func (m *ClientsRsp) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ConnToReq) Marshal() (dAtA []byte, err error) {
+func (m *ConnPeerReq) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1820,12 +1893,12 @@ func (m *ConnToReq) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConnToReq) MarshalTo(dAtA []byte) (int, error) {
+func (m *ConnPeerReq) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ConnToReq) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ConnPeerReq) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1859,7 +1932,7 @@ func (m *ConnToReq) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ConnToRsp) Marshal() (dAtA []byte, err error) {
+func (m *ConnPeerRsp) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1869,12 +1942,12 @@ func (m *ConnToRsp) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConnToRsp) MarshalTo(dAtA []byte) (int, error) {
+func (m *ConnPeerRsp) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ConnToRsp) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ConnPeerRsp) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1920,7 +1993,7 @@ func (m *ConnToRsp) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ConnectReq) Marshal() (dAtA []byte, err error) {
+func (m *StreamReq) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1930,12 +2003,12 @@ func (m *ConnectReq) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConnectReq) MarshalTo(dAtA []byte) (int, error) {
+func (m *StreamReq) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ConnectReq) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *StreamReq) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1966,7 +2039,7 @@ func (m *ConnectReq) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ConnectRsp) Marshal() (dAtA []byte, err error) {
+func (m *StreamRsp) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1976,12 +2049,12 @@ func (m *ConnectRsp) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ConnectRsp) MarshalTo(dAtA []byte) (int, error) {
+func (m *StreamRsp) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ConnectRsp) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *StreamRsp) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2198,7 +2271,7 @@ func (m *ClientsRsp) Size() (n int) {
 	return n
 }
 
-func (m *ConnToReq) Size() (n int) {
+func (m *ConnPeerReq) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2220,7 +2293,7 @@ func (m *ConnToReq) Size() (n int) {
 	return n
 }
 
-func (m *ConnToRsp) Size() (n int) {
+func (m *ConnPeerRsp) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2246,7 +2319,7 @@ func (m *ConnToRsp) Size() (n int) {
 	return n
 }
 
-func (m *ConnectReq) Size() (n int) {
+func (m *StreamReq) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -2269,7 +2342,7 @@ func (m *ConnectReq) Size() (n int) {
 	return n
 }
 
-func (m *ConnectRsp) Size() (n int) {
+func (m *StreamRsp) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3198,7 +3271,7 @@ func (m *ClientsRsp) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConnToReq) Unmarshal(dAtA []byte) error {
+func (m *ConnPeerReq) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3221,10 +3294,10 @@ func (m *ConnToReq) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConnToReq: wiretype end group for non-group")
+			return fmt.Errorf("proto: ConnPeerReq: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConnToReq: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ConnPeerReq: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -3323,7 +3396,7 @@ func (m *ConnToReq) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConnToRsp) Unmarshal(dAtA []byte) error {
+func (m *ConnPeerRsp) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3346,10 +3419,10 @@ func (m *ConnToRsp) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConnToRsp: wiretype end group for non-group")
+			return fmt.Errorf("proto: ConnPeerRsp: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConnToRsp: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ConnPeerRsp: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -3421,7 +3494,7 @@ func (m *ConnToRsp) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Status |= ConnToRsp_STATUS(b&0x7F) << shift
+				m.Status |= ConnPeerRsp_STATUS(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3484,7 +3557,7 @@ func (m *ConnToRsp) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConnectReq) Unmarshal(dAtA []byte) error {
+func (m *StreamReq) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3507,10 +3580,10 @@ func (m *ConnectReq) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConnectReq: wiretype end group for non-group")
+			return fmt.Errorf("proto: StreamReq: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConnectReq: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: StreamReq: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -3620,7 +3693,7 @@ func (m *ConnectReq) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ConnectRsp) Unmarshal(dAtA []byte) error {
+func (m *StreamRsp) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3643,10 +3716,10 @@ func (m *ConnectRsp) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ConnectRsp: wiretype end group for non-group")
+			return fmt.Errorf("proto: StreamRsp: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConnectRsp: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: StreamRsp: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

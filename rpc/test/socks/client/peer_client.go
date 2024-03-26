@@ -10,125 +10,41 @@ import (
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
-	"github.com/lxt1045/utils/rpc/codec"
 	"github.com/lxt1045/utils/rpc/test/socks/pb"
 	"github.com/lxt1045/utils/socks"
 )
 
-type peer struct {
-	Peer rpc.Peer
+type peerCli struct {
+	Name       string
+	LocalAddr  string
+	RemoteAddr string
+	Peer       rpc.Peer
 }
 
-func (p *peer) close(ctx context.Context) (err error) {
+func (p *peerCli) close(ctx context.Context) (err error) {
 	err = p.Peer.Close(ctx)
 	return
 }
 
-func (p *peer) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
+func (p *peerCli) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
 	err = p.Peer.Close(ctx)
 	return &pb.CloseRsp{}, err
 }
 
-func (s *peer) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, err error) {
-
-	return
-}
-
-func (p *peer) Connect(ctx context.Context, req *pb.ConnectReq) (resp *pb.ConnectRsp, err error) {
-	defer p.close(ctx)
-
-	if stream := codec.GetStream(ctx); stream != nil {
-		iface, err1 := stream.Recv(ctx)
-		if err1 != nil {
-			err = err1
-			log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
-			return
-		}
-		req = iface.(*pb.ConnectReq)
-
-		rc, err1 := net.Dial("tcp", req.Addr)
-		if err1 != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to connect to target: %v", err)
-			return
-		}
-		defer rc.Close()
-		rc.(*net.TCPConn).SetKeepAlive(true)
-
-		log.Ctx(ctx).Error().Caller().Err(err).Msgf("proxy %s <-> %s", req.Addr, req.Addr)
-
-		go func() {
-			defer func() {
-				e := recover()
-				if e != nil {
-					err = errors.Errorf("recover : %v", e)
-					log.Ctx(ctx).Error().Caller().Err(err).Send()
-				}
-				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			}()
-			var n int
-			for {
-				if l := len(req.Body); l > 0 {
-					n, err = rc.Write(req.Body)
-					if n < 0 || n < l {
-
-					}
-				}
-				iface, err = stream.Recv(ctx)
-				if err != nil {
-					log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
-					return
-				}
-				req = iface.(*pb.ConnectReq)
-			}
-		}()
-
-		go func() {
-			defer func() {
-				e := recover()
-				if e != nil {
-					err = errors.Errorf("recover : %v", e)
-					log.Ctx(ctx).Error().Caller().Err(err).Send()
-				}
-				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			}()
-			for {
-				buf := make([]byte, math.MaxUint16/2)
-				nr, er := rc.Read(buf)
-				if er != nil {
-					if er != io.EOF {
-						err = er
-						log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
-					}
-					break
-				}
-				if nr <= 0 {
-					continue
-				}
-				err1 := stream.Send(ctx, &pb.ConnectRsp{Body: buf})
-				if err1 != nil {
-					log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
-					return
-				}
-			}
-		}()
-		return
-	}
-
-	return
-}
-
-func (p *peer) connect(ctx context.Context, addr string, rc net.Conn) (err error) {
+func (p *peerCli) connect(ctx context.Context, addr string, rc net.Conn) (err error) {
 	defer rc.Close()
-	stream, err := p.Peer.Stream(ctx, "Connect")
+	stream, err := p.Peer.Stream(ctx, "Stream")
 	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 
-	req := &pb.ConnectReq{
+	req := &pb.StreamReq{
 		Addr: addr,
 	}
 	err = stream.Send(ctx, req)
 	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 
@@ -146,7 +62,12 @@ func (p *peer) connect(ctx context.Context, addr string, rc net.Conn) (err error
 			if l := len(req.Body); l > 0 {
 				n, err = rc.Write(req.Body)
 				if n < 0 || n < l {
-
+					if err == nil {
+						err = errors.Errorf(" n < 0 || n < l")
+					}
+				}
+				if err != nil {
+					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
 			}
 			iface, err := stream.Recv(ctx)
@@ -154,7 +75,7 @@ func (p *peer) connect(ctx context.Context, addr string, rc net.Conn) (err error
 				log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
 				return
 			}
-			req = iface.(*pb.ConnectReq)
+			req = iface.(*pb.StreamReq)
 		}
 	}()
 
@@ -180,7 +101,7 @@ func (p *peer) connect(ctx context.Context, addr string, rc net.Conn) (err error
 			if nr <= 0 {
 				continue
 			}
-			err1 := stream.Send(ctx, &pb.ConnectRsp{Body: buf})
+			err1 := stream.Send(ctx, &pb.StreamRsp{Body: buf[:nr]})
 			if err1 != nil {
 				log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
 				return
@@ -191,7 +112,7 @@ func (p *peer) connect(ctx context.Context, addr string, rc net.Conn) (err error
 }
 
 // Listen on addr and proxy to server to reach target from getAddr.
-func TCPLocal(ctx context.Context, socksAddr string, p peer) {
+func TCPLocal(ctx context.Context, socksAddr string, p *peerCli) {
 	l, err := net.Listen("tcp", socksAddr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
@@ -232,6 +153,7 @@ func TCPLocal(ctx context.Context, socksAddr string, p peer) {
 			err = p.connect(ctx, tgtAddr.String(), c)
 			if err != nil {
 				//
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 		}()
 	}

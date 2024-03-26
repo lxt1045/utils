@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"runtime"
-	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/lxt1045/errors"
@@ -20,7 +18,12 @@ type client struct {
 	LocalAddr  string
 	RemoteAddr string
 	Peer       rpc.Peer
-	*pb.ClientInfo
+	ClientInfo *pb.ClientInfo
+
+	bClient   bool
+	peerCli   *peerCli
+	peerSvc   *peerSvc
+	socksAddr string
 }
 
 func (c *client) Latency(ctx context.Context, in *pb.LatencyReq) (out *pb.LatencyRsp, err error) {
@@ -34,7 +37,7 @@ func (c *client) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, 
 	return &pb.CloseRsp{}, err
 }
 
-func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (resp *pb.ConnToRsp, err error) {
+func (c *client) ConnPeer(ctx context.Context, in *pb.ConnPeerReq) (resp *pb.ConnPeerRsp, err error) {
 	// 先 listen
 
 	// 再 连接
@@ -61,35 +64,48 @@ func (c *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (resp *pb.ConnToR
 		return
 	}
 
-	str := "Hello " + in.Client.Name
-	_, err = conn.Write([]byte(str))
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
-		return
-	}
-	log.Ctx(ctx).Info().Caller().Str("Write", str).
-		Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+	log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).
+		Str("remote", conn.RemoteAddr().String()).Msg("connected")
 
-	for {
-		buf := []byte("hello")
-		n, err := conn.Write(buf)
-		if err != nil {
-			fmt.Println("write failed", err)
-			break
-		}
-		log.Ctx(ctx).Info().Caller().Str("write", string(buf[:n])).
-			Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-		time.Sleep(time.Second)
+	n := atomic.AddUint32(&nStream, 1)
+	if n > 1 {
+		log.Ctx(ctx).Error().Caller().Str("local", conn.LocalAddr().String()).
+			Str("remote", conn.RemoteAddr().String()).Msgf("conn alredy connected")
+		// return
 	}
-	err = connectPeer(ctx, conn)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
+
+	if c.bClient {
+		me := &peerCli{
+			LocalAddr:  conn.LocalAddr().String(),
+			RemoteAddr: conn.RemoteAddr().String(),
+		}
+		me.Peer, err = rpc.StartPeer(ctx, conn, me, pb.RegisterPeerCliServer, pb.NewPeerSvcClient)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
+		c.peerCli = me
+
+		log.Ctx(ctx).Error().Caller().Msgf("SOCKS proxy on %s", c.socksAddr)
+		TCPLocal(ctx, c.socksAddr, c.peerCli)
+
+	} else {
+		me := &peerSvc{
+			LocalAddr:  conn.LocalAddr().String(),
+			RemoteAddr: conn.RemoteAddr().String(),
+		}
+		me.Peer, err = rpc.StartPeer(ctx, conn, me, pb.RegisterPeerSvcServer, pb.NewPeerCliClient)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
+
+		c.peerSvc = me
 	}
 	return
 }
 
-func (c *client) Auth(ctx context.Context) (err error) {
+func (c *client) auth(ctx context.Context) (err error) {
 	req := &pb.AuthReq{
 		Name: c.Name,
 	}
@@ -103,7 +119,7 @@ func (c *client) Auth(ctx context.Context) (err error) {
 	return
 }
 
-func (c *client) Clients(ctx context.Context) (clients []*pb.ClientInfo, err error) {
+func (c *client) clients(ctx context.Context) (clients []*pb.ClientInfo, err error) {
 	req := &pb.ClientsReq{
 		MyName: c.Name,
 	}
@@ -118,7 +134,6 @@ func (c *client) Clients(ctx context.Context) (clients []*pb.ClientInfo, err err
 	return
 }
 
-func localPort(conn net.Conn) string {
-	addrs := strings.Split(conn.LocalAddr().String(), ":")
-	return addrs[len(addrs)-1]
-}
+var (
+	nStream uint32
+)
