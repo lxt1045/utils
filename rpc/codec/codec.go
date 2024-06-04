@@ -29,7 +29,8 @@ type Msg interface {
 	proto.Message
 }
 
-type Caller interface {
+// Method 表示一个 struct 的可以调用的方法
+type Method interface {
 	ReqType() reflect.Type
 	RespType() reflect.Type
 	NewReq() Msg
@@ -47,7 +48,7 @@ type Codec struct {
 	segments  map[uint64][]byte // 分片
 	delay     *delay.Queue[post]
 
-	callers []Caller
+	callers []Method
 
 	streamsLock sync.Mutex
 	streams     map[uint64]*Stream
@@ -84,7 +85,7 @@ func (d post) Post() {
 	}
 }
 
-func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Caller) (c *Codec, err error) {
+func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method) (c *Codec, err error) {
 	c = &Codec{
 		rwc:      rwc,
 		resps:    make(map[uint64]resp),

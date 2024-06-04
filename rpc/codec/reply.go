@@ -10,7 +10,7 @@ import (
 	"github.com/lxt1045/utils/rpc/base"
 )
 
-func (c *Codec) Handler(ctx context.Context, caller Caller, header Header, req Msg) (resp Msg, err error) {
+func (c *Codec) Handler(ctx context.Context, caller Method, header Header, req Msg) (resp Msg, err error) {
 	defer func() {
 		// resp 发送放 defer 中，及时panic也有返回值
 		e := recover()

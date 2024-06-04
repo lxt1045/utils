@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-var _ codec.Caller = SvcMethod{} // 检查是由实现接口
+var _ codec.Method = SvcMethod{} // 检查是由实现接口
 
 type SvcMethod struct {
 	CliMethod

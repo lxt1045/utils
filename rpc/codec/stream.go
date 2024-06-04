@@ -23,7 +23,7 @@ type Stream struct {
 	cacheLock sync.Mutex
 	cacheCh   chan struct{}
 
-	caller         Caller
+	caller         Method
 	connectAt      int64
 	deadline       int64 // 超时时间，超时后删除
 	bSvc           bool
@@ -140,7 +140,7 @@ func (s *Stream) Send(ctx context.Context, req Msg) (err error) {
 	return
 }
 
-func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, caller Caller) (stream *Stream, err error) {
+func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, caller Method) (stream *Stream, err error) {
 	stream = &Stream{
 		codec:     c,
 		callID:    callID,

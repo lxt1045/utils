@@ -14,9 +14,9 @@ import (
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
-	"github.com/lxt1045/utils/rpc/nat/filesystem"
-	"github.com/lxt1045/utils/rpc/nat/pb"
 	"github.com/lxt1045/utils/rpc/socket"
+	"github.com/lxt1045/utils/rpc/test/nat/filesystem"
+	"github.com/lxt1045/utils/rpc/test/nat/pb"
 )
 
 type Config struct {
@@ -82,7 +82,7 @@ func main() {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
-	log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
+	log.Ctx(ctx).Info().Caller().Interface("resp", resp).Send()
 
 	addrs := strings.Split(conn.LocalAddr().String(), ":")
 	go func(addr string) {
@@ -122,7 +122,7 @@ func main() {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
-		log.Ctx(ctx).Error().Caller().Interface("resp", resp).Send()
+		log.Ctx(ctx).Info().Caller().Interface("resp", resp).Send()
 
 		_, err = cli.ConnTo(ctx, &pb.ConnToReq{
 			Client:    target,
@@ -182,21 +182,25 @@ func (s *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 		runtime.Gosched()
 	}
 
-	conn, err := socket.Dial(ctx, "tcp4", in.Client.Addr)
+	conn, err := socket.Dial(ctx, "tcp4", s.LocalAddr, in.Client.Addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
 		return
 	}
 
-	str := "Hello " + in.Client.Name
-	_, err = conn.Write([]byte(str))
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
-		return
-	}
-	log.Ctx(ctx).Info().Caller().Str("read", str).
-		Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-
+	go func() {
+		for i := 0; i < 10; i++ {
+			str := "Hello " + in.Client.Name + ", time: " + time.Now().Format(time.RFC3339)
+			_, err = conn.Write([]byte(str))
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
+				return
+			}
+			log.Ctx(ctx).Info().Caller().Str("read", str).
+				Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+			time.Sleep(time.Second * 1)
+		}
+	}()
 	out = &pb.ConnToRsp{
 		Status: pb.ConnToRsp_Succ,
 	}

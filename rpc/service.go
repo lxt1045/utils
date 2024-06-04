@@ -25,16 +25,16 @@ type Service struct {
 	_type         reflect.Type
 }
 
-func (s Service) Callers() []codec.Caller {
-	callers := make([]codec.Caller, len(s.svcMethods))
+func (s Service) Methods() []codec.Method {
+	callers := make([]codec.Method, len(s.svcMethods))
 	for i, m := range s.svcMethods {
 		callers[i] = m
 	}
 	return callers
 }
-func (s Service) CloneCallers(service interface{}) []codec.Caller {
-	svcPointer := reflect.ValueOf(service).UnsafePointer()
-	callers := make([]codec.Caller, len(s.svcMethods))
+func (s Service) CloneMethods(svc interface{}) []codec.Method {
+	svcPointer := reflect.ValueOf(svc).UnsafePointer()
+	callers := make([]codec.Method, len(s.svcMethods))
 	for i, m := range s.svcMethods {
 		m.SvcPointer = svcPointer
 		callers[i] = m
@@ -42,9 +42,9 @@ func (s Service) CloneCallers(service interface{}) []codec.Caller {
 	return callers
 }
 
-// StartService fRegister: pb.RegisterHelloService, service: implementation
-func StartService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
-	rpc, err := StartPeer(ctx, rwc, service, fRegisters...)
+// StartService fRegister: pb.RegisterHelloService, svc: implementation
+func StartService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
+	rpc, err := StartPeer(ctx, rwc, svc, fRegisters...)
 	if err != nil {
 		return
 	}
@@ -52,8 +52,8 @@ func StartService(ctx context.Context, rwc io.ReadWriteCloser, service interface
 	return
 }
 
-// StartService fRegister: pb.RegisterHelloService, service: implementation
-func startService(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (s Service, err error) {
+// StartService fRegister: pb.RegisterHelloService, svc: implementation
+func startService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
 	s = Service{
 		svcMethods:    make([]SvcMethod, 0, 32),
 		svcInterfaces: make(map[string]uint32),
@@ -63,7 +63,7 @@ func startService(ctx context.Context, rwc io.ReadWriteCloser, service interface
 			err = errors.Errorf("fRegister should not been nil")
 			return
 		}
-		methods, err1 := getSvcMethods(fRegister, service)
+		methods, err1 := getSvcMethods(fRegister, svc)
 		if err1 != nil {
 			err = err1
 			return
@@ -76,7 +76,7 @@ func startService(ctx context.Context, rwc io.ReadWriteCloser, service interface
 	}
 
 	if rwc != nil {
-		s.Codec, err = codec.NewCodec(ctx, rwc, s.Callers())
+		s.Codec, err = codec.NewCodec(ctx, rwc, s.Methods())
 		if err != nil {
 			return
 		}
@@ -93,8 +93,8 @@ func (c Service) Close(ctx context.Context) (err error) {
 	return
 }
 
-func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser, service interface{}) (sNew Service, err error) {
-	s.Codec, err = codec.NewCodec(ctx, rwc, s.CloneCallers(service))
+func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (sNew Service, err error) {
+	s.Codec, err = codec.NewCodec(ctx, rwc, s.CloneMethods(svc))
 	if err != nil {
 		return
 	}

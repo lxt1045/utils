@@ -15,7 +15,7 @@ type Peer struct {
 }
 
 // StartPeer fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
-func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
 	rpc = Peer{
 		Client: Client{
 			cliMethods: make(map[string]CliMethod),
@@ -24,7 +24,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 		Service: Service{
 			svcMethods:    make([]SvcMethod, 0, 32),
 			svcInterfaces: make(map[string]uint32),
-			_type:         reflect.TypeOf(service),
+			_type:         reflect.TypeOf(svc),
 		},
 	}
 
@@ -53,9 +53,9 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 			continue
 		}
 
-		// service
+		// svc
 		if regMethodType.NumIn() == 2 && regMethodType.NumOut() == 0 {
-			methods, err1 := getSvcMethods(f, service)
+			methods, err1 := getSvcMethods(f, svc)
 			if err1 != nil {
 				err = err1
 				return
@@ -75,7 +75,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 	}
 
 	if rwc != nil {
-		pCodec, err1 := codec.NewCodec(ctx, rwc, rpc.Service.Callers())
+		pCodec, err1 := codec.NewCodec(ctx, rwc, rpc.Service.Methods())
 		if err1 != nil {
 			err = err1
 			return
@@ -96,12 +96,12 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, service interface{},
 	return
 }
 
-func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, service interface{}) (out Peer, err error) {
-	if reflect.TypeOf(service) != rpc.Service._type {
-		err = errors.Errorf("service type is not equal")
+func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
+	if reflect.TypeOf(svc) != rpc.Service._type {
+		err = errors.Errorf("svc type is not equal")
 		return
 	}
-	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.CloneCallers(service))
+	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.CloneMethods(svc))
 	if err != nil {
 		return
 	}
