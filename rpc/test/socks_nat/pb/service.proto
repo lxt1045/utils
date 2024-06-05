@@ -76,13 +76,13 @@ message ConnPeerRsp {
   Err err = 4;
 }
 
-message ConnReq {
+message StreamReq {
   string addr = 1;
   Network network = 2;
   bytes body = 3;
 }
 
-message ConnRsp {
+message StreamRsp {
   bytes body = 1;
   Err err = 2;
 }
@@ -102,12 +102,12 @@ service Client {
   rpc ConnPeer(ConnPeerReq) returns (ConnPeerRsp) {}
 }
 
-service SocksCli {
+service PeerCli {
   rpc Close(CloseReq) returns (CloseRsp) {}
 }
 
-service SocksSvc {
+service PeerSvc {
   rpc Close(CloseReq) returns (CloseRsp) {}
   rpc Auth(AuthReq) returns (AuthRsp) {}
-  rpc Conn(ConnReq) returns (ConnRsp) {}
+  rpc Stream(StreamReq) returns (StreamRsp) {}
 }

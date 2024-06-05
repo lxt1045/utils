@@ -11,8 +11,8 @@ import (
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
 	msg "github.com/lxt1045/utils/rpc"
-	"github.com/lxt1045/utils/rpc/pb"
 	"github.com/lxt1045/utils/rpc/test/filesystem"
+	"github.com/lxt1045/utils/rpc/test/pb"
 )
 
 type Config struct {

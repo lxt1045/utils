@@ -50,7 +50,7 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.TCP).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, nil, &socksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, nil, &service{}, pb.NewClientClient, pb.RegisterServiceServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
@@ -75,7 +75,7 @@ func main() {
 
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
-		svc := &socksSvc{
+		svc := &service{
 			RemoteAddr: conn.RemoteAddr().String(),
 		}
 		peer, err := gPeer.Clone(ctx, conn, svc)

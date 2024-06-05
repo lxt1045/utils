@@ -99,24 +99,34 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 
 	switch req.Cmd {
 	case base.CmdReq_Stream:
+		res := &base.CmdRsp{
+			Status: base.CmdRsp_Succ,
+		}
+		var caller Method
+		if uint16(len(c.callers)) > header.CallID {
+			caller = c.callers[header.CallID]
+		}
+		if caller == nil {
+			log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, caller is nil")
+			return
+		}
+		stream := &Stream{
+			codec:      c,
+			callID:     header.CallID,
+			callSN:     header.CallSN,
+			cacheCh:    make(chan struct{}),
+			bSvc:       true,
+			connectAt:  time.Now().Unix(),
+			caller:     caller,
+			bFirstCall: true,
+		}
 		func() {
 			key := respsKey(header.CallSN)
 			c.streamsLock.Lock()
 			defer c.streamsLock.Unlock()
-			c.streams[key] = &Stream{
-				// reqType:  caller.ReqType(),
-				// respType: caller.RespType(),
-				codec:     c,
-				callID:    header.CallID,
-				callSN:    header.CallSN,
-				cacheCh:   make(chan struct{}),
-				bSvc:      true,
-				connectAt: time.Now().Unix(),
-			}
+			c.streams[key] = stream
 		}()
-		res := &base.CmdRsp{
-			Status: base.CmdRsp_Succ,
-		}
+
 		err = c.SendMsg(ctx, VerCmdResp, header.Channel, header.CallID, header.CallSN, res)
 		if err != nil {
 			return

@@ -9,8 +9,8 @@ import (
 	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
-	"github.com/lxt1045/utils/rpc/pb"
 	"github.com/lxt1045/utils/rpc/test/filesystem"
+	"github.com/lxt1045/utils/rpc/test/pb"
 	quic "github.com/quic-go/quic-go"
 )
 

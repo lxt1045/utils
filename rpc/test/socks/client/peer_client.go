@@ -14,105 +14,26 @@ import (
 	"github.com/lxt1045/utils/socks"
 )
 
-type peerCli struct {
+type socksCli struct {
 	Name       string
 	LocalAddr  string
 	RemoteAddr string
+	socksAddr  string
 	Peer       rpc.Peer
 }
 
-func (p *peerCli) close(ctx context.Context) (err error) {
+func (p *socksCli) close(ctx context.Context) (err error) {
 	err = p.Peer.Close(ctx)
 	return
 }
 
-func (p *peerCli) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
+func (p *socksCli) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
 	err = p.Peer.Close(ctx)
 	return &pb.CloseRsp{}, err
 }
 
-func (p *peerCli) connect(ctx context.Context, addr string, rc net.Conn) (err error) {
-	defer rc.Close()
-	stream, err := p.Peer.Stream(ctx, "Stream")
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-
-	req := &pb.StreamReq{
-		Addr: addr,
-	}
-	err = stream.Send(ctx, req)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-
-	go func() {
-		defer func() {
-			e := recover()
-			if e != nil {
-				err = errors.Errorf("recover : %v", e)
-				log.Ctx(ctx).Error().Caller().Err(err).Send()
-			}
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		}()
-		var n int
-		for {
-			if l := len(req.Body); l > 0 {
-				n, err = rc.Write(req.Body)
-				if n < 0 || n < l {
-					if err == nil {
-						err = errors.Errorf(" n < 0 || n < l")
-					}
-				}
-				if err != nil {
-					log.Ctx(ctx).Error().Caller().Err(err).Send()
-				}
-			}
-			iface, err := stream.Recv(ctx)
-			if err != nil {
-				log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
-				return
-			}
-			req = iface.(*pb.StreamReq)
-		}
-	}()
-
-	go func() {
-		defer func() {
-			e := recover()
-			if e != nil {
-				err = errors.Errorf("recover : %v", e)
-				log.Ctx(ctx).Error().Caller().Err(err).Send()
-			}
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		}()
-		for {
-			buf := make([]byte, math.MaxUint16/2)
-			nr, er := rc.Read(buf)
-			if er != nil {
-				if er != io.EOF {
-					err = er
-					log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
-				}
-				break
-			}
-			if nr <= 0 {
-				continue
-			}
-			err1 := stream.Send(ctx, &pb.StreamRsp{Body: buf[:nr]})
-			if err1 != nil {
-				log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
-				return
-			}
-		}
-	}()
-	return
-}
-
 // Listen on addr and proxy to server to reach target from getAddr.
-func TCPLocal(ctx context.Context, socksAddr string, p *peerCli) {
+func (p *socksCli) RunLocal(ctx context.Context, socksAddr string) {
 	l, err := net.Listen("tcp", socksAddr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
@@ -157,4 +78,83 @@ func TCPLocal(ctx context.Context, socksAddr string, p *peerCli) {
 			}
 		}()
 	}
+}
+
+func (p *socksCli) connect(ctx context.Context, addr string, rc net.Conn) (err error) {
+	defer rc.Close()
+	stream, err := p.Peer.Stream(ctx, "Conn")
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+
+	// 建一个协程，处理返回数据
+	go func() {
+		defer func() {
+			e := recover()
+			if e != nil {
+				err = errors.Errorf("recover : %v", e)
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+			}
+			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		}()
+		var n int
+		for {
+			iface, err := stream.Recv(ctx)
+			if err != nil {
+				log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
+				return
+			}
+			rsp := iface.(*pb.ConnRsp)
+			if l := len(rsp.Body); l > 0 {
+				n, err = rc.Write(rsp.Body)
+				if n < 0 || n < l {
+					if err == nil {
+						err = errors.Errorf(" n < 0 || n < l")
+					}
+				}
+				if err != nil {
+					log.Ctx(ctx).Error().Caller().Err(err).Send()
+				}
+			}
+		}
+	}()
+
+	defer func() {
+		e := recover()
+		if e != nil {
+			err = errors.Errorf("recover : %v", e)
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+		}
+		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+	}()
+
+	req := &pb.ConnReq{
+		Addr: addr,
+	}
+	err = stream.Send(ctx, req)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	for {
+		buf := make([]byte, math.MaxUint16/2)
+		nr, er := rc.Read(buf)
+		if er != nil {
+			if er != io.EOF {
+				err = er
+				log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
+			}
+			break
+		}
+		if nr <= 0 {
+			continue
+		}
+		err1 := stream.Send(ctx, &pb.ConnReq{Body: buf[:nr]})
+		if err1 != nil {
+			log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
+			return
+		}
+	}
+	return
 }

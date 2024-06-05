@@ -6,13 +6,11 @@ require (
 	github.com/bytedance/mockey v1.2.6
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gogo/protobuf v1.3.2
-	github.com/google/uuid v1.3.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/klauspost/compress v1.17.4
 	github.com/lxt1045/errors v0.0.0-20240110071557-9124b50c8f24
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
-	github.com/pierrec/lz4/v4 v4.1.21
 	github.com/quic-go/quic-go v0.40.1
 	github.com/rs/zerolog v1.30.0
 	github.com/sirupsen/logrus v1.9.3

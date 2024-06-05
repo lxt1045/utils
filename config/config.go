@@ -86,6 +86,19 @@ type Log struct {
 	Filename string
 }
 
+func UnmarshalFS(file string, fsStatic embed.FS, conf interface{}) (err error) {
+	bs, err := fs.ReadFile(fsStatic, file)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	err = Unmarshal(bs, conf)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func Unmarshal(bs []byte, conf interface{}) (err error) {
 	m := make(map[string]interface{})
 	err = yaml.Unmarshal(bs, m)

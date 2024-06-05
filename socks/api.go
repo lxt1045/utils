@@ -12,7 +12,7 @@ import (
 )
 
 // Listen on addr and proxy to server to reach target from getAddr.
-func TCPLocalOnly(ctx context.Context, socksAddr string, getAddr func(net.Conn) (Addr, error)) {
+func TCPLocalOnly(ctx context.Context, socksAddr string) {
 	l, err := net.Listen("tcp", socksAddr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
@@ -29,7 +29,7 @@ func TCPLocalOnly(ctx context.Context, socksAddr string, getAddr func(net.Conn) 
 		go func() {
 			defer c.Close()
 			c.(*net.TCPConn).SetKeepAlive(true)
-			tgt, err := getAddr(c)
+			tgt, err := Handshake(c)
 			if err != nil {
 				// UDP: keep the connection until disconnect then free the UDP socket
 				if err == InfoUDPAssociate {

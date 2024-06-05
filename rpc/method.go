@@ -64,7 +64,7 @@ func (m CliMethod) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec.Msg
 }
 
 // RegisterServiceServer(s *grpc.Server, srv ServiceServer)
-func getSvcMethods(fRegister interface{}, service interface{}) (methods []SvcMethod, err error) {
+func getSvcMethods(fRegister interface{}, svc interface{}) (methods []SvcMethod, err error) {
 	regMethodType := reflect.TypeOf(fRegister)
 	if regMethodType.Kind() != reflect.Func {
 		err = errors.Errorf("arg fun must be func")
@@ -92,8 +92,8 @@ func getSvcMethods(fRegister interface{}, service interface{}) (methods []SvcMet
 	}
 
 	// 判断是否实现了接口
-	if service != nil {
-		if svcImpType := reflect.TypeOf(service); !svcImpType.Implements(ifaceType) {
+	if svc != nil {
+		if svcImpType := reflect.TypeOf(svc); !svcImpType.Implements(ifaceType) {
 			err = errors.Errorf("the handler of type %v that does not satisfy %v", svcImpType, ifaceType)
 			return
 		}
@@ -133,14 +133,14 @@ func getSvcMethods(fRegister interface{}, service interface{}) (methods []SvcMet
 			},
 		}
 
-		if service != nil {
+		if svc != nil {
 			methodTarget := reflect.ValueOf(
 				func(unsafe.Pointer, context.Context, unsafe.Pointer) (unsafe.Pointer, error) {
 					return nil, nil
 				},
 			).Interface()
 
-			svcImpType := reflect.TypeOf(service)
+			svcImpType := reflect.TypeOf(svc)
 			svcImpMethod, ok := svcImpType.MethodByName(method.Name)
 			if !ok {
 				err = errors.Errorf("svcImpType.MethodByName not ok")
@@ -156,7 +156,7 @@ func getSvcMethods(fRegister interface{}, service interface{}) (methods []SvcMet
 				return
 			}
 			m.Func = f
-			m.SvcPointer = reflect.ValueOf(service).UnsafePointer()
+			m.SvcPointer = reflect.ValueOf(svc).UnsafePointer()
 		}
 
 		methods = append(methods, m)
@@ -189,7 +189,7 @@ func getCliMethods(fRegister interface{}) (methods []CliMethod, err error) {
 		return
 	}
 	if ifaceType.NumMethod() == 0 {
-		err = errors.Errorf("service %s has no funcs", ifaceType.String())
+		err = errors.Errorf("svc %s has no funcs", ifaceType.String())
 		return
 	}
 

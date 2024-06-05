@@ -1,2 +1,4 @@
 rpc/test/socks/client/client
 rpc/test/socks/service/service
+rpc/test/socks_nat/service/service
+rpc/test/socks_nat/client/client
