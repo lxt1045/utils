@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
@@ -55,11 +56,6 @@ func main() {
 		return
 	}
 
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-
 	cmtls := conf.ClientConn.TLS
 	tlsConfig, err := config.LoadTLSConfig(filesystem.Static, cmtls.ClientCert, cmtls.ClientKey, cmtls.CACert)
 	if err != nil {
@@ -68,26 +64,41 @@ func main() {
 	}
 	tlsConfig.ServerName = conf.ClientConn.Host
 
-	// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
-	conn, err := socket.DialTLS(ctx, "tcp", conf.ClientConn.Addr, tlsConfig)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-	log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-
 	cli := &socksCli{
-		Name:       flags.Client,
-		LocalAddr:  conn.LocalAddr().String(),
-		RemoteAddr: conn.RemoteAddr().String(),
-		socksAddr:  flags.Socks,
+		Name:      flags.Client,
+		socksAddr: flags.Socks,
+		chPeer:    make(chan *Peer, 20),
 	}
 	var _ pb.SocksCliServer = cli
-	cli.Peer, err = rpc.StartPeer(ctx, conn, cli, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
+	go func() {
+		defer func() {
+			e := recover()
+			if e != nil {
+				err = errors.Errorf("recover : %v", e)
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+			}
+		}()
+		for {
+			// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
+			conn, err := socket.DialTLS(ctx, "tcp", conf.ClientConn.Addr, tlsConfig)
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+				return
+			}
+			log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+			peer, err1 := rpc.StartPeer(ctx, conn, cli, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+			if err1 != nil {
+				err = err1
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+				return
+			}
+			cli.chPeer <- &Peer{
+				Peer:        peer,
+				LocalAddrs:  conn.LocalAddr().String(),
+				RemoteAddrs: conn.RemoteAddr().String(),
+			}
+		}
+	}()
 
 	//
 

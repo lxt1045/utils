@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io"
-	"math"
 	"net"
 	"time"
 
@@ -12,23 +11,33 @@ import (
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/test/socks/pb"
 	"github.com/lxt1045/utils/socks"
+	_ "go.uber.org/automaxprocs"
 )
 
 type socksCli struct {
-	Name       string
-	LocalAddr  string
-	RemoteAddr string
-	socksAddr  string
-	Peer       rpc.Peer
+	Name      string
+	socksAddr string
+	chPeer    chan *Peer
+}
+
+type Peer struct {
+	LocalAddrs  string
+	RemoteAddrs string
+	rpc.Peer
 }
 
 func (p *socksCli) close(ctx context.Context) (err error) {
-	err = p.Peer.Close(ctx)
+	for peer := range p.chPeer {
+		err1 := peer.Close(ctx)
+		if err1 != nil {
+			err = err1
+		}
+	}
 	return
 }
 
 func (p *socksCli) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp, err error) {
-	err = p.Peer.Close(ctx)
+	err = p.close(ctx)
 	return &pb.CloseRsp{}, err
 }
 
@@ -47,48 +56,38 @@ func (p *socksCli) RunLocal(ctx context.Context, socksAddr string) {
 			continue
 		}
 
-		go func() {
-			defer c.Close()
-			c.(*net.TCPConn).SetKeepAlive(true)
-			tgtAddr, err := socks.Handshake(c)
-			if err != nil {
-				// UDP: keep the connection until disconnect then free the UDP socket
-				if err == socks.InfoUDPAssociate {
-					buf := make([]byte, 1)
-					// block here
-					for {
-						_, err := c.Read(buf)
-						if err, ok := err.(net.Error); ok && err.Timeout() {
-							continue
-						}
-						log.Ctx(ctx).Error().Caller().Err(err).Msgf("UDP Associate End.")
-						return
-					}
-				}
-
-				log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to get target address: %v", err)
-				return
-			}
-			defer c.Close()
-
-			err = p.connect(ctx, tgtAddr.String(), c)
-			if err != nil {
-				//
-				log.Ctx(ctx).Error().Caller().Err(err).Send()
-			}
-		}()
+		go p.connect(ctx, c)
 	}
 }
 
-func (p *socksCli) connect(ctx context.Context, addr string, rc net.Conn) (err error) {
-	defer rc.Close()
-	stream, err := p.Peer.Stream(ctx, "Conn")
+func (p *socksCli) connect(ctx context.Context, rc net.Conn) (err error) {
+	rc.(*net.TCPConn).SetKeepAlive(true)
+	tgtAddr, err := socks.Handshake(rc)
+	if err != nil {
+		// UDP: keep the connection until disconnect then free the UDP socket
+		if err == socks.InfoUDPAssociate {
+			buf := make([]byte, 1)
+			// block here
+			for {
+				_, err = rc.Read(buf)
+				if err, ok := err.(net.Error); ok && err.Timeout() {
+					continue
+				}
+				log.Ctx(ctx).Error().Caller().Err(err).Msgf("UDP Associate End.")
+				return
+			}
+		}
+
+		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to get target address: %v", err)
+		return
+	}
+	peer := <-p.chPeer
+	stream, err := peer.StreamAsync(ctx, "Conn")
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 
-	// 建一个协程，处理返回数据
 	go func() {
 		defer func() {
 			e := recover()
@@ -97,17 +96,39 @@ func (p *socksCli) connect(ctx context.Context, addr string, rc net.Conn) (err e
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
 			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			// wg.Done()
+			rc.Close()
+			select {
+			case p.chPeer <- peer:
+				log.Ctx(ctx).Info().Caller().Int("len(peers)", len(p.chPeer)).Msg("reuser peer++++++++++++++++++++++++")
+			case <-time.After(time.Second * 5):
+				log.Ctx(ctx).Info().Caller().Msg("close  peer------------------------")
+				peer.Close(ctx)
+			}
 		}()
 		var n int
-		for {
-			iface, err := stream.Recv(ctx)
-			if err != nil {
-				log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
-				return
+		ch := make(chan []byte, 1024)
+		go func() {
+			// TODO: Read 和Send 分两个进程处理
+			defer close(ch)
+			for {
+				iface, err := stream.Recv(ctx)
+				if err != nil {
+					log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
+					return
+				}
+				rsp := iface.(*pb.ConnRsp)
+				if rsp.Err != nil && rsp.Err.Code != 0 {
+					err = errors.NewErr(int(rsp.Err.Code), rsp.Err.Msg)
+					log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
+					return
+				}
+				ch <- rsp.Body
 			}
-			rsp := iface.(*pb.ConnRsp)
-			if l := len(rsp.Body); l > 0 {
-				n, err = rc.Write(rsp.Body)
+		}()
+		for bs := range ch {
+			if l := len(bs); l > 0 {
+				n, err = rc.Write(bs)
 				if n < 0 || n < l {
 					if err == nil {
 						err = errors.Errorf(" n < 0 || n < l")
@@ -126,35 +147,42 @@ func (p *socksCli) connect(ctx context.Context, addr string, rc net.Conn) (err e
 			err = errors.Errorf("recover : %v", e)
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 		}
-		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		// wg.Wait()
+		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 	}()
 
-	req := &pb.ConnReq{
-		Addr: addr,
-	}
-	err = stream.Send(ctx, req)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-	for {
-		buf := make([]byte, math.MaxUint16/2)
-		nr, er := rc.Read(buf)
-		if er != nil {
-			if er != io.EOF {
-				err = er
-				log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
+	ch := make(chan []byte, 1024)
+	go func() {
+		defer close(ch)
+		for {
+			buf := make([]byte, 1024*8)
+			// buf := make([]byte, math.MaxUint16/2)
+			nr, er := rc.Read(buf)
+			if er != nil {
+				if er != io.EOF {
+					err = er
+					log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
+				}
+				break
 			}
-			break
+			if nr <= 0 {
+				continue
+			}
+
+			ch <- buf[:nr]
 		}
-		if nr <= 0 {
-			continue
-		}
-		err1 := stream.Send(ctx, &pb.ConnReq{Body: buf[:nr]})
+	}()
+	addr := tgtAddr.String()
+	for bs := range ch {
+		err1 := stream.Send(ctx, &pb.ConnReq{
+			Addr: addr,
+			Body: bs,
+		})
 		if err1 != nil {
 			log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
 			return
 		}
+		addr = ""
 	}
 	return
 }

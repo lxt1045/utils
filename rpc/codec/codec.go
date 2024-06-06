@@ -135,7 +135,8 @@ func respsKey(callSN uint32) uint64 {
 }
 
 func (c *Codec) Heartbeat(ctx context.Context) {
-	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 30)) // 心跳包; client 发送
+	return
+	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 100)) // 心跳包; client 发送
 	defer tickerHeartbeat.Stop()
 	for {
 		<-tickerHeartbeat.C
@@ -172,7 +173,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return
 			}
-			err = errors.Errorf(err.Error())
+			// err = errors.Errorf(err.Error())
 			return
 		}
 
@@ -245,7 +246,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 func ReadPack(ctx context.Context, r io.Reader, buf []byte) (header Header, bsBody []byte, err error) {
 	n, err := io.ReadFull(r, buf[:2]) // 先读长度
 	if err != nil {
-		if err != io.EOF || err != io.ErrUnexpectedEOF {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			return
 		}
 		err = errors.Errorf(err.Error())
@@ -443,5 +444,8 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 		return
 	}
 	_, err = c.rwc.Write(wbuf0)
+	if err != nil {
+		err = errors.New(err.Error())
+	}
 	return
 }

@@ -139,7 +139,7 @@ func (s *Stream) Send(ctx context.Context, req Msg) (err error) {
 	return
 }
 
-func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, caller Method) (stream *Stream, err error) {
+func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, caller Method, sync bool) (stream *Stream, err error) {
 	stream = &Stream{
 		codec:     c,
 		callID:    callID,
@@ -167,7 +167,7 @@ func (c *Codec) Stream(ctx context.Context, channel uint16, callID uint16, calle
 	if err != nil {
 		return
 	}
-	if done != nil {
+	if sync && done != nil {
 		err = <-done
 	}
 	return

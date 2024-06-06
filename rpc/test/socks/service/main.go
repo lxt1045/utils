@@ -80,7 +80,7 @@ func main() {
 		}
 		peer, err := gPeer.Clone(ctx, conn, svc)
 		if err != nil {
-			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue
 		}
 		svc.Peer = peer

@@ -141,12 +141,20 @@ func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp c
 
 // Stream 流式调用
 func (c *Client) Stream(ctx context.Context, method string) (stream *codec.Stream, err error) {
+	return c.doStream(ctx, method, true)
+}
+
+// StreamAsync 不等对方返回
+func (c *Client) StreamAsync(ctx context.Context, method string) (stream *codec.Stream, err error) {
+	return c.doStream(ctx, method, false)
+}
+func (c *Client) doStream(ctx context.Context, method string, sync bool) (stream *codec.Stream, err error) {
 	m, ok := c.svcMethods[method]
 	if !ok {
 		err = errors.Errorf("method not found: %s", method)
 		return
 	}
-	stream, err = c.Codec.Stream(ctx, 0, m.CallID, m)
+	stream, err = c.Codec.Stream(ctx, 0, m.CallID, m, sync)
 	return
 }
 

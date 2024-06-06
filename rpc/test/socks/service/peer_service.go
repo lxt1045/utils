@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io"
-	"math"
 	"net"
 	"time"
 
@@ -56,28 +55,35 @@ func (p *socksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 					err = errors.Errorf("recover : %v", e)
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
-				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-				// p.close(ctx)
+				// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			}()
 			var n int
-			for {
-				if l := len(req.Body); l > 0 {
-					n, err = rc.Write(req.Body)
-					if n < 0 || n < l {
-						if err == nil {
-							err = errors.Errorf(" n < 0 || n < l")
-						}
+			ch := make(chan []byte, 1024)
+			go func() {
+				// TODO: Read 和Send 分两个进程处理
+				defer close(ch)
+				for {
+					if l := len(req.Body); l > 0 {
+						ch <- req.Body
 					}
+					iface, err := stream.Recv(ctx)
 					if err != nil {
-						log.Ctx(ctx).Error().Caller().Err(err).Send()
+						log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
+						return
+					}
+					req = iface.(*pb.ConnReq)
+				}
+			}()
+			for bs := range ch {
+				n, err = rc.Write(bs)
+				if n < 0 || n < len(bs) {
+					if err == nil {
+						err = errors.Errorf(" n < 0 || n < l")
 					}
 				}
-				iface, err := stream.Recv(ctx)
 				if err != nil {
-					log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
-					return
+					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
-				req = iface.(*pb.ConnReq)
 			}
 		}()
 
@@ -88,31 +94,47 @@ func (p *socksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 					err = errors.Errorf("recover : %v", e)
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
+				// wg.Wait()
 				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+				stream.Close(ctx)
 				// p.close(ctx)
 			}()
-			for {
-				buf := make([]byte, math.MaxUint16/2)
-				nr, er := rc.Read(buf)
-				if er != nil {
-					if er != io.EOF {
-						err = er
-						log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
+			// buf := make([]byte, math.MaxUint16/2)
+			// buf := make([]byte, 1<<20)
+
+			ch := make(chan []byte, 1024)
+			go func() {
+				defer close(ch)
+				for {
+					// buf := make([]byte, math.MaxUint16/2)
+					buf := make([]byte, 1024*8)
+					nr, er := rc.Read(buf)
+					if er != nil {
+						if er != io.EOF {
+							err = er
+							log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
+						}
+						break
 					}
-					break
+					if nr <= 0 {
+						continue
+					}
+					ch <- buf[:nr]
 				}
-				if nr <= 0 {
-					continue
-				}
-				err1 := stream.Send(ctx, &pb.ConnRsp{Body: buf[:nr]})
+			}()
+			// TODO: Read 和Send 分两个进程处理
+			for bs := range ch {
+				err1 := stream.Send(ctx, &pb.ConnRsp{Body: bs})
 				if err1 != nil {
 					log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
 					return
 				}
 			}
 		}()
+
 		return
 	}
 
+	// 在阿里云再试试
 	return
 }
