@@ -11,7 +11,6 @@ import (
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/test/socks/pb"
 	"github.com/lxt1045/utils/socks"
-	_ "go.uber.org/automaxprocs"
 )
 
 type socksCli struct {

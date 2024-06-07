@@ -12,6 +12,7 @@ import (
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/test/filesystem"
 	"github.com/lxt1045/utils/rpc/test/socks/pb"
+	_ "go.uber.org/automaxprocs"
 )
 
 type Config struct {
