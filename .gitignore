@@ -2,3 +2,8 @@ rpc/test/socks/client/client
 rpc/test/socks/service/service
 rpc/test/socks_nat/service/service
 rpc/test/socks_nat/client/client
+rpc/test/socks_kcp/service/service
+rpc/test/socks_quic/client/client
+rpc/test/socks_quic/service/service
+rpc/test/socks_udp/client/client
+rpc/test/socks_udp/service/service

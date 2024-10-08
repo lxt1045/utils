@@ -179,7 +179,7 @@ func GetStream(ctx context.Context) (stream *Stream) {
 	s := ctx.Value(ctxStreamKey{})
 	stream, ok := s.(*Stream)
 	if !ok {
-		log.Ctx(ctx).Info().Caller().Msg("unkonw error")
+		log.Ctx(ctx).Info().Caller().Msgf("unkonw type: %T", s)
 	}
 	return
 }

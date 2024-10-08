@@ -249,7 +249,7 @@ func ReadPack(ctx context.Context, r io.Reader, buf []byte) (header Header, bsBo
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			return
 		}
-		err = errors.Errorf(err.Error())
+		err = errors.Errorf("%d: %s", n, err.Error())
 		return
 	}
 	if n != 2 {

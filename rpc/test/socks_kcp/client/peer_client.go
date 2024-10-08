@@ -9,7 +9,7 @@ import (
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
-	"github.com/lxt1045/utils/rpc/test/socks/pb"
+	"github.com/lxt1045/utils/rpc/test/socks_kcp/pb"
 	"github.com/lxt1045/utils/socks"
 )
 
