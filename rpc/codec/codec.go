@@ -135,7 +135,7 @@ func respsKey(callSN uint32) uint64 {
 }
 
 func (c *Codec) Heartbeat(ctx context.Context) {
-	return
+	// return
 	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 100)) // 心跳包; client 发送
 	defer tickerHeartbeat.Stop()
 	for {

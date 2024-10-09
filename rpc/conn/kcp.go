@@ -22,7 +22,7 @@ const (
 
 var (
 	//connsMap 用于保存连接相关的上下文
-	connsMap sync.Map //map[connID uint64]*Conn  //用于保存网络连接
+	connsMap = &sync.Map{} //map[connID uint64]*Conn  //用于保存网络连接
 
 	once        sync.Once
 	updataList  = list.New()                         //用于存放kcp，然后循环调用kcp.Updata(); updata()处理较快，单goroutine即可
@@ -144,7 +144,7 @@ func kcpUpdata(ctx context.Context, conf KcpConfig) {
 	for {
 		deadTime := time.Now().Unix() - conf.MaxIdleTime //认定僵死状态的时间
 		select {
-		case <-time.After(time.Millisecond * time.Duration(conf.KcpUpdataTime)):
+		case <-time.After(time.Second * time.Duration(conf.KcpUpdataTime)):
 			for e := updataList.Front(); e != nil; e = e.Next() {
 				if e.Value == nil {
 					continue
@@ -158,7 +158,7 @@ func kcpUpdata(ctx context.Context, conf KcpConfig) {
 					continue
 				}
 				conn.Lock() //kcp.Check() 和 kcp.Update() 线程不安全，，，
-				if conn.KCP != nil && conn.KCP.Check() <= uint32(time.Now().UnixNano()/int64(time.Millisecond)) {
+				if conn.KCP != nil && conn.KCP.Check() <= uint32(time.Now().UnixMilli()) {
 					conn.KCP.Update() //kcp.Check()比kcp.Update()轻量
 				}
 				conn.Unlock()

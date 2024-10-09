@@ -115,8 +115,8 @@ func testKcpService(ctx context.Context, t *testing.T, addr string, ch chan stru
 			all := s.AllInterfaces()
 			for i, m := range all {
 				svc := (*server)(m.SvcPointer)
-				t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
-					i, svc.Str, m.Name, m.reqType.String())
+				t.Logf("addrUdp:%s, idx:%d, service.Str:%v, func_key:%s, req:%s",
+					addrUdp, i, svc.Str, m.Name, m.reqType.String())
 			}
 		}
 	}
