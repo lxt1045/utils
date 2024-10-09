@@ -43,6 +43,7 @@ mqtt:
 func TestCamel2Case(t *testing.T) {
 	t.Run("Camel2Case", func(t *testing.T) {
 		cases := map[string]string{
+			"ProxyAddr":     "proxy_addr",
 			"TCP":           "tcp",
 			"CanDo":         "can_do",
 			"CBACanDo":      "cba_can_do",

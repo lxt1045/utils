@@ -37,7 +37,7 @@ type GRPC struct {
 }
 
 type Conn struct {
-	TCP              string
+	ProxyAddr        string
 	Addr             string
 	Host             string
 	EnableTLS        bool

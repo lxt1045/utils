@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"strings"
 
 	"github.com/lxt1045/errors"
@@ -17,11 +18,13 @@ import (
 )
 
 type Config struct {
-	Debug bool
-	Pprof bool
-	Dev   bool
-	Conn  config.Conn
-	Log   config.Log
+	Debug      bool
+	Pprof      bool
+	Dev        bool
+	Conn       config.Conn
+	ClientConn config.Conn
+	ProxyConn  config.Conn
+	Log        config.Log
 }
 
 func main() {
@@ -44,19 +47,21 @@ func main() {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
-	listener, err := tls.Listen("tcp", conf.Conn.Addr, tlsConfig)
+	listener, err := tls.Listen("tcp", conf.Conn.ProxyAddr, tlsConfig)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
 	defer listener.Close()
-	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Send()
+	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.ProxyAddr).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
+
+	ClientName := "Client"
 	for i := 0; ; i++ {
 		select {
 		case <-ctx.Done():
@@ -77,8 +82,16 @@ func main() {
 
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
-		svc := &socks.SocksSvc{
-			RemoteAddr: conn.RemoteAddr().String(),
+		// 建立新的代理连接
+		svc := &socks.SocksProxy{
+			SocksSvc: socks.SocksSvc{
+				RemoteAddr: conn.RemoteAddr().String(),
+			},
+			Svc: socks.SocksCli{
+				Name:      fmt.Sprintf(ClientName+":%d", i),
+				SocksAddr: "",
+				ChPeer:    make(chan *socks.Peer, 20),
+			},
 		}
 		peer, err := gPeer.Clone(ctx, conn, svc)
 		if err != nil {
@@ -86,6 +99,10 @@ func main() {
 			continue
 		}
 		svc.Peer = peer
+		var _ pb.SocksCliServer = svc
+
+		tlsConfig.ServerName = conf.ProxyConn.Host
+		go svc.Svc.RunConn(ctx, conf.ProxyConn.Addr, tlsConfig)
 
 		continue
 	}

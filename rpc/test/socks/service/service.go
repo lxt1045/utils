@@ -12,34 +12,34 @@ import (
 
 var (
 	svcs = struct {
-		m map[string]*service
+		m map[string]*Service
 		sync.RWMutex
 	}{
-		m: make(map[string]*service),
+		m: make(map[string]*Service),
 	}
 )
 
-func AddSvc(svc *service) {
+func AddSvc(svc *Service) {
 	svcs.Lock()
 	defer svcs.Unlock()
 	svcs.m[svc.Name] = svc
 }
 
-type service struct {
+type Service struct {
 	Name       string
 	RemoteAddr string
 	Network    pb.Network
 	Peer       rpc.Peer
 }
 
-func (s *service) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.CloseRsp, err error) {
+func (s *Service) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.CloseRsp, err error) {
 	svcs.Lock()
 	defer svcs.Unlock()
 	delete(svcs.m, s.Name)
 	return &pb.CloseRsp{}, nil
 }
 
-func (s *service) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, err error) {
+func (s *Service) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, err error) {
 	s.Name = req.Name
 	resp = &pb.AuthRsp{}
 	svcs.Lock()
@@ -48,7 +48,7 @@ func (s *service) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, 
 	return
 }
 
-func (s *service) Clients(ctx context.Context, req *pb.ClientsReq) (resp *pb.ClientsRsp, err error) {
+func (s *Service) Clients(ctx context.Context, req *pb.ClientsReq) (resp *pb.ClientsRsp, err error) {
 	clients := func() []*pb.ClientInfo {
 		m := make([]*pb.ClientInfo, 0, len(svcs.m))
 		svcs.Lock()
@@ -73,14 +73,14 @@ func (s *service) Clients(ctx context.Context, req *pb.ClientsReq) (resp *pb.Cli
 	return &pb.ClientsRsp{Clients: clients}, nil
 }
 
-func (s *service) Latency(ctx context.Context, req *pb.LatencyReq) (resp *pb.LatencyRsp, err error) {
+func (s *Service) Latency(ctx context.Context, req *pb.LatencyReq) (resp *pb.LatencyRsp, err error) {
 	return &pb.LatencyRsp{
 		Ts: time.Now().UnixNano(),
 	}, nil
 }
 
-func (s *service) ConnPeer(ctx context.Context, req *pb.ConnPeerReq) (resp *pb.ConnPeerRsp, err error) {
-	target := func() *service {
+func (s *Service) ConnPeer(ctx context.Context, req *pb.ConnPeerReq) (resp *pb.ConnPeerRsp, err error) {
+	target := func() *Service {
 		svcs.Lock()
 		defer svcs.Unlock()
 		return svcs.m[req.Client.Name]
