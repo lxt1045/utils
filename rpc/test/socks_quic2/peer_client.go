@@ -372,11 +372,16 @@ func (p *SocksCli) RunConn(ctx context.Context, addr string, tlsConfig *tls.Conf
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
-		p.ChPeer <- &Peer{
+
+		select {
+		case p.ChPeer <- &Peer{
 			TsLast:      time.Now().Unix(),
 			Peer:        peer,
 			LocalAddrs:  conn.LocalAddr().String(),
 			RemoteAddrs: conn.RemoteAddr().String(),
+		}:
+		case <-time.After(time.Second * 60):
+			peer.Close(ctx)
 		}
 	}
 }
@@ -404,23 +409,27 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, addr string, tlsConfig *tls.
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
-		zcli, err := conn.NewZip(ctx, cliConn)
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
-		}
+		// zcli, err := conn.NewZip(ctx, cliConn)
+		// if err != nil {
+		// 	log.Ctx(ctx).Error().Caller().Err(err).Send()
+		// 	return
+		// }
 		log.Ctx(ctx).Info().Caller().Str("local", cliConn.LocalAddr().String()).Str("remote", cliConn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctx, zcli, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		peer, err1 := rpc.StartPeer(ctx, cliConn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
-		p.ChPeer <- &Peer{
+		select {
+		case p.ChPeer <- &Peer{
 			TsLast:      time.Now().Unix(),
 			Peer:        peer,
 			LocalAddrs:  cliConn.LocalAddr().String(),
 			RemoteAddrs: cliConn.RemoteAddr().String(),
+		}:
+		case <-time.After(time.Second * 60):
+			peer.Close(ctx)
 		}
 	}
 }

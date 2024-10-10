@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/lxt1045/utils/config"
@@ -46,6 +48,16 @@ func main() {
 	defer cancel()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
+	if false {
+		go func() {
+			runtime.SetBlockProfileRate(1)     // 开启对阻塞操作的跟踪，block
+			runtime.SetMutexProfileFraction(1) // 开启对锁调用的跟踪，mutex
+
+			err := http.ListenAndServe(":16061", nil)
+			log.Ctx(ctx).Error().Err(err).Msg("http/pprof listen")
+		}()
+	}
+
 	// 解析配置文件
 	conf := &Config{}
 	file := "static/conf/default.yml"
@@ -66,7 +78,7 @@ func main() {
 	cli := &socks.SocksCli{
 		Name:      flags.Client,
 		SocksAddr: flags.Socks,
-		ChPeer:    make(chan *socks.Peer, 20),
+		ChPeer:    make(chan *socks.Peer),
 	}
 	var _ pb.SocksCliServer = cli
 	go cli.RunQuicConn(ctx, conf.ClientConn.Addr, tlsConfig)

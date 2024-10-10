@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/lxt1045/errors"
@@ -29,9 +31,20 @@ type Config struct {
 }
 
 func main() {
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
+
+	if false {
+		go func() {
+			runtime.SetBlockProfileRate(1)     // 开启对阻塞操作的跟踪，block
+			runtime.SetMutexProfileFraction(1) // 开启对锁调用的跟踪，mutex
+
+			err := http.ListenAndServe(":16061", nil)
+			log.Ctx(ctx).Error().Err(err).Msg("http/pprof listen")
+		}()
+	}
 
 	// 解析配置文件
 	conf := &Config{}
@@ -70,7 +83,6 @@ func main() {
 			return
 		default:
 		}
-		ctx := context.TODO()
 		c, err := listener.Accept(ctx)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
@@ -81,39 +93,40 @@ func main() {
 			}
 			continue
 		}
+		go func(c quic.Connection) {
+			ctx := context.TODO()
+			svcConn, err := conn.WrapQuic(ctx, c)
+			if err != nil {
+				log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+			}
+			// zsvc, err := conn.NewZip(ctx, svcConn)
+			// if err != nil {
+			// 	log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+			// }
+			log.Ctx(ctx).Info().Caller().Str("local", svcConn.LocalAddr().String()).Str("remote", svcConn.RemoteAddr().String()).Send()
 
-		svcConn, err := conn.WrapQuic(ctx, c)
-		if err != nil {
-			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
-		}
-		zsvc, err := conn.NewZip(ctx, svcConn)
-		if err != nil {
-			log.Ctx(ctx).Fatal().Caller().Err(err).Send()
-		}
-		log.Ctx(ctx).Info().Caller().Str("local", svcConn.LocalAddr().String()).Str("remote", svcConn.RemoteAddr().String()).Send()
+			// 建立新的代理连接
+			svc := &socks.SocksProxy{
+				SocksSvc: socks.SocksSvc{
+					RemoteAddr: svcConn.RemoteAddr().String(),
+				},
+				Svc: socks.SocksCli{
+					Name:      fmt.Sprintf(ClientName+":%d", i),
+					SocksAddr: "",
+					ChPeer:    make(chan *socks.Peer),
+				},
+			}
+			peer, err := gPeer.Clone(ctx, svcConn, svc)
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+				return
+			}
+			svc.Peer = peer
+			var _ pb.SocksCliServer = svc
 
-		// 建立新的代理连接
-		svc := &socks.SocksProxy{
-			SocksSvc: socks.SocksSvc{
-				RemoteAddr: svcConn.RemoteAddr().String(),
-			},
-			Svc: socks.SocksCli{
-				Name:      fmt.Sprintf(ClientName+":%d", i),
-				SocksAddr: "",
-				ChPeer:    make(chan *socks.Peer, 20),
-			},
-		}
-		peer, err := gPeer.Clone(ctx, zsvc, svc)
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			continue
-		}
-		svc.Peer = peer
-		var _ pb.SocksCliServer = svc
+			tlsConfig.ServerName = conf.ProxyConn.Host
+			go svc.Svc.RunQuicConn(ctx, conf.ProxyConn.Addr, tlsConfig)
 
-		tlsConfig.ServerName = conf.ProxyConn.Host
-		go svc.Svc.RunQuicConn(ctx, conf.ProxyConn.Addr, tlsConfig)
-
-		continue
+		}(c)
 	}
 }

@@ -81,7 +81,7 @@ func startService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, 
 			return
 		}
 
-		go s.Codec.ReadLoop(ctx)
+		go s.Codec.ReadLoop(ctx, s.Close)
 	}
 
 	return
@@ -98,7 +98,7 @@ func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interfac
 	if err != nil {
 		return
 	}
-	go s.Codec.ReadLoop(ctx)
+	go s.Codec.ReadLoop(ctx, s.Close)
 	return s, nil
 }
 

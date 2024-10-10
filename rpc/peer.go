@@ -83,7 +83,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRe
 		rpc.Client.Codec = pCodec
 		rpc.Service.Codec = pCodec
 
-		go pCodec.ReadLoop(ctx)
+		go pCodec.ReadLoop(ctx, rpc.Close)
 
 		if len(rpc.Client.cliMethods) > 0 {
 			go pCodec.Heartbeat(ctx)
@@ -108,7 +108,7 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 	rpc.Client.Codec = pCodec
 	rpc.Service.Codec = pCodec
 
-	go pCodec.ReadLoop(ctx)
+	go pCodec.ReadLoop(ctx, rpc.Close)
 
 	if len(rpc.Client.cliMethods) > 0 {
 		go pCodec.Heartbeat(ctx)

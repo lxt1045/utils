@@ -144,7 +144,7 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 	}
 }
 
-func (c *Codec) ReadLoop(ctx context.Context) {
+func (c *Codec) ReadLoop(ctx context.Context, fClose func(context.Context) error) {
 	var err error
 	defer func() {
 		e := recover()
@@ -161,6 +161,9 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 		if c.rwc != nil {
 			c.SendCloseMsg(ctx)
 			c.Close()
+			if err := fClose(ctx); err != nil {
+				log.Ctx(ctx).Debug().Caller().Err(err).Msg("defer.Close()")
+			}
 		}
 	}()
 

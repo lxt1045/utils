@@ -26,7 +26,6 @@ proxy-conn:
   # addr: "127.0.0.1:18086"
   # addr: "39.100.74.134:18086"
   addr: "152.32.218.32:18086"
-  # addr: "10.1.1.121:18086"
   host: lxt1045.com
   tls:
     ca-cert: "static/ca/root-cert.pem"
@@ -43,7 +42,6 @@ client-conn:
   # addr: "127.0.0.1:18086"
   # addr: "39.100.74.134:18086"
   # addr: "152.32.218.32:18086"
-  # addr: "10.1.1.121:18086"
   host: lxt1045.com
   tls:
     ca-cert: "static/ca/root-cert.pem"
