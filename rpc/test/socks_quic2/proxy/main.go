@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"runtime"
@@ -35,6 +36,15 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
+
+	go socks.CheckMemLoop(1024)
+
+	pidOld := 0
+	flag.IntVar(&pidOld, "rerun", 0, "rerun")
+	flag.Parse()
+	if pidOld >= 0 {
+		socks.CheckProcess(ctx, pidOld)
+	}
 
 	if false {
 		go func() {
@@ -70,13 +80,14 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.ProxyAddr).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, cancel, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
 
 	ClientName := "Client"
+	tlsConfig.ServerName = conf.ProxyConn.Host
 	for i := 0; ; i++ {
 		select {
 		case <-ctx.Done():
@@ -93,8 +104,9 @@ func main() {
 			}
 			continue
 		}
-		go func(c quic.Connection) {
-			ctx := context.TODO()
+		go func(c quic.Connection, i int) {
+			// ctx := context.TODO()
+			ctx, cancel := context.WithCancel(context.TODO())
 			svcConn, err := conn.WrapQuic(ctx, c)
 			if err != nil {
 				log.Ctx(ctx).Fatal().Caller().Err(err).Send()
@@ -105,28 +117,10 @@ func main() {
 			// }
 			log.Ctx(ctx).Info().Caller().Str("local", svcConn.LocalAddr().String()).Str("remote", svcConn.RemoteAddr().String()).Send()
 
-			// 建立新的代理连接
-			svc := &socks.SocksProxy{
-				SocksSvc: socks.SocksSvc{
-					RemoteAddr: svcConn.RemoteAddr().String(),
-				},
-				Svc: socks.SocksCli{
-					Name:      fmt.Sprintf(ClientName+":%d", i),
-					SocksAddr: "",
-					ChPeer:    make(chan *socks.Peer),
-				},
-			}
-			peer, err := gPeer.Clone(ctx, svcConn, svc)
-			if err != nil {
-				log.Ctx(ctx).Error().Caller().Err(err).Send()
-				return
-			}
-			svc.Peer = peer
-			var _ pb.SocksCliServer = svc
-
-			tlsConfig.ServerName = conf.ProxyConn.Host
-			go svc.Svc.RunQuicConn(ctx, conf.ProxyConn.Addr, tlsConfig)
-
-		}(c)
+			remoteAddr := svcConn.RemoteAddr().String()
+			svcAddr := conf.ProxyConn.Addr
+			name := fmt.Sprintf(ClientName+":%d", i)
+			_ = socks.NewSocksProxy(ctx, cancel, remoteAddr, svcAddr, name, tlsConfig, gPeer, svcConn)
+		}(c, i)
 	}
 }

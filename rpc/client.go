@@ -19,8 +19,8 @@ type Client struct {
 }
 
 // StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
-func StartClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
-	rpc, err := StartPeer(ctx, rwc, nil, fRegisters...)
+func StartClient(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
+	rpc, err := StartPeer(ctx, cancel, rwc, nil, fRegisters...)
 	if err != nil {
 		return
 	}
@@ -29,7 +29,7 @@ func StartClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...inte
 }
 
 // StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
-func startClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
+func startClient(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
 	c = Client{
 		cliMethods: make(map[string]CliMethod),
 		svcMethods: make(map[string]CliMethod),
@@ -54,8 +54,8 @@ func startClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...inte
 	if err != nil {
 		return
 	}
-	go c.Codec.ReadLoop(ctx, c.Close)
-	go c.Codec.Heartbeat(ctx)
+	go c.Codec.ReadLoop(ctx, cancel)
+	go c.Codec.Heartbeat(ctx, cancel)
 
 	err = c.getMethodsFromSvc(ctx)
 	if err != nil {

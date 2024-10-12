@@ -30,9 +30,13 @@ type Peer struct {
 	rpc.Peer
 }
 
-func (p *SocksCli) GetPeer() (peer *Peer) {
+func (p *SocksCli) GetPeer(ctx context.Context) (peer *Peer) {
 	peer = <-p.ChPeer
 	for tsLast := time.Now().Unix() - int64(time.Second*60); peer.TsLast < tsLast; {
+		err := peer.Close(ctx)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+		}
 		peer = <-p.ChPeer
 	}
 	return
@@ -93,7 +97,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to get target address: %v", err)
 		return
 	}
-	peer := p.GetPeer()
+	peer := p.GetPeer(ctx)
 	stream, err := peer.StreamAsync(ctx, "Conn")
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -226,7 +230,7 @@ func (p *SocksCli) connect2(ctx context.Context, rc net.Conn) (err error) {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to get target address: %v", err)
 		return
 	}
-	peer := p.GetPeer()
+	peer := p.GetPeer(ctx)
 	addr := tgtAddr.String()
 	go p.CopyLoop(ctx, rc, peer, addr)
 
@@ -268,7 +272,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 			}
 		}()
 		var n int
-		ch := make(chan []byte, 1024)
+		ch := make(chan []byte, 8)
 		go func() {
 			// TODO: Read 和Send 分两个进程处理
 			defer close(ch)
@@ -312,7 +316,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 		// rwc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 	}()
 
-	ch := make(chan []byte, 1024)
+	ch := make(chan []byte, 8)
 	go func() {
 		defer close(ch)
 		for {
@@ -349,7 +353,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 }
 
 // 创建备用connect，提前三次握手较少延时
-func (p *SocksCli) RunConn(ctx context.Context, addr string, tlsConfig *tls.Config) {
+func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr string, tlsConfig *tls.Config) {
 	var err error
 	defer func() {
 		e := recover()
@@ -366,7 +370,7 @@ func (p *SocksCli) RunConn(ctx context.Context, addr string, tlsConfig *tls.Conf
 			return
 		}
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctx, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		peer, err1 := rpc.StartPeer(ctx, cancel, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -387,13 +391,16 @@ func (p *SocksCli) RunConn(ctx context.Context, addr string, tlsConfig *tls.Conf
 }
 
 // 创建备用connect，提前三次握手较少延时
-func (p *SocksCli) RunQuicConn(ctx context.Context, addr string, tlsConfig *tls.Config) {
+func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, addr string, tlsConfig *tls.Config) {
 	var err error
 	defer func() {
 		e := recover()
 		if e != nil {
 			err = errors.Errorf("recover : %v", e)
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
+		}
+		if cancel != nil {
+			cancel()
 		}
 	}()
 	for {
@@ -415,13 +422,17 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, addr string, tlsConfig *tls.
 		// 	return
 		// }
 		log.Ctx(ctx).Info().Caller().Str("local", cliConn.LocalAddr().String()).Str("remote", cliConn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctx, cliConn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		peer, err1 := rpc.StartPeer(ctx, cancel, cliConn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
+
 		select {
+		case <-ctx.Done():
+			log.Ctx(ctx).Error().Caller().Msg("ctx.Done()")
+			return
 		case p.ChPeer <- &Peer{
 			TsLast:      time.Now().Unix(),
 			Peer:        peer,

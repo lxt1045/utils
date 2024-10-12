@@ -15,7 +15,7 @@ type Peer struct {
 }
 
 // StartPeer fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
-func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+func StartPeer(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
 	rpc = Peer{
 		Client: Client{
 			cliMethods: make(map[string]CliMethod),
@@ -83,10 +83,10 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRe
 		rpc.Client.Codec = pCodec
 		rpc.Service.Codec = pCodec
 
-		go pCodec.ReadLoop(ctx, rpc.Close)
+		go pCodec.ReadLoop(ctx, cacnel)
 
 		if len(rpc.Client.cliMethods) > 0 {
-			go pCodec.Heartbeat(ctx)
+			go pCodec.Heartbeat(ctx, cacnel)
 			err = rpc.Client.getMethodsFromSvc(ctx)
 			if err != nil {
 				return
@@ -96,7 +96,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRe
 	return
 }
 
-func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
+func (rpc Peer) Clone(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
 	if reflect.TypeOf(svc) != rpc.Service._type {
 		err = errors.Errorf("svc type is not equal")
 		return
@@ -108,10 +108,10 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 	rpc.Client.Codec = pCodec
 	rpc.Service.Codec = pCodec
 
-	go pCodec.ReadLoop(ctx, rpc.Close)
+	go pCodec.ReadLoop(ctx, cacnel)
 
 	if len(rpc.Client.cliMethods) > 0 {
-		go pCodec.Heartbeat(ctx)
+		go pCodec.Heartbeat(ctx, cacnel)
 		err = rpc.Client.getMethodsFromSvc(ctx)
 		if err != nil {
 			return

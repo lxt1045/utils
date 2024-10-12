@@ -9,3 +9,4 @@ rpc/test/socks_udp/client/client
 rpc/test/socks_udp/service/service
 rpc/test/socks_quic2/service/service
 rpc/test/socks_quic2/proxy/proxy
+*.pem

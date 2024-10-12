@@ -81,7 +81,7 @@ func main() {
 		ChPeer:    make(chan *socks.Peer),
 	}
 	var _ pb.SocksCliServer = cli
-	go cli.RunQuicConn(ctx, conf.ClientConn.Addr, tlsConfig)
+	go cli.RunQuicConn(ctx, cancel, conf.ClientConn.Addr, tlsConfig)
 
 	//
 

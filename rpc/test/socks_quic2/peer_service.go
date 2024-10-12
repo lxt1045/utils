@@ -58,7 +58,7 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 				// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			}()
 			var n int
-			ch := make(chan []byte, 1024)
+			ch := make(chan []byte, 8)
 			go func() {
 				// TODO: Read 和Send 分两个进程处理
 				defer close(ch)
@@ -102,7 +102,7 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 			// buf := make([]byte, math.MaxUint16/2)
 			// buf := make([]byte, 1<<20)
 
-			ch := make(chan []byte, 1024)
+			ch := make(chan []byte, 8)
 			go func() {
 				defer close(ch)
 				for {

@@ -43,8 +43,8 @@ func (s Service) CloneMethods(svc interface{}) []codec.Method {
 }
 
 // StartService fRegister: pb.RegisterHelloService, svc: implementation
-func StartService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
-	rpc, err := StartPeer(ctx, rwc, svc, fRegisters...)
+func StartService(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
+	rpc, err := StartPeer(ctx, cancel, rwc, svc, fRegisters...)
 	if err != nil {
 		return
 	}
@@ -53,7 +53,7 @@ func StartService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, 
 }
 
 // StartService fRegister: pb.RegisterHelloService, svc: implementation
-func startService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
+func startService(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
 	s = Service{
 		svcMethods:    make([]SvcMethod, 0, 32),
 		svcInterfaces: make(map[string]uint32),
@@ -81,7 +81,7 @@ func startService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, 
 			return
 		}
 
-		go s.Codec.ReadLoop(ctx, s.Close)
+		go s.Codec.ReadLoop(ctx, cancel)
 	}
 
 	return
@@ -93,12 +93,12 @@ func (c Service) Close(ctx context.Context) (err error) {
 	return
 }
 
-func (s Service) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (sNew Service, err error) {
+func (s Service) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (sNew Service, err error) {
 	s.Codec, err = codec.NewCodec(ctx, rwc, s.CloneMethods(svc))
 	if err != nil {
 		return
 	}
-	go s.Codec.ReadLoop(ctx, s.Close)
+	go s.Codec.ReadLoop(ctx, cancel)
 	return s, nil
 }
 

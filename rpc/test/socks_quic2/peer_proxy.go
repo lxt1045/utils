@@ -2,9 +2,13 @@ package socks
 
 import (
 	"context"
+	"crypto/tls"
+	"io"
+	"time"
 
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/log"
+	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/codec"
 	"github.com/lxt1045/utils/rpc/test/socks_quic2/pb"
 )
@@ -15,6 +19,31 @@ type SocksProxy struct {
 	Svc SocksCli
 }
 
+func NewSocksProxy(ctx context.Context, cancel context.CancelFunc, remoteAddr, svcAddr, name string, tlsConfig *tls.Config, peerFrom rpc.Peer, rwc io.ReadWriteCloser) (p *SocksProxy) {
+	// 建立新的代理连接
+	svc := &SocksProxy{
+		SocksSvc: SocksSvc{
+			RemoteAddr: remoteAddr,
+		},
+		Svc: SocksCli{
+			Name:      name,
+			SocksAddr: "",
+			ChPeer:    make(chan *Peer),
+			// CancelFunc: cancel,
+		},
+	}
+	peer, err := peerFrom.Clone(ctx, cancel, rwc, svc)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	svc.Peer = peer
+	var _ pb.SocksCliServer = svc
+	go svc.Svc.RunQuicConn(ctx, cancel, svcAddr, tlsConfig)
+
+	return
+}
+
 func (p *SocksProxy) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.CloseRsp, err error) {
 	resp, err = p.SocksSvc.Close(ctx, req)
 	if err == nil {
@@ -23,7 +52,7 @@ func (p *SocksProxy) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.Clos
 	return
 }
 func (p *SocksProxy) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp, err error) {
-	svcPeer := p.Svc.GetPeer()
+	svcPeer := p.Svc.GetPeer(ctx)
 
 	// defer p.close(ctx)
 	if cliStream := codec.GetStream(ctx); cliStream != nil {
@@ -44,8 +73,21 @@ func (p *SocksProxy) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRs
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
 				// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+
+				if true {
+					svcPeer.TsLast = time.Now().Unix()
+					select {
+					case p.Svc.ChPeer <- svcPeer:
+						log.Ctx(ctx).Info().Caller().Int("len(peers)", len(p.Svc.ChPeer)).Msg("reuser peer++++++++++++++++++++++++")
+					case <-time.After(time.Second * 5):
+						log.Ctx(ctx).Info().Caller().Msg("close  peer------------------------")
+						svcPeer.Close(ctx)
+					}
+				} else {
+					svcPeer.Close(ctx)
+				}
 			}()
-			ch := make(chan []byte, 1024)
+			ch := make(chan []byte, 8)
 			go func() {
 				// TODO: Read 和Send 分两个进程处理
 				defer close(ch)
@@ -89,7 +131,7 @@ func (p *SocksProxy) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRs
 			// buf := make([]byte, math.MaxUint16/2)
 			// buf := make([]byte, 1<<20)
 
-			ch := make(chan []byte, 1024)
+			ch := make(chan []byte, 8)
 			go func() {
 				// TODO: Read 和Send 分两个进程处理
 				defer close(ch)

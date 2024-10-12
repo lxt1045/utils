@@ -134,17 +134,37 @@ func respsKey(callSN uint32) uint64 {
 	return uint64(callSN)
 }
 
-func (c *Codec) Heartbeat(ctx context.Context) {
+func (c *Codec) Heartbeat(ctx context.Context, cancel context.CancelFunc) {
 	// return
 	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 100)) // 心跳包; client 发送
-	defer tickerHeartbeat.Stop()
+	defer func() {
+		tickerHeartbeat.Stop()
+		log.Ctx(ctx).Info().Caller().Msg("Heartbeat.defer()")
+		err := c.Close()
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("Heartbeat.defer()")
+		}
+		cancel()
+	}()
 	for {
-		<-tickerHeartbeat.C
-		c.SendHeartbeatMsg(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-tickerHeartbeat.C:
+		}
+
+		err := c.SendHeartbeatMsg(ctx)
+		// if ErrHasBeenClosed.Is(err) {
+		// 	break
+		// }
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("Heartbeat")
+			return
+		}
 	}
 }
 
-func (c *Codec) ReadLoop(ctx context.Context, fClose func(context.Context) error) {
+func (c *Codec) ReadLoop(ctx context.Context, cancel context.CancelFunc) {
 	var err error
 	defer func() {
 		e := recover()
@@ -161,14 +181,18 @@ func (c *Codec) ReadLoop(ctx context.Context, fClose func(context.Context) error
 		if c.rwc != nil {
 			c.SendCloseMsg(ctx)
 			c.Close()
-			if err := fClose(ctx); err != nil {
-				log.Ctx(ctx).Debug().Caller().Err(err).Msg("defer.Close()")
-			}
+			cancel()
 		}
 	}()
 
 	rbuf := make([]byte, 0, math.MaxUint16)
 	for {
+		select {
+		case <-ctx.Done():
+			return // 检查是否已经退出，如果退出则返回
+		default:
+		}
+
 		var header Header
 		var bsBody []byte
 		header, bsBody, err = ReadPack(ctx, c.rwc, rbuf)
@@ -300,6 +324,8 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 	return
 }
 
+var ErrHasBeenClosed = errors.NewCode(0, 0x1111, "has been closed")
+
 func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
 	wbuf := make([]byte, HeaderSize)
 	h := Header{
@@ -313,10 +339,10 @@ func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
 	}
 	h.FormatCall(wbuf)
 	if c.rwc == nil {
-		err = errors.Errorf("has been closed")
+		err = ErrHasBeenClosed.Clone("SendHeartbeatMsg")
 		return
 	}
-	c.rwc.Write(wbuf)
+	_, err = c.rwc.Write(wbuf)
 	return
 }
 

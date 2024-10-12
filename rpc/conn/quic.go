@@ -12,6 +12,11 @@ type QuicConn struct {
 	quic.Stream
 }
 
+// func (c QuicConn) Close() (err error) {
+// 	 c.Stream.SetDeadline(time.Now())
+// return c.Stream.Close()
+// }
+
 func WrapQuic(ctx context.Context, c quic.Connection) (qc *QuicConn, err error) {
 	stream, err := c.AcceptStream(ctx)
 	if err != nil {

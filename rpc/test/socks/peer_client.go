@@ -347,7 +347,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 }
 
 // 创建备用connect，提前三次握手较少延时
-func (p *SocksCli) RunConn(ctx context.Context, addr string, tlsConfig *tls.Config) {
+func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr string, tlsConfig *tls.Config) {
 	var err error
 	defer func() {
 		e := recover()
@@ -364,7 +364,7 @@ func (p *SocksCli) RunConn(ctx context.Context, addr string, tlsConfig *tls.Conf
 			return
 		}
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctx, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		peer, err1 := rpc.StartPeer(ctx, cancel, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
