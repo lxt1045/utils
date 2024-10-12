@@ -58,25 +58,35 @@ func (p *SocksCli) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp
 }
 
 // Listen on addr and proxy to server to reach target from getAddr.
-func (p *SocksCli) RunLocal(ctx context.Context, socksAddr string) {
+func (p *SocksCli) RunLocal(ctx context.Context, cancel context.CancelFunc, socksAddr string) {
+	defer cancel()
+
 	l, err := net.Listen("tcp", socksAddr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
 		return
 	}
+	defer l.Close()
 
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		c, err := l.Accept()
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("failed to accept")
 			continue
 		}
 
-		go p.connect(ctx, c)
+		go p.connect(ctx, cancel, c)
 	}
 }
 
-func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
+func (p *SocksCli) connect(ctx context.Context, cancel context.CancelFunc, rc net.Conn) (err error) {
+	defer cancel()
+
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	tgtAddr, err := socks.Handshake(rc)
 	if err != nil {
@@ -115,7 +125,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 			// wg.Done()
 			rc.Close()
 
-			if true {
+			if false {
 				peer.TsLast = time.Now().Unix()
 				select {
 				case p.ChPeer <- peer:
@@ -127,13 +137,21 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 			} else {
 				peer.Close(ctx)
 			}
+			cancel()
 		}()
 		var n int
 		ch := make(chan []byte, 1024)
 		go func() {
 			// TODO: Read 和Send 分两个进程处理
 			defer close(ch)
+			defer cancel()
 			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				iface, err := stream.Recv(ctx)
 				if err != nil {
 					log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
@@ -169,6 +187,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 			err = errors.Errorf("recover : %v", e)
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 		}
+		cancel()
 		// wg.Wait()
 		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 	}()
@@ -176,7 +195,14 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 	ch := make(chan []byte, 1024)
 	go func() {
 		defer close(ch)
+		defer cancel()
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			buf := make([]byte, 1024*8)
 			// buf := make([]byte, math.MaxUint16/2)
 			nr, er := rc.Read(buf)
@@ -209,7 +235,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 	return
 }
 
-func (p *SocksCli) connect2(ctx context.Context, rc net.Conn) (err error) {
+func (p *SocksCli) connect2(ctx context.Context, cancel context.CancelFunc, rc net.Conn) (err error) {
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	tgtAddr, err := socks.Handshake(rc)
 	if err != nil {
@@ -232,12 +258,12 @@ func (p *SocksCli) connect2(ctx context.Context, rc net.Conn) (err error) {
 	}
 	peer := p.GetPeer(ctx)
 	addr := tgtAddr.String()
-	go p.CopyLoop(ctx, rc, peer, addr)
+	go p.CopyLoop(ctx, cancel, rc, peer, addr)
 
 	return
 }
 
-func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *Peer, addr string) (err error) {
+func (p *SocksCli) CopyLoop(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, peer *Peer, addr string) (err error) {
 	stream, err := peer.StreamAsync(ctx, "Conn")
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -257,6 +283,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 			}
 			// wg.Done()
 			rwc.Close()
+			cancel()
 
 			if true {
 				peer.TsLast = time.Now().Unix()
@@ -276,7 +303,14 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 		go func() {
 			// TODO: Read 和Send 分两个进程处理
 			defer close(ch)
+			defer cancel()
 			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
 				iface, err := stream.Recv(ctx)
 				if err != nil {
 					log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
@@ -312,6 +346,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 			err = errors.Errorf("recover : %v", e)
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 		}
+		cancel()
 		// wg.Wait()
 		// rwc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 	}()
@@ -319,7 +354,14 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 	ch := make(chan []byte, 8)
 	go func() {
 		defer close(ch)
+		defer cancel()
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			buf := make([]byte, 1024*8)
 			// buf := make([]byte, math.MaxUint16/2)
 			nr, er := rwc.Read(buf)
@@ -361,6 +403,7 @@ func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr 
 			err = errors.Errorf("recover : %v", e)
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 		}
+		cancel()
 	}()
 	for {
 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
@@ -378,6 +421,8 @@ func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr 
 		}
 
 		select {
+		case <-ctx.Done():
+			return
 		case p.ChPeer <- &Peer{
 			TsLast:      time.Now().Unix(),
 			Peer:        peer,

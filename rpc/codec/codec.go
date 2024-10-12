@@ -425,7 +425,7 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, channel, callID uint
 		}
 		h.FormatCall(wbuf)
 		if c.rwc == nil {
-			err = errors.Errorf("has been closed")
+			err = ErrHasBeenClosed
 			return
 		}
 		_, err = c.rwc.Write(wbuf)

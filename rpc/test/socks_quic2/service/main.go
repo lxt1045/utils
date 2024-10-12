@@ -32,7 +32,6 @@ type Config struct {
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	go socks.CheckMemLoop(512)
@@ -105,12 +104,13 @@ func main() {
 			}
 			continue
 		}
-		go func(c quic.Connection) {
-			// ctx := context.TODO()
-			ctx, cancel := context.WithCancel(context.TODO())
+		go func(ctx context.Context, c quic.Connection) {
+			ctx, cancel := context.WithCancel(ctx)
+			_ = cancel
 			svcConn, err := conn.WrapQuic(ctx, c)
 			if err != nil {
-				log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+				return
 			}
 			// zsvc, err := conn.NewZip(ctx, svcConn)
 			// if err != nil {
@@ -128,6 +128,6 @@ func main() {
 				return
 			}
 			svc.Peer = peer
-		}(c)
+		}(ctx, c)
 	}
 }

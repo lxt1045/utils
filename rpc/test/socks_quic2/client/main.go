@@ -85,7 +85,7 @@ func main() {
 
 	//
 
-	go cli.RunLocal(ctx, flags.Socks)
+	go cli.RunLocal(ctx, cancel, flags.Socks)
 	log.Ctx(ctx).Info().Caller().Str("Socks", flags.Socks).Send()
 
 	//

@@ -74,7 +74,7 @@ func (p *SocksProxy) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRs
 				}
 				// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 
-				if true {
+				if false {
 					svcPeer.TsLast = time.Now().Unix()
 					select {
 					case p.Svc.ChPeer <- svcPeer:
