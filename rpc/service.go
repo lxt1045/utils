@@ -76,12 +76,10 @@ func startService(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWri
 	}
 
 	if rwc != nil {
-		s.Codec, err = codec.NewCodec(ctx, rwc, s.Methods())
+		s.Codec, err = codec.NewCodec(ctx, cancel, rwc, s.Methods(), false)
 		if err != nil {
 			return
 		}
-
-		go s.Codec.ReadLoop(ctx, cancel)
 	}
 
 	return
@@ -94,11 +92,10 @@ func (c Service) Close(ctx context.Context) (err error) {
 }
 
 func (s Service) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (sNew Service, err error) {
-	s.Codec, err = codec.NewCodec(ctx, rwc, s.CloneMethods(svc))
+	s.Codec, err = codec.NewCodec(ctx, cancel, rwc, s.CloneMethods(svc), false)
 	if err != nil {
 		return
 	}
-	go s.Codec.ReadLoop(ctx, cancel)
 	return s, nil
 }
 

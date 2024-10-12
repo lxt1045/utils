@@ -70,7 +70,8 @@ func testUdpService(ctx context.Context, cancel context.CancelFunc, t *testing.T
 		bufRecv := make([]byte, conn.UdpBufLen)
 		n, addrUdp, err := ln.ReadFromUDP(bufRecv)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		if err != nil || n <= 0 {
 			log.Ctx(ctx).Error().Err(err).Msgf("error during read:%v, n:%d", err, n)

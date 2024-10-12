@@ -50,12 +50,10 @@ func startClient(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWrit
 		}
 	}
 
-	c.Codec, err = codec.NewCodec(ctx, rwc, nil)
+	c.Codec, err = codec.NewCodec(ctx, cancel, rwc, nil, true)
 	if err != nil {
 		return
 	}
-	go c.Codec.ReadLoop(ctx, cancel)
-	go c.Codec.Heartbeat(ctx, cancel)
 
 	err = c.getMethodsFromSvc(ctx)
 	if err != nil {

@@ -15,7 +15,7 @@ type Peer struct {
 }
 
 // StartPeer fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
-func StartPeer(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+func StartPeer(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
 	rpc = Peer{
 		Client: Client{
 			cliMethods: make(map[string]CliMethod),
@@ -75,7 +75,8 @@ func StartPeer(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteC
 	}
 
 	if rwc != nil {
-		pCodec, err1 := codec.NewCodec(ctx, rwc, rpc.Service.Methods())
+		hasClient := len(rpc.Client.cliMethods) > 0
+		pCodec, err1 := codec.NewCodec(ctx, cancel, rwc, rpc.Service.Methods(), hasClient)
 		if err1 != nil {
 			err = err1
 			return
@@ -83,10 +84,8 @@ func StartPeer(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteC
 		rpc.Client.Codec = pCodec
 		rpc.Service.Codec = pCodec
 
-		go pCodec.ReadLoop(ctx, cacnel)
-
-		if len(rpc.Client.cliMethods) > 0 {
-			go pCodec.Heartbeat(ctx, cacnel)
+		if hasClient {
+			go pCodec.Heartbeat(ctx, cancel)
 			err = rpc.Client.getMethodsFromSvc(ctx)
 			if err != nil {
 				return
@@ -96,22 +95,20 @@ func StartPeer(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteC
 	return
 }
 
-func (rpc Peer) Clone(ctx context.Context, cacnel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
+func (rpc Peer) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
 	if reflect.TypeOf(svc) != rpc.Service._type {
 		err = errors.Errorf("svc type is not equal")
 		return
 	}
-	pCodec, err := codec.NewCodec(ctx, rwc, rpc.Service.CloneMethods(svc))
+	hasClient := len(rpc.Client.cliMethods) > 0
+	pCodec, err := codec.NewCodec(ctx, cancel, rwc, rpc.Service.CloneMethods(svc), hasClient)
 	if err != nil {
 		return
 	}
 	rpc.Client.Codec = pCodec
 	rpc.Service.Codec = pCodec
 
-	go pCodec.ReadLoop(ctx, cacnel)
-
-	if len(rpc.Client.cliMethods) > 0 {
-		go pCodec.Heartbeat(ctx, cacnel)
+	if hasClient {
 		err = rpc.Client.getMethodsFromSvc(ctx)
 		if err != nil {
 			return

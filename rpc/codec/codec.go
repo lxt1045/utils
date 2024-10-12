@@ -85,7 +85,7 @@ func (d post) Post() {
 	}
 }
 
-func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method) (c *Codec, err error) {
+func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, callers []Method, needHeartbeat bool) (c *Codec, err error) {
 	c = &Codec{
 		rwc:      rwc,
 		resps:    make(map[uint64]resp),
@@ -93,6 +93,10 @@ func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method) (c 
 		delay:    delay.New[post](64, int64(time.Minute), false),
 		streams:  make(map[uint64]*Stream),
 		callers:  callers,
+	}
+	go c.ReadLoop(ctx, cancel)
+	if needHeartbeat {
+		go c.Heartbeat(ctx, cancel)
 	}
 	return
 }
