@@ -20,15 +20,15 @@ import (
 )
 
 func TestQuicSocket(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan struct{})
 	go func() {
-		quicServiceSocket(ctx, t, ch)
+		quicServiceSocket(ctx, cancel, t, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Second * 1)
-	quicClientSocket(ctx, t)
+	quicClientSocket(ctx, cancel, t)
 }
 
 type ConfigSocket struct {
@@ -40,7 +40,7 @@ type ConfigSocket struct {
 	Log        config.Log
 }
 
-func quicServiceSocket(ctx context.Context, t *testing.T, ch chan struct{}) {
+func quicServiceSocket(ctx context.Context, cancel context.CancelFunc, t *testing.T, ch chan struct{}) {
 	conf := &ConfigSocket{}
 	file := "static/conf/default.yml"
 	bs, err := fs.ReadFile(filesystem.Static, file)
@@ -99,14 +99,14 @@ func quicServiceSocket(ctx context.Context, t *testing.T, ch chan struct{}) {
 			t.Fatal(err)
 		}
 
-		_, err = StartService(ctx, zsvc, &server{Str: "test"}, base.RegisterHelloServer)
+		_, err = StartService(ctx, cancel, zsvc, &server{Str: "test"}, base.RegisterHelloServer)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 }
 
-func quicClientSocket(ctx context.Context, t *testing.T) {
+func quicClientSocket(ctx context.Context, cancel context.CancelFunc, t *testing.T) {
 	// 解析配置文件
 	conf := &Config{}
 	file := "static/conf/default.yml"
@@ -150,7 +150,7 @@ func quicClientSocket(ctx context.Context, t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client, err := StartClient(ctx, zcli, base.NewHelloClient)
+	client, err := StartClient(ctx, cancel, zcli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

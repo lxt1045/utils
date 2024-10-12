@@ -14,8 +14,8 @@ import (
 )
 
 func TestCall(t *testing.T) {
-	ctx := context.Background()
-	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	ctx, cancel := context.WithCancel(context.Background())
+	s, err := StartService(ctx, cancel, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +44,8 @@ func TestCall(t *testing.T) {
 }
 
 func BenchmarkMethod(b *testing.B) {
-	ctx := context.Background()
-	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	ctx, cancel := context.WithCancel(context.Background())
+	s, err := StartService(ctx, cancel, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestPipe(t *testing.T) {
 		t.Log("nil")
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	s, c := NewFakeConnPipe()
 	svc, err := conn.NewZip(ctx, s)
 	if err != nil {
@@ -102,13 +102,13 @@ func TestPipe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = StartService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
+	_, err = StartService(ctx, cancel, svc, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// time.Sleep(time.Millisecond * 10)
-	client, err := StartClient(ctx, cli, base.NewHelloClient)
+	client, err := StartClient(ctx, cancel, cli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestPipe(t *testing.T) {
 }
 
 func TestPipeStream(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	s, c := NewFakeConnPipe()
 	svc, err := conn.NewZip(ctx, s)
 	if err != nil {
@@ -148,13 +148,13 @@ func TestPipeStream(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = StartService(ctx, svc, &server{Str: "test"}, base.RegisterHelloServer)
+	_, err = StartService(ctx, cancel, svc, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(time.Millisecond * 10)
-	client, err := StartClient(ctx, cli, base.NewHelloClient)
+	client, err := StartClient(ctx, cancel, cli, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

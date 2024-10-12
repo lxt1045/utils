@@ -12,36 +12,36 @@ import (
 )
 
 func TestUDPConn(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	addr := ":18081"
 	ch := make(chan struct{}, 1)
 	go func() {
-		testUdpService(ctx, t, addr, ch)
+		testUdpService(ctx, cancel, t, addr, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Millisecond * 10)
-	testUdpClient(ctx, t, addr)
+	testUdpClient(ctx, cancel, t, addr)
 }
 
 func TestUDPConnSvc(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	addr := ":18081"
 	ch := make(chan struct{}, 1)
 	go func() {
-		testUdpService(ctx, t, addr, ch)
+		testUdpService(ctx, cancel, t, addr, ch)
 	}()
 
 	<-ch
 	select {}
 }
 func TestUDPConnCli(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	addr := ":18081"
-	testUdpClient(ctx, t, addr)
+	testUdpClient(ctx, cancel, t, addr)
 }
 
-func testUdpService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+func testUdpService(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string, ch chan struct{}) {
 
 	// udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0"+addr)
 	// if err != nil {
@@ -79,7 +79,7 @@ func testUdpService(ctx context.Context, t *testing.T, addr string, ch chan stru
 		}
 		c, isFirstTime := conn.ToUdpConn(ctx, addrUdp, ln)
 		if isFirstTime {
-			s, err := StartService(ctx, c, &server{Str: "test"}, base.RegisterHelloServer)
+			s, err := StartService(ctx, cancel, c, &server{Str: "test"}, base.RegisterHelloServer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func testUdpService(ctx context.Context, t *testing.T, addr string, ch chan stru
 	}
 }
 
-func testUdpClient(ctx context.Context, t *testing.T, addr string) {
+func testUdpClient(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string) {
 	addr = "127.0.0.1" + addr
 	c, err := net.Dial("udp", addr)
 	if err != nil {
@@ -103,7 +103,7 @@ func testUdpClient(ctx context.Context, t *testing.T, addr string) {
 	defer c.Close()
 
 	conn := conn.UdpConnCli{Conn: c}
-	client, err := StartClient(ctx, &conn, base.NewHelloClient)
+	client, err := StartClient(ctx, cancel, &conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,19 +14,19 @@ import (
 )
 
 func TestKCPConn(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	addr := ":18080"
 	ch := make(chan struct{})
 	go func() {
-		testKcpService(ctx, t, addr, ch)
+		testKcpService(ctx, cancel, t, addr, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Millisecond * 10)
-	testKcpClient(ctx, t, addr)
+	testKcpClient(ctx, cancel, t, addr)
 }
 
-func testKcpService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+func testKcpService(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string, ch chan struct{}) {
 	go conn.KcpUpdata(ctx, conn.KcpConfig{}) //每一个kcp连接都需要定期巧用updata()以驱动kcp循环
 
 	// udpAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0"+addr)
@@ -107,7 +107,7 @@ func testKcpService(ctx context.Context, t *testing.T, addr string, ch chan stru
 		_ = m
 
 		if isFirstTime {
-			s, err := StartService(ctx, c, &server{Str: "test"}, base.RegisterHelloServer)
+			s, err := StartService(ctx, cancel, c, &server{Str: "test"}, base.RegisterHelloServer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func testKcpService(ctx context.Context, t *testing.T, addr string, ch chan stru
 	}
 }
 
-func testKcpClient(ctx context.Context, t *testing.T, addr string) {
+func testKcpClient(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string) {
 	addr = "127.0.0.1" + addr
 	c, err := net.Dial("udp", addr)
 	if err != nil {
@@ -134,7 +134,7 @@ func testKcpClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := StartClient(ctx, conn, base.NewHelloClient)
+	client, err := StartClient(ctx, cancel, conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

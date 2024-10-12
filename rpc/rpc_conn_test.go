@@ -10,19 +10,19 @@ import (
 )
 
 func TestConn(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	addr := ":18080"
 	ch := make(chan struct{})
 	go func() {
-		testService(ctx, t, addr, ch)
+		testService(ctx, cancel, t, addr, ch)
 	}()
 
 	<-ch
 	time.Sleep(time.Millisecond * 10)
-	testClient(ctx, t, addr)
+	testClient(ctx, cancel, t, addr)
 }
 
-func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{}) {
+func testService(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string, ch chan struct{}) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 			t.Fatal(err)
 		}
 
-		s, err := StartService(ctx, conn, &server{Str: "test"}, base.RegisterHelloServer)
+		s, err := StartService(ctx, cancel, conn, &server{Str: "test"}, base.RegisterHelloServer)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +50,7 @@ func testService(ctx context.Context, t *testing.T, addr string, ch chan struct{
 	}
 }
 
-func testClient(ctx context.Context, t *testing.T, addr string) {
+func testClient(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string) {
 	addr = "127.0.0.1" + addr
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -61,7 +61,7 @@ func testClient(ctx context.Context, t *testing.T, addr string) {
 		t.Fatal(err)
 	}
 
-	client, err := StartClient(ctx, conn, base.NewHelloClient)
+	client, err := StartClient(ctx, cancel, conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
