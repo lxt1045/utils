@@ -473,8 +473,8 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, a
 		}
 
 		select {
-		case <-ctxInner.Done():
-			log.Ctx(ctxInner).Error().Caller().Msg("ctx.Done()")
+		case <-ctx.Done():
+			log.Ctx(ctx).Error().Caller().Msg("ctx.Done()")
 			return
 		case p.ChPeer <- &Peer{
 			TsLast:      time.Now().Unix(),

@@ -37,6 +37,7 @@ type GRPC struct {
 }
 
 type Conn struct {
+	Proto            string
 	ProxyAddr        string
 	Addr             string
 	Host             string

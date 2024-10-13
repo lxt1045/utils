@@ -3,6 +3,7 @@ pprof: false
 dev: false
 
 conn:
+  proto: "quic"
   proxy_addr: ":18087"
   addr: ":18086"
   host: "lxt1045.com"
@@ -19,6 +20,7 @@ conn:
     client-key: "static/ca/client-key.pem" #server rsa private key file path
 
 proxy-conn:
+  proto: "quic"
   read-concurrency: 1
   write-concurrency: 1
   read-window: 20 # 1 << 20
@@ -32,6 +34,7 @@ proxy-conn:
     client-key: "static/ca/client-key.pem"
 
 client-conn:
+  proto: "quic"
   read-concurrency: 1
   write-concurrency: 1
   read-window: 20 # 1 << 20
