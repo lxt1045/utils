@@ -102,6 +102,9 @@ func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCl
 }
 
 func (c *Codec) Close() (err error) {
+	c.streamsLock.Lock()
+	defer c.streamsLock.Unlock()
+
 	if c.rwc == nil {
 		err = errors.Errorf("has been closed")
 		return

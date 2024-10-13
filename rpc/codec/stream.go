@@ -59,11 +59,11 @@ func (s *Stream) Close(ctx context.Context) {
 
 func (s *Stream) close() {
 	s.bClosed = true
-	// select {
-	// case s.cacheCh <- struct{}{}:
-	// default:
-	// }
-	close(s.cacheCh)
+	select {
+	case s.cacheCh <- struct{}{}:
+	default:
+	}
+	// close(s.cacheCh)
 }
 
 func (s *Stream) Method() (method string) {
