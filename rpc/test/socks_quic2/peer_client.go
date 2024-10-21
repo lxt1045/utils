@@ -452,12 +452,12 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, a
 		c, err := quic.DialAddr(ctxInner, addr, tlsConfig, nil)
 		if err != nil {
 			log.Ctx(ctxInner).Error().Caller().Err(err).Send()
-			return
+			continue
 		}
 		cliConn, err := conn.WrapQuicClient(ctxInner, c)
 		if err != nil {
 			log.Ctx(ctxInner).Error().Caller().Err(err).Send()
-			return
+			continue
 		}
 		// zcli, err := conn.NewZip(ctx, cliConn)
 		// if err != nil {
@@ -469,7 +469,7 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, a
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctxInner).Error().Caller().Err(err).Send()
-			return
+			continue
 		}
 
 		select {
