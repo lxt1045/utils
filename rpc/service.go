@@ -43,8 +43,8 @@ func (s Service) CloneMethods(svc interface{}) []codec.Method {
 }
 
 // StartService fRegister: pb.RegisterHelloService, svc: implementation
-func StartService(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
-	rpc, err := StartPeer(ctx, cancel, rwc, svc, fRegisters...)
+func StartService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (s Service, err error) {
+	rpc, err := StartPeer(ctx, rwc, svc, fRegisters...)
 	if err != nil {
 		return
 	}

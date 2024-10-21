@@ -32,7 +32,7 @@ func NewSocksProxy(ctx context.Context, cancel context.CancelFunc, remoteAddr, s
 			// CancelFunc: cancel,
 		},
 	}
-	peer, err := peerFrom.Clone(ctx, cancel, rwc, svc)
+	peer, err := peerFrom.Clone(ctx, rwc, svc)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return

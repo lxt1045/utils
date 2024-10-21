@@ -12,10 +12,12 @@ import (
 type Peer struct {
 	Client
 	Service
+	cancel context.CancelFunc
 }
 
 // StartPeer fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
-func StartPeer(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+	ctx, cancel := context.WithCancel(ctx)
 	rpc = Peer{
 		Client: Client{
 			cliMethods: make(map[string]CliMethod),
@@ -26,6 +28,7 @@ func StartPeer(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteC
 			svcInterfaces: make(map[string]uint32),
 			_type:         reflect.TypeOf(svc),
 		},
+		cancel: cancel,
 	}
 
 	for _, f := range fRegisters {
@@ -85,12 +88,13 @@ func StartPeer(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteC
 	return
 }
 
-func (rpc Peer) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
+func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
 	if reflect.TypeOf(svc) != rpc.Service._type {
 		err = errors.Errorf("svc type is not equal")
 		return
 	}
-
+	ctx, cancel := context.WithCancel(ctx)
+	rpc.cancel = cancel
 	callers := rpc.Service.CloneMethods(svc)
 	err = rpc.bindCodec(ctx, cancel, rwc, callers)
 	if err != nil {
@@ -119,6 +123,9 @@ func (rpc *Peer) bindCodec(ctx context.Context, cancel context.CancelFunc, rwc i
 }
 
 func (rpc Peer) Close(ctx context.Context) (err error) {
+	if rpc.cancel != nil {
+		rpc.cancel()
+	}
 	err = rpc.Client.Close(ctx)
 	err1 := rpc.Service.Close(ctx)
 	if err == nil {

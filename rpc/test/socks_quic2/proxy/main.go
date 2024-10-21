@@ -80,7 +80,7 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.ProxyAddr).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, cancel, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return

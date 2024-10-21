@@ -32,6 +32,7 @@ type Config struct {
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	go socks.CheckMemLoop(512)
@@ -83,11 +84,13 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, cancel, nil, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
+	defer gPeer.Close(ctx)
+
 	for i := 0; ; i++ {
 		select {
 		case <-ctx.Done():
@@ -105,8 +108,6 @@ func main() {
 			continue
 		}
 		go func(ctx context.Context, c quic.Connection) {
-			ctx, cancel := context.WithCancel(ctx)
-			_ = cancel
 			svcConn, err := conn.WrapQuic(ctx, c)
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -122,7 +123,7 @@ func main() {
 			svc := &socks.SocksSvc{
 				RemoteAddr: svcConn.RemoteAddr().String(),
 			}
-			peer, err := gPeer.Clone(ctx, cancel, svcConn, svc)
+			peer, err := gPeer.Clone(ctx, svcConn, svc)
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 				return

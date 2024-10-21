@@ -79,8 +79,8 @@ func (p *SocksCli) RunLocal(ctx context.Context, cancel context.CancelFunc, sock
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("failed to accept")
 			continue
 		}
-		ctxInner, calcelInner := context.WithCancel(ctx)
-		go p.connect(ctxInner, calcelInner, c)
+		ctx, calcelInner := context.WithCancel(ctx)
+		go p.connect(ctx, calcelInner, c)
 	}
 }
 
@@ -411,7 +411,7 @@ func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr 
 			return
 		}
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctx, cancel, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		peer, err1 := rpc.StartPeer(ctx, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -445,18 +445,16 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, a
 		cancel()
 	}()
 	for {
-		ctxInner, cancelInner := context.WithCancel(ctx)
-		_ = cancelInner
 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
 		// conn, err := socket.DialTLS(ctx, "tcp", addr, tlsConfig)
-		c, err := quic.DialAddr(ctxInner, addr, tlsConfig, nil)
+		c, err := quic.DialAddr(ctx, addr, tlsConfig, nil)
 		if err != nil {
-			log.Ctx(ctxInner).Error().Caller().Err(err).Send()
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue
 		}
-		cliConn, err := conn.WrapQuicClient(ctxInner, c)
+		cliConn, err := conn.WrapQuicClient(ctx, c)
 		if err != nil {
-			log.Ctx(ctxInner).Error().Caller().Err(err).Send()
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue
 		}
 		// zcli, err := conn.NewZip(ctx, cliConn)
@@ -464,11 +462,11 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, a
 		// 	log.Ctx(ctx).Error().Caller().Err(err).Send()
 		// 	return
 		// }
-		log.Ctx(ctxInner).Info().Caller().Str("local", cliConn.LocalAddr().String()).Str("remote", cliConn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctxInner, cancelInner, cliConn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		log.Ctx(ctx).Info().Caller().Str("local", cliConn.LocalAddr().String()).Str("remote", cliConn.RemoteAddr().String()).Send()
+		peer, err1 := rpc.StartPeer(ctx, cliConn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
-			log.Ctx(ctxInner).Error().Caller().Err(err).Send()
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue
 		}
 
@@ -483,7 +481,7 @@ func (p *SocksCli) RunQuicConn(ctx context.Context, cancel context.CancelFunc, a
 			RemoteAddrs: cliConn.RemoteAddr().String(),
 		}:
 		case <-time.After(time.Second * 60):
-			peer.Close(ctxInner)
+			peer.Close(ctx)
 		}
 	}
 }

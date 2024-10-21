@@ -19,8 +19,8 @@ type Client struct {
 }
 
 // StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
-func StartClient(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
-	rpc, err := StartPeer(ctx, cancel, rwc, nil, fRegisters...)
+func StartClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
+	rpc, err := StartPeer(ctx, rwc, nil, fRegisters...)
 	if err != nil {
 		return
 	}
