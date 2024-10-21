@@ -52,7 +52,7 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, cancel, nil, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
@@ -64,6 +64,8 @@ func main() {
 		default:
 		}
 		ctx := context.TODO()
+		ctx, cancel := context.WithCancel(ctx)
+		_ = cancel
 		conn, err := listener.Accept()
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
@@ -80,7 +82,7 @@ func main() {
 		svc := &socks.SocksSvc{
 			RemoteAddr: conn.RemoteAddr().String(),
 		}
-		peer, err := gPeer.Clone(ctx, conn, svc)
+		peer, err := gPeer.Clone(ctx, cancel, conn, svc)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue

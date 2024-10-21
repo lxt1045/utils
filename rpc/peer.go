@@ -75,22 +75,12 @@ func StartPeer(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteC
 	}
 
 	if rwc != nil {
-		hasClient := len(rpc.Client.cliMethods) > 0
-		pCodec, err1 := codec.NewCodec(ctx, cancel, rwc, rpc.Service.Methods(), hasClient)
-		if err1 != nil {
-			err = err1
+		callers := rpc.Service.Methods()
+		err = rpc.bindCodec(ctx, cancel, rwc, callers)
+		if err != nil {
 			return
 		}
-		rpc.Client.Codec = pCodec
-		rpc.Service.Codec = pCodec
 
-		if hasClient {
-			go pCodec.Heartbeat(ctx, cancel)
-			err = rpc.Client.getMethodsFromSvc(ctx)
-			if err != nil {
-				return
-			}
-		}
 	}
 	return
 }
@@ -100,8 +90,19 @@ func (rpc Peer) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.Rea
 		err = errors.Errorf("svc type is not equal")
 		return
 	}
+
+	callers := rpc.Service.CloneMethods(svc)
+	err = rpc.bindCodec(ctx, cancel, rwc, callers)
+	if err != nil {
+		return
+	}
+
+	return rpc, nil
+}
+
+func (rpc *Peer) bindCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, callers []codec.Method) (err error) {
 	hasClient := len(rpc.Client.cliMethods) > 0
-	pCodec, err := codec.NewCodec(ctx, cancel, rwc, rpc.Service.CloneMethods(svc), hasClient)
+	pCodec, err := codec.NewCodec(ctx, cancel, rwc, callers, hasClient)
 	if err != nil {
 		return
 	}
@@ -114,8 +115,7 @@ func (rpc Peer) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.Rea
 			return
 		}
 	}
-
-	return rpc, nil
+	return
 }
 
 func (rpc Peer) Close(ctx context.Context) (err error) {

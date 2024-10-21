@@ -166,7 +166,7 @@ func (c *Codec) Heartbeat(ctx context.Context, cancel context.CancelFunc) {
 		// }
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("Heartbeat")
-			return
+			continue
 		}
 	}
 }

@@ -35,18 +35,20 @@ func testService(ctx context.Context, cancel context.CancelFunc, t *testing.T, a
 		if err != nil {
 			t.Fatal(err)
 		}
+		// 处理流程尽量要和Listen流程分开，避免相互影响
+		go func() {
+			s, err := StartService(ctx, cancel, conn, &server{Str: "test"}, base.RegisterHelloServer)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		s, err := StartService(ctx, cancel, conn, &server{Str: "test"}, base.RegisterHelloServer)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		all := s.AllInterfaces()
-		for i, m := range all {
-			svc := (*server)(m.SvcPointer)
-			t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
-				i, svc.Str, m.Name, m.reqType.String())
-		}
+			all := s.AllInterfaces()
+			for i, m := range all {
+				svc := (*server)(m.SvcPointer)
+				t.Logf("idx:%d, service.Str:%v, func_key:%s, req:%s",
+					i, svc.Str, m.Name, m.reqType.String())
+			}
+		}()
 	}
 }
 
