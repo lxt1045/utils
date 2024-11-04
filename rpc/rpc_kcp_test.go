@@ -107,7 +107,7 @@ func testKcpService(ctx context.Context, cancel context.CancelFunc, t *testing.T
 		_ = m
 
 		if isFirstTime {
-			s, err := StartService(ctx, cancel, c, &server{Str: "test"}, base.RegisterHelloServer)
+			s, err := StartService(ctx, c, &server{Str: "test"}, base.RegisterHelloServer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -134,7 +134,7 @@ func testKcpClient(ctx context.Context, cancel context.CancelFunc, t *testing.T,
 		t.Fatal(err)
 	}
 
-	client, err := StartClient(ctx, cancel, conn, base.NewHelloClient)
+	client, err := StartClient(ctx, conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

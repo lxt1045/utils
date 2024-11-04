@@ -80,7 +80,7 @@ func testUdpService(ctx context.Context, cancel context.CancelFunc, t *testing.T
 		}
 		c, isFirstTime := conn.ToUdpConn(ctx, addrUdp, ln)
 		if isFirstTime {
-			s, err := StartService(ctx, cancel, c, &server{Str: "test"}, base.RegisterHelloServer)
+			s, err := StartService(ctx, c, &server{Str: "test"}, base.RegisterHelloServer)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -104,7 +104,7 @@ func testUdpClient(ctx context.Context, cancel context.CancelFunc, t *testing.T,
 	defer c.Close()
 
 	conn := conn.UdpConnCli{Conn: c}
-	client, err := StartClient(ctx, cancel, &conn, base.NewHelloClient)
+	client, err := StartClient(ctx, &conn, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}

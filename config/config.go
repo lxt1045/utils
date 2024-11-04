@@ -107,6 +107,11 @@ func Unmarshal(bs []byte, conf interface{}) (err error) {
 		err = errors.Errorf(err.Error())
 		return
 	}
+	err = yaml.Unmarshal(bs, conf)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
 
 	c := &mapstructure.DecoderConfig{
 		Metadata:         nil,
@@ -134,11 +139,6 @@ func Unmarshal(bs []byte, conf interface{}) (err error) {
 	if err != nil {
 		err = errors.Errorf(err.Error())
 		return err
-	}
-	err = yaml.Unmarshal(bs, conf)
-	if err != nil {
-		err = errors.Errorf(err.Error())
-		return
 	}
 	return
 }

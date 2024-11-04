@@ -69,7 +69,7 @@ func quicService(ctx context.Context, cancel context.CancelFunc, t *testing.T, c
 	defer listener.Close()
 
 	// gPeer, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
-	gPeer, err := StartPeer(ctx, cancel, nil, &server{Str: "test"}, base.RegisterHelloServer)
+	gPeer, err := StartPeer(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func quicService(ctx context.Context, cancel context.CancelFunc, t *testing.T, c
 			t.Fatal(err)
 		}
 
-		_, err = gPeer.Clone(ctx, cancel, zsvc, &server{Str: "hello"})
+		_, err = gPeer.Clone(ctx, zsvc, &server{Str: "hello"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +149,7 @@ func quicClient(ctx context.Context, cancel context.CancelFunc, t *testing.T) {
 	}
 
 	// client, err := StartClient(ctx, zcli, base.NewHelloClient)
-	client, err := StartPeer(ctx, cancel, zcli, nil, base.NewHelloClient)
+	client, err := StartPeer(ctx, zcli, nil, base.NewHelloClient)
 	if err != nil {
 		t.Fatal(err)
 	}
