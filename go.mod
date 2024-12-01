@@ -3,7 +3,10 @@ module github.com/lxt1045/utils
 go 1.21.4
 
 require (
+	github.com/allegro/bigcache/v3 v3.1.0
+	github.com/benbjohnson/clock v1.1.0
 	github.com/bytedance/mockey v1.2.6
+	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
@@ -23,8 +26,10 @@ require (
 	go.uber.org/automaxprocs v1.5.2
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.12.0
+	golang.org/x/sync v0.2.0
 	google.golang.org/grpc v1.56.2
 	gopkg.in/yaml.v2 v2.4.0
+	gorm.io/gorm v1.25.5
 )
 
 require (
@@ -86,5 +91,4 @@ require (
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gorm.io/gorm v1.25.5 // indirect
 )
