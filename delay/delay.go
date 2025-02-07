@@ -95,8 +95,8 @@ func (p *Queue[T]) Push(t T) (closed bool) {
 	return p.push(d)
 }
 
-// PushInitData 支持在头部按顺序插入延时不足量的数据
-func (p *Queue[T]) PushInitData(t T, tStart int64) (closed bool) {
+// PushWithStart 支持在头部按顺序插入延时数据,不过还是按Push顺序执行Post
+func (p *Queue[T]) PushWithStart(t T, tStart int64) (closed bool) {
 	if tStart > time.Now().UnixNano() {
 		tStart = time.Now().UnixNano()
 	}
