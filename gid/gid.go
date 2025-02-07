@@ -12,7 +12,7 @@ var (
 	agentID    int64 = 0 & 0x3FFF // 0b0001 1111 1111 1111
 	idInterval int64 = 1 << 14
 	lastID     int64
-	gidLock    sync.RWMutex
+	gidLock    sync.Mutex
 
 	timeMonotonic, tsMonotonic, tsRuntimeNano = func() (time.Time, int64, int64) {
 		tNow := time.Now()
@@ -134,11 +134,12 @@ func GetGID() int64 {
 		return id
 	}
 
-	swapped := atomic.CompareAndSwapInt64(&lastID, id, tsID0)
-	if swapped {
+	if gidLock.TryLock() {
+		defer gidLock.Unlock()
+		atomic.StoreInt64(&lastID, tsID0)
 		return tsID0
 	}
-	return atomic.AddInt64(&lastID, idInterval)
+	return id
 	// t.Logf("GID:%020d", id)
 	// // 3210987654321098765432109876543210987654321098765432109876543210
 	// // 0001100100100111100101000001010001000000000000000100000000000001

@@ -88,6 +88,27 @@ func newQueue[T Delay](initCap int, timeWindow int64, fOK func(t T) bool, popSle
 
 // MustSend 超过容量后，扩充容量
 func (p *Queue[T]) Push(t T) (closed bool) {
+	d := Data[T]{
+		deadline: time.Now().UnixNano() + p.timeWindow,
+		data:     t,
+	}
+	return p.push(d)
+}
+
+// PushInitData 支持在头部按顺序插入延时不足量的数据
+func (p *Queue[T]) PushInitData(t T, tStart int64) (closed bool) {
+	if tStart > time.Now().UnixNano() {
+		tStart = time.Now().UnixNano()
+	}
+
+	d := Data[T]{
+		deadline: tStart + p.timeWindow,
+		data:     t,
+	}
+	return p.push(d)
+}
+
+func (p *Queue[T]) push(d Data[T]) (closed bool) {
 	p.wlock.Lock()
 	// defer p.lock.Unlock()
 	defer func() {
@@ -112,10 +133,6 @@ func (p *Queue[T]) Push(t T) (closed bool) {
 	if p.closed != 0 {
 		closed = true
 		return
-	}
-	d := Data[T]{
-		deadline: time.Now().UnixNano() + p.timeWindow,
-		data:     t,
 	}
 
 	// 为了方便遍历，避免写满时 p.tail==p.head，这里永远不能写满
