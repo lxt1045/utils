@@ -145,7 +145,7 @@ func GinWithLogid(ctx *gin.Context, logid int64) *zerolog.Logger {
 
 	l := zerolog.New(output)
 	l = l.Hook(logidHook{logid: logid})
-	l = l.Hook(th) // l = l.With().Timestamp().Logger()
+	// l = l.Hook(th) // l = l.With().Timestamp().Logger()
 
 	ctx.Set(ginLogger, &l)
 	return &l
