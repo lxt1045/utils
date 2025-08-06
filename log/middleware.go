@@ -121,7 +121,7 @@ func WithLogid(ctx context.Context, logid int64) (context.Context, *zerolog.Logg
 	l = l.Hook(logidHook{logid: logid})
 	// l = l.Hook(th) // l = l.With().Timestamp().Logger()
 
-	return l.Logger.WithContext(ctx), &l
+	return l.WithContext(ctx), &l
 }
 
 func GinGet(ctx *gin.Context) *zerolog.Logger {
