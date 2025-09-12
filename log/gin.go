@@ -109,6 +109,17 @@ func Ctx(ctx context.Context) *zerolog.Logger {
 	return l
 }
 
+func MustLogid(ctx context.Context) (ctx1 context.Context, logid int64) {
+	ctx1 = ctx
+	logid, ok := Logid(ctx)
+	if ok {
+		return
+	}
+	logid = gid.GetGID()
+	ctx1, _ = WithLogid(ctx, logid)
+	return
+}
+
 func Logid(ctx context.Context) (logid int64, ok bool) {
 	logid, ok = ctx.Value(logID{}).(int64)
 	return
@@ -140,6 +151,9 @@ func GinGet(ctx *gin.Context) *zerolog.Logger {
 	return GinWithLogid(ctx, logid)
 }
 
+func GinCtx(ctx *gin.Context) *zerolog.Logger {
+	return GinGet(ctx)
+}
 func GinWithLogid(ctx *gin.Context, logid int64) *zerolog.Logger {
 	ctx.Set(ginLogID, logid)
 
