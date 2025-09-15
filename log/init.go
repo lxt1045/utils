@@ -27,6 +27,11 @@ func GetOutput() io.Writer {
 	return output
 }
 
+func GetStdOutput(ctx context.Context) io.Writer {
+	ctx, _ = MustLogid(ctx)
+	return NewStdWriter(ctx)
+}
+
 func Init(ctx context.Context, conf config.Log) (err error) {
 	if conf.Filename != "" {
 		fileWriter := &lumberjack.Logger{

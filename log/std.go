@@ -2,12 +2,12 @@ package log
 
 import (
 	"context"
-	"io"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/lxt1045/errors/zerolog"
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -37,18 +37,15 @@ func SetStdLogger(ctx context.Context) {
 	gidLoggers.Set(gid, Ctx(ctx))
 }
 
-func GetStdOutput(name string) io.Writer {
-	return output
-}
-
 // gid 获取上下文
 type StdWriter struct {
-	ctx    context.Context
-	logger *zerolog.Logger
+	ctx context.Context
 }
 
 func (w *StdWriter) Write(p []byte) (n int, err error) {
-	GetStdLogger(w.ctx).Info().Caller().Msg(string(p))
+	n = len(p)
+	str := unsafe.String(unsafe.SliceData(p), n)
+	GetStdLogger(w.ctx).Info().Caller().Msg(str)
 	return
 
 }
@@ -79,8 +76,7 @@ func NewStdWriter(ctx context.Context) *StdWriter {
 		}()
 	})
 	return &StdWriter{
-		ctx:    ctx,
-		logger: Ctx(ctx),
+		ctx: ctx,
 	}
 }
 
