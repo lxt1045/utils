@@ -42,7 +42,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestLog(t *testing.T) {
-	err := SetGlobalLevel("warn")
+	err := setGlobalLevel("warn")
 	if err != nil {
 		t.Fatal(err)
 	}

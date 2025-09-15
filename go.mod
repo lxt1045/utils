@@ -13,12 +13,14 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/klauspost/compress v1.17.4
-	github.com/lxt1045/errors v0.0.0-20250912094344-b6a5a6e18e7c
+	github.com/lxt1045/errors v0.0.0-20250915061149-2545fd0ed64c
 	github.com/markuskont/datamodels v0.1.1
 	github.com/markuskont/go-sigma-rule-engine v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
+	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/paddie/gokmp v0.0.0-20190712102438-5097de8eec69
+	github.com/petermattis/goid v0.0.0-20250904145737-900bdf8bb490
 	github.com/quic-go/quic-go v0.40.1
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
