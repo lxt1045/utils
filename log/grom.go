@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/lxt1045/errors"
 	lzlog "github.com/lxt1045/errors/zerolog"
@@ -42,29 +41,29 @@ var (
 	gormSourceDir = "gorm.io"
 )
 
-func NewGormLogger(ctx context.Context, logger lzlog.Logger) *GormLogger {
-	return (*GormLogger)(&logger)
+func NewGormLogger(logger *lzlog.Logger) *GormLogger {
+	return (*GormLogger)(logger)
 }
 
 type GormLogger lzlog.Logger
 
 // Info print info
-func (l GormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
 	Ctx(ctx).Info().Msg(fmt.Sprintf(msg, data...))
 }
 
 // Warn print warn messages
-func (l GormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
-	Ctx(ctx).Warn().Msg(fmt.Sprintf(msg, data...))
+func (l *GormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+	Ctx(ctx).Warn().Array("stack", errors.ZerologStack(1)).Msg(fmt.Sprintf(msg, data...))
 }
 
 // Error print error messages
-func (l GormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
-	Ctx(ctx).Error().Msg(fmt.Sprintf(msg, data...))
+func (l *GormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+	Ctx(ctx).Error().Array("stack", errors.ZerologStack(1)).Msg(fmt.Sprintf(msg, data...))
 }
 
 // Trace print sql message
-func (l GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 
 	// get zerolog from context
 	zlog := Ctx(ctx)
@@ -148,49 +147,49 @@ func (l GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (strin
 
 // LogMode log mode
 func (l *GormLogger) LogMode(level logger.LogLevel) logger.Interface {
-	switch level {
-	case logger.Silent:
-		toGormEvent((*lzlog.Logger)(l).Trace())
-	case logger.Error:
-		toGormEvent((*lzlog.Logger)(l).Error())
-	case logger.Warn:
-		toGormEvent((*lzlog.Logger)(l).Warn())
-	case logger.Info:
-		toGormEvent((*lzlog.Logger)(l).Info())
-	default:
-		toGormEvent((*lzlog.Logger)(l).Info())
-	}
+
 	return l
 }
 
-func toGormEvent(event *lzlog.Event) *GormEvent {
-	return (*GormEvent)(unsafe.Pointer(event))
+type GormEvent struct {
+	level logger.LogLevel
 }
 
-type GormEvent struct {
-	zerolog.Event
+func (l *GormEvent) ToZeroEvent(ctx context.Context) *lzlog.Event {
+	switch l.level {
+	case logger.Silent:
+		return Ctx(ctx).Trace()
+	case logger.Error:
+		return Ctx(ctx).Error().Array("stack", errors.ZerologStack(1))
+	case logger.Warn:
+		return Ctx(ctx).Warn().Array("stack", errors.ZerologStack(1))
+	case logger.Info:
+		return Ctx(ctx).Info()
+	default:
+		return Ctx(ctx).Info()
+	}
 }
 
 // Info print info
-func (l GormEvent) Info(ctx context.Context, msg string, data ...interface{}) {
-	l.Event.Msg(fmt.Sprintf(msg, data...))
+func (l *GormEvent) Info(ctx context.Context, msg string, data ...interface{}) {
+	l.ToZeroEvent(ctx).Msg(fmt.Sprintf(msg, data...))
 }
 
 // Warn print warn messages
-func (l GormEvent) Warn(ctx context.Context, msg string, data ...interface{}) {
-	l.Event.Msg(fmt.Sprintf(msg, data...))
+func (l *GormEvent) Warn(ctx context.Context, msg string, data ...interface{}) {
+	l.ToZeroEvent(ctx).Msg(fmt.Sprintf(msg, data...))
 }
 
 // Error print error messages
-func (l GormEvent) Error(ctx context.Context, msg string, data ...interface{}) {
-	l.Event.Msg(fmt.Sprintf(msg, data...))
+func (l *GormEvent) Error(ctx context.Context, msg string, data ...interface{}) {
+	l.ToZeroEvent(ctx).Msg(fmt.Sprintf(msg, data...))
 }
 
 // Trace print sql message
-func (l GormEvent) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (l *GormEvent) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 
 	// get zerolog from context
-	event := &l.Event
+	event := l.ToZeroEvent(ctx)
 
 	elapsed := time.Since(begin)
 	sql, rows := fc()
