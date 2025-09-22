@@ -13,7 +13,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/klauspost/compress v1.17.4
-	github.com/lxt1045/errors v0.0.0-20250915061149-2545fd0ed64c
+	github.com/lxt1045/errors v0.0.0-20250915081511-43f2dfddd124
 	github.com/markuskont/datamodels v0.1.1
 	github.com/markuskont/go-sigma-rule-engine v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
