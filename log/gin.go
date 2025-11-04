@@ -6,6 +6,13 @@ import (
 	"github.com/lxt1045/utils/gid"
 )
 
+func GetLogID(ctx *gin.Context) int64 {
+	vid, _ := ctx.Get(ginLogID)
+	logid, _ := vid.(int64)
+
+	return logid
+}
+
 func GinGet(ctx *gin.Context) *zerolog.Logger {
 	v, _ := ctx.Get(ginLogger)
 	logger, ok := v.(*zerolog.Logger)

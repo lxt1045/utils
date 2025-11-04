@@ -96,7 +96,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 
 	// add fields
 
-	event = event.Time(zerolog.TimestampFieldName, begin)
+	event = event.Time("start_time", begin)
 	event = event.Int64("duration/ms", int64(elapsed/time.Millisecond))
 
 	cs := errors.CallersSkip(0)
@@ -205,7 +205,7 @@ func (l *GormEvent) Trace(ctx context.Context, begin time.Time, fc func() (strin
 	}
 	// add fields
 
-	event = event.Time(zerolog.TimestampFieldName, begin)
+	event = event.Time("start_time", begin)
 	event = event.Int64("duration/ms", int64(elapsed/time.Millisecond))
 
 	skip := 2
