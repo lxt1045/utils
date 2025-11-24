@@ -199,6 +199,16 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 				return
 			}
 			valueIn.Set(reflect.ValueOf(str))
+			if str == "" {
+				i := strings.IndexByte(str1, '}')
+				str1 = strings.TrimSpace(str1[i+1:])
+				str1 = strings.TrimLeft(str1, "|")
+				str1 = strings.TrimSpace(str1)
+				if str1 != "" {
+					valueIn.Set(reflect.ValueOf(str1))
+				}
+			}
+		} else if valueIn.CanSet() {
 		}
 		return
 	case reflect.Slice, reflect.Array:
@@ -236,12 +246,14 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 // 从环境变量给变量赋值，变量格式为: ${Var}
 func AssignVarFromEnv(v string) (out string, ok bool) {
 	v = strings.TrimSpace(v)
-	if len(v) <= 3 || v[0] != '$' || v[1] != '{' || v[len(v)-1] != '}' {
+	i := strings.IndexByte(v, '}')
+	if i < 0 || len(v) <= 3 || v[0] != '$' || v[1] != '{' {
 		return
 	}
 	ok = true
-	v = v[2 : len(v)-1]
-	return os.LookupEnv(v)
+	v = v[2:i]
+	out, _ = os.LookupEnv(v)
+	return
 }
 
 func AssignMapFromEnv(m interface{}) (out interface{}, err error) {

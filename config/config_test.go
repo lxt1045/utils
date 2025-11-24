@@ -281,4 +281,27 @@ func TestAssignVarFromEnv(t *testing.T) {
 		}
 		t.Logf("out: %+v", obj)
 	})
+
+	t.Run("AssignVarsFromEnv-OR", func(t *testing.T) {
+		obj := struct {
+			Str   string
+			Str2  string
+			Empty string
+			M     map[string]interface{}
+		}{
+			Str:   "${Var_Test}|888888 ",
+			Str2:  "${Var_yyy}|888888 ",
+			Empty: "${Var_xxx}   ",
+			M: map[string]interface{}{
+				"key1":  "${Var_Test} | 6666666 ",
+				"key2":  "${Var_xxx} | 6666666 ",
+				"Empty": "${Var_xxx}  ",
+			},
+		}
+		err := AssignVarsFromEnv(&obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("out: %+v", obj)
+	})
 }
