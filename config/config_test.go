@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"strconv"
 	"testing"
 
@@ -136,6 +137,49 @@ type Config struct {
 	}
 }
 
+func TestParseBytes(t *testing.T) {
+	testCases := map[string]int64{
+		"100GB":  100 * 1024 * 1024 * 1024,
+		"100gb":  100 * 1024 * 1024 * 1024,
+		"100 GB": 100 * 1024 * 1024 * 1024,
+		"100G":   100 * 1024 * 1024 * 1024,
+		"100g":   100 * 1024 * 1024 * 1024,
+		"100 G":  100 * 1024 * 1024 * 1024,
+		"128MB":  128 * 1024 * 1024,
+		"256M":   256 * 1024 * 1024,
+		"64mb":   64 * 1024 * 1024,
+		"32m":    32 * 1024 * 1024,
+		"128KB":  128 * 1024,
+		"256K":   256 * 1024,
+		"64kb":   64 * 1024,
+		"32k":    32 * 1024,
+		"128":    128,
+		"256":    256,
+		"64":     64,
+		"32":     32,
+	}
+	t.Run("testCases", func(t *testing.T) {
+		var defaultValue int64 = 111
+		for k, v := range testCases {
+			n, err := ParseBytes(k, defaultValue)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v != n {
+				t.Fatalf("%s, v:%d != n:%d", k, v, n)
+			}
+		}
+		k := "1a01G"
+		n, err := ParseBytes(k, defaultValue)
+		if err == nil {
+			t.Fatal("err")
+		}
+		if defaultValue != n {
+			t.Fatalf("%s, defaultValue:%d != n:%d", k, defaultValue, n)
+		}
+	})
+}
+
 func TestFloat(t *testing.T) {
 	t.Run("Camel2Case", func(t *testing.T) {
 		fInsert := func(i int) string {
@@ -164,5 +208,77 @@ func TestFloat(t *testing.T) {
 		cpuNum = int(math.Floor(float64(cpuNum)*f + 0.5))
 		fmt.Println("cpuNum->", cpuNum)
 
+	})
+}
+
+func TestAssignVarFromEnv(t *testing.T) {
+	err := os.Setenv("Var_Test", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("AssignVarFromEnv", func(t *testing.T) {
+		out, ok := AssignVarFromEnv("${Var_Test}")
+		if !ok {
+			t.Fatal("not exist")
+		}
+		t.Logf("out: %s", out)
+	})
+
+	t.Run("AssignMapFromEnv", func(t *testing.T) {
+		m := map[string]string{
+			"key1": "${Var_Test}",
+		}
+		out, err := AssignMapFromEnv(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("out: %s", out)
+	})
+
+	t.Run("AssignMapFromEnv-interface", func(t *testing.T) {
+		m := map[string]interface{}{
+			"key1": "${Var_Test}",
+		}
+		out, err := AssignMapFromEnv(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("out: %s", out)
+	})
+
+	t.Run("AssignVarsFromEnv-slice", func(t *testing.T) {
+		m := []string{"test222", "${Var_Test}"}
+		err := AssignVarsFromEnv(&m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("out: %+v", m)
+	})
+
+	t.Run("AssignVarsFromEnv-array", func(t *testing.T) {
+		m := [2]string{"test222", "${Var_Test}"}
+		err := AssignVarsFromEnv(&m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("out: %+v", m)
+	})
+
+	t.Run("AssignVarsFromEnv", func(t *testing.T) {
+		obj := struct {
+			Str string
+			M   map[string]interface{}
+		}{
+			Str: "${Var_Test}",
+			M: map[string]interface{}{
+				"key1": "${Var_Test}",
+			},
+		}
+		err := AssignVarsFromEnv(&obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("out: %+v", obj)
 	})
 }

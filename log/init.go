@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/errors/zerolog"
 	"github.com/lxt1045/utils/config"
@@ -105,6 +106,9 @@ func Level(l string) (zerolog.Level, error) {
 }
 
 func Ctx(ctx context.Context) *zerolog.Logger {
+	if c, ok := ctx.(*gin.Context); ok {
+		return GinGet(c)
+	}
 	_, ok := ctx.Value(logID{}).(int64)
 	if ok {
 		return zerolog.Ctx(ctx)
@@ -125,11 +129,18 @@ func MustLogid(ctx context.Context) (ctx1 context.Context, logid int64) {
 }
 
 func Logid(ctx context.Context) (logid int64, ok bool) {
+	if c, ok := ctx.(*gin.Context); ok {
+		return getLogID(c)
+	}
 	logid, ok = ctx.Value(logID{}).(int64)
 	return
 }
 
 func WithLogid(ctx context.Context, logid int64) (context.Context, *zerolog.Logger) {
+	if c, ok := ctx.(*gin.Context); ok {
+		l := GinWithLogid(c, logid)
+		return ctx, l
+	}
 	ctx = context.WithValue(ctx, logID{}, logid)
 
 	l := zerolog.New(output)

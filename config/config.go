@@ -6,6 +6,10 @@ import (
 	"crypto/x509"
 	"embed"
 	"io/fs"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
 	"unicode"
 
 	"github.com/lxt1045/errors"
@@ -37,6 +41,7 @@ type GRPC struct {
 }
 
 type Conn struct {
+	TCP              string
 	Proto            string
 	ProxyAddr        string
 	Addr             string
@@ -48,6 +53,7 @@ type Conn struct {
 	WriteWindow      int
 	FlushTime        int
 	Heartbeat        int
+	Bandwidth        int // 带宽限制：Mbps
 	TLS              struct {
 		CACert     string
 		ServerCert string
@@ -60,6 +66,7 @@ type Conn struct {
 type Queue struct {
 	DBFile     string
 	Limit      string
+	CacheLimit string
 	CAPassword string
 	CAIv       string
 }
@@ -118,8 +125,9 @@ func Unmarshal(bs []byte, conf interface{}) (err error) {
 		Result:           conf,
 		WeaklyTypedInput: true,
 		// DecodeHook: mapstructure.ComposeDecodeHookFunc(
-		// 	mapstructure.StringToTimeDurationHookFunc(),
-		// 	mapstructure.StringToSliceHookFunc(","),
+		// 	// mapstructure.StringToTimeDurationHookFunc(),
+		// 	// mapstructure.StringToSliceHookFunc(","),
+		// 	AssignVarsFromEnvHookFunc(),
 		// ),
 		MatchName: func(mapKey, fieldName string) bool {
 			ok := Camel2Case(mapKey) == Camel2Case(fieldName)
@@ -140,7 +148,191 @@ func Unmarshal(bs []byte, conf interface{}) (err error) {
 		err = errors.Errorf(err.Error())
 		return err
 	}
+	// 环境变量处理
+	err = AssignVarsFromEnv(conf)
+	if err != nil {
+		return
+	}
+
 	return
+}
+
+// 环境变量处理
+func AssignVarsFromEnv(conf interface{}) (err error) {
+	if conf == nil {
+		return
+	}
+	valueIn := reflect.ValueOf(conf)
+	if valueIn.Type().Kind() != reflect.Pointer {
+		err = errors.Errorf("conf must be pointer")
+		return
+	}
+	valueIn = valueIn.Elem()
+
+	switch valueIn.Type().Kind() {
+	case reflect.Pointer:
+		err = AssignVarsFromEnv(valueIn.Interface())
+		if err != nil {
+			return
+		}
+		return
+	case reflect.Interface:
+		vUnderlying := valueIn.Elem()            // interface 底层的值
+		vpNew := reflect.New(vUnderlying.Type()) // 不能直接取地址，所以需要先创建一个新的变量，再做修改
+		vpNew.Elem().Set(vUnderlying)
+		err = AssignVarsFromEnv(vpNew.Interface())
+		if err != nil {
+			return
+		}
+
+		// 获取一个底层类型是 interface{} 类型的 interface{}
+		ifaces := []interface{}{vpNew.Elem().Interface()}
+		vIfaces := reflect.ValueOf(ifaces)
+		valueIn.Set(vIfaces.Index(0))
+		return
+	case reflect.String:
+		str1 := valueIn.String()
+		str, ok := AssignVarFromEnv(str1)
+		if ok {
+			if !valueIn.CanSet() {
+				err = errors.Errorf("conf is can not set")
+				return
+			}
+			valueIn.Set(reflect.ValueOf(str))
+		}
+		return
+	case reflect.Slice, reflect.Array:
+		err = AssignSliceFromEnv(valueIn.Addr().Interface())
+		return
+	case reflect.Map:
+		// map 在 golang 中是一个指针，所以这里不需要重新给 conf 赋值
+		_, err = AssignMapFromEnv(valueIn.Interface())
+		return
+	case reflect.Struct:
+		for i := 0; i < valueIn.NumField(); i++ {
+			v := valueIn.Field(i)
+			if !v.IsValid() {
+				continue // 跳过0值
+			}
+			for v.Type().Kind() == reflect.Pointer {
+				v = v.Elem()
+			}
+			if !v.IsValid() {
+				continue // 跳过0值
+			}
+			if v.Addr().CanInterface() {
+				err = AssignVarsFromEnv(v.Addr().Interface())
+				if err != nil {
+					return
+				}
+			}
+		}
+		return
+	default:
+	}
+	return
+}
+
+// 从环境变量给变量赋值，变量格式为: ${Var}
+func AssignVarFromEnv(v string) (out string, ok bool) {
+	v = strings.TrimSpace(v)
+	if len(v) <= 3 || v[0] != '$' || v[1] != '{' || v[len(v)-1] != '}' {
+		return
+	}
+	ok = true
+	v = v[2 : len(v)-1]
+	return os.LookupEnv(v)
+}
+
+func AssignMapFromEnv(m interface{}) (out interface{}, err error) {
+	vm := reflect.ValueOf(m)
+	if !vm.IsValid() {
+		return
+	}
+	for vm.Type().Kind() == reflect.Pointer {
+		vm = vm.Elem()
+	}
+	if !vm.IsValid() {
+		return
+	}
+	if vm.Type().Kind() != reflect.Map {
+		err = errors.Errorf("m must be map")
+		return
+	}
+	iter := vm.MapRange()
+	for iter.Next() {
+		k := iter.Key()
+		v := iter.Value()
+		if !v.IsValid() {
+			continue
+		}
+		for v.Type().Kind() == reflect.Pointer {
+			v = v.Elem()
+		}
+		if !v.IsValid() {
+			return
+		}
+
+		vpNew := reflect.New(v.Type()) // 不能直接取地址，所以需要先创建一个新的变量，再做修改
+		vpNew.Elem().Set(v)
+		err = AssignVarsFromEnv(vpNew.Interface())
+		if err != nil {
+			return
+		}
+
+		vm.SetMapIndex(k, vpNew.Elem())
+	}
+	return m, nil
+}
+
+func AssignSliceFromEnv(m interface{}) (err error) {
+	vm := reflect.ValueOf(m)
+	if !vm.IsValid() {
+		return
+	}
+	for vm.Type().Kind() == reflect.Pointer {
+		vm = vm.Elem()
+	}
+	if !vm.IsValid() {
+		return
+	}
+	if vm.Type().Kind() != reflect.Slice && vm.Type().Kind() != reflect.Array {
+		err = errors.Errorf("m must be slice or array")
+		return
+	}
+	for i, n := 0, vm.Len(); i < n; i++ {
+		v := vm.Index(i)
+		if !v.IsValid() {
+			continue
+		}
+
+		err = AssignVarsFromEnv(v.Addr().Interface())
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+func AssignVarsFromEnvHookFunc() mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Kind,
+		t reflect.Kind,
+		data interface{}) (interface{}, error) {
+		if f != reflect.String || t != reflect.String {
+			return data, nil
+		}
+
+		raw, ok := data.(string)
+		if !ok || raw == "" {
+			return data, nil
+		}
+		raw, ok = AssignVarFromEnv(raw)
+		if !ok {
+			return data, nil
+		}
+
+		return raw, nil
+	}
 }
 
 // 驼峰式写法转为下划线写法
@@ -252,4 +444,30 @@ func BytesToTLSConfig(certPEM, keyPEM, caPEM []byte) (c *tls.Config, err error) 
 	}
 
 	return tlsConfig, nil
+}
+
+func ParseBytes(str string, defaultValue int64) (bytes int64, err error) {
+	str = strings.ToUpper(str)
+	str = strings.TrimSuffix(str, "B")
+
+	var unit int64 = 1
+	switch {
+	case strings.HasSuffix(str, "G"):
+		str = str[:len(str)-1]
+		unit = 1024 * 1024 * 1024
+	case strings.HasSuffix(str, "M"):
+		str = str[:len(str)-1]
+		unit = 1024 * 1024
+	case strings.HasSuffix(str, "K"):
+		str = str[:len(str)-1]
+		unit = 1024
+	}
+	str = strings.TrimSpace(str)
+	bytes, err = strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		bytes = defaultValue
+		return
+	}
+	bytes *= unit
+	return
 }

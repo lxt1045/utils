@@ -7,12 +7,15 @@ import (
 )
 
 func GetLogID(ctx *gin.Context) int64 {
-	vid, _ := ctx.Get(ginLogID)
-	logid, _ := vid.(int64)
-
+	logid, _ := getLogID(ctx)
 	return logid
 }
 
+func getLogID(ctx *gin.Context) (logid int64, ok bool) {
+	vid, _ := ctx.Get(ginLogID)
+	logid, ok = vid.(int64)
+	return
+}
 func GinGet(ctx *gin.Context) *zerolog.Logger {
 	v, _ := ctx.Get(ginLogger)
 	logger, ok := v.(*zerolog.Logger)
