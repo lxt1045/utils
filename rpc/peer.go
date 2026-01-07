@@ -16,6 +16,7 @@ type Peer struct {
 }
 
 // StartPeer fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
+// fRegisters: 自己需要实现的server接口、需要请求对方的client接口注册函数.
 func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	rpc = Peer{
@@ -132,4 +133,8 @@ func (rpc Peer) Close(ctx context.Context) (err error) {
 		err = err1
 	}
 	return
+}
+
+func (rpc Peer) Done() <-chan struct{} {
+	return rpc.Client.Done()
 }

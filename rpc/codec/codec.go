@@ -40,6 +40,8 @@ type Method interface {
 }
 
 type Codec struct {
+	ctx context.Context
+
 	rwc       io.ReadWriteCloser
 	tmpCallSN uint32
 
@@ -93,6 +95,7 @@ func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCl
 		delay:    delay.New[post](64, int64(time.Minute), false),
 		streams:  make(map[uint64]*Stream),
 		callers:  callers,
+		ctx:      ctx,
 	}
 	go c.ReadLoop(ctx, cancel)
 	if needHeartbeat {
@@ -116,6 +119,10 @@ func (c *Codec) Close() (err error) {
 
 func (c *Codec) IsClosed() (yes bool) {
 	return c == nil || c.rwc == nil
+}
+
+func (c *Codec) Done() <-chan struct{} {
+	return c.ctx.Done()
 }
 
 func (c *Codec) ClientCall(ctx context.Context, channel, callID uint16, req, res Msg) (done <-chan error, err error) {
