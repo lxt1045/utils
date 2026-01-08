@@ -248,12 +248,10 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			if m.LogID > 0 {
 				ctxDo = context.WithValue(ctxDo, LogidKey{}, m.LogID)
 			}
-			if len(c.cliPassKeys) != len(m.Fields) {
-				err = ErrUnexpected.Clonef("ctx keys len error, %d,%d", len(c.cliPassKeys), len(m.Fields))
-				return
-			}
-			for i, k := range c.cliPassKeys {
-				ctxDo = context.WithValue(ctxDo, k, m.Fields[i])
+			if len(c.svcPassKeys) == len(m.Fields) {
+				for i, k := range c.svcPassKeys {
+					ctxDo = context.WithValue(ctxDo, k, m.Fields[i])
+				}
 			}
 			bsBody = bsBody[header.CtxLen:]
 		}
