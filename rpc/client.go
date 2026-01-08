@@ -16,6 +16,7 @@ type Client struct {
 	*codec.Codec
 	cliMethods map[string]CliMethod // CallID 需要连接握手后从service端获取
 	svcMethods map[string]CliMethod // CallID 需要连接握手后从service端获取
+	middleware []MiddlewareReqFunc
 }
 
 // StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
@@ -28,45 +29,11 @@ func StartClient(ctx context.Context, rwc io.ReadWriteCloser, fRegisters ...inte
 	return
 }
 
-// StartClient fRegister: pb.RegisterHelloServer(s *grpc.Server, srv HelloServer)
-func startClient(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, fRegisters ...interface{}) (c Client, err error) {
-	c = Client{
-		cliMethods: make(map[string]CliMethod),
-		svcMethods: make(map[string]CliMethod),
-	}
-	for _, fRegister := range fRegisters {
-		if fRegister == nil {
-			err = errors.Errorf("fRegister should not been nil")
-			return
-		}
-		methods, err1 := getCliMethods(fRegister)
-		if err1 != nil {
-			err = err1
-			return
-		}
-		for i, m := range methods {
-			m.CallID = uint16(i)
-			c.cliMethods[m.Name] = m
-		}
-	}
-
-	c.Codec, err = codec.NewCodec(ctx, cancel, rwc, nil, true)
-	if err != nil {
-		return
-	}
-
-	err = c.getMethodsFromSvc(ctx)
-	if err != nil {
-		return
-	}
-	return
-}
-
 func (c *Client) getMethodsFromSvc(ctx context.Context) (err error) {
 	req := &base.CmdReq{
 		Cmd: base.CmdReq_CallIDs,
 	}
-	res, err := c.SendCmd(ctx, 0, req)
+	res, err := c.SendCmd(ctx, req)
 	if err != nil {
 		return
 	}
@@ -100,6 +67,20 @@ func (c Client) Close(ctx context.Context) (err error) {
 }
 
 func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp codec.Msg) (err error) {
+	if len(c.middleware) > 0 {
+		p := &CliParam{
+			Ctx:    ctx,
+			Method: method,
+			Req:    req,
+			Resp:   resp,
+			cli:    &c,
+		}
+		p.Next()
+		return p.Err
+	}
+	return c.invoke(ctx, method, req, resp)
+}
+func (c Client) invoke(ctx context.Context, method string, req codec.Msg, resp codec.Msg) (err error) {
 	m, ok := c.svcMethods[method]
 	if !ok {
 		if false {
@@ -127,7 +108,7 @@ func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp c
 		return
 	}
 	// resp = m.NewResp()
-	done, err := c.Codec.ClientCall(ctx, 0, m.CallID, req, resp)
+	done, err := c.Codec.ClientCall(ctx, m.CallID, req, resp)
 	if err != nil {
 		return
 	}
@@ -152,7 +133,11 @@ func (c *Client) doStream(ctx context.Context, method string, sync bool) (stream
 		err = errors.Errorf("method not found: %s", method)
 		return
 	}
-	stream, err = c.Codec.Stream(ctx, 0, m.CallID, m, sync)
+	stream, err = c.Codec.Stream(ctx, m.CallID, m, sync)
+	return
+}
+func (rpc *Client) Use(middleware ...MiddlewareReqFunc) {
+	rpc.middleware = append(rpc.middleware, middleware...)
 	return
 }
 

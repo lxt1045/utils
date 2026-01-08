@@ -9,15 +9,28 @@ import (
 	"github.com/lxt1045/utils/rpc/codec"
 )
 
+type PassthroughKey = codec.PassthroughKey // value 必须是 []string 类型的才会透传到 server 端
+type LogidKey = codec.LogidKey
+
 type Peer struct {
 	Client
 	Service
 	cancel context.CancelFunc
+	chDone <-chan struct{}
 }
 
-// StartPeer fRegister: pb.RegisterHelloServer(rpc *grpc.Server, srv HelloServer)
-// fRegisters: 自己需要实现的server接口、需要请求对方的client接口注册函数.
 func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
+	rpc, err = NewPeer(ctx, svc, fRegisters...)
+
+	if rwc != nil {
+		err = rpc.Conn(ctx, rwc)
+	}
+	return
+}
+
+// ctx 里 PassthroughKey{} 的 []string 类型; ctx透传value 的key列表, 传value总和长度不能超过65532
+// fRegisters: 自己需要实现的server接口、需要请求对方的client接口注册函数.
+func NewPeer(ctx context.Context, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	rpc = Peer{
 		Client: Client{
@@ -30,6 +43,7 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRe
 			_type:         reflect.TypeOf(svc),
 		},
 		cancel: cancel,
+		chDone: ctx.Done(),
 	}
 
 	for _, f := range fRegisters {
@@ -78,15 +92,12 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRe
 		return
 	}
 
-	if rwc != nil {
-		callers := rpc.Service.Methods()
-		err = rpc.bindCodec(ctx, cancel, rwc, callers)
-		if err != nil {
-			return
-		}
-
-	}
 	return
+}
+
+func (rpc *Peer) Conn(ctx context.Context, rwc io.ReadWriteCloser) (err error) {
+	callers := rpc.Service.Methods()
+	return rpc.bindCodec(ctx, rpc.cancel, rwc, callers)
 }
 
 func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
@@ -106,8 +117,9 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 }
 
 func (rpc *Peer) bindCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, callers []codec.Method) (err error) {
+	ctxPassKeys, _ := ctx.Value(PassthroughKey{}).([]string) // 透传key
 	hasClient := len(rpc.Client.cliMethods) > 0
-	pCodec, err := codec.NewCodec(ctx, cancel, rwc, callers, hasClient)
+	pCodec, err := codec.NewCodec(ctx, cancel, rwc, callers, ctxPassKeys, hasClient)
 	if err != nil {
 		return
 	}
@@ -121,6 +133,12 @@ func (rpc *Peer) bindCodec(ctx context.Context, cancel context.CancelFunc, rwc i
 		}
 	}
 	return
+}
+func (rpc *Peer) ServiceUse(middleware ...MiddlewareRespFunc) {
+	rpc.Service.Use(middleware...)
+}
+func (rpc *Peer) ClientUse(middleware ...MiddlewareReqFunc) {
+	rpc.Client.Use(middleware...)
 }
 
 func (rpc Peer) Close(ctx context.Context) (err error) {
@@ -136,5 +154,5 @@ func (rpc Peer) Close(ctx context.Context) (err error) {
 }
 
 func (rpc Peer) Done() <-chan struct{} {
-	return rpc.Client.Done()
+	return rpc.chDone
 }

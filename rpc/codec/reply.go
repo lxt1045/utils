@@ -34,7 +34,7 @@ func (c *Codec) Handler(ctx context.Context, caller Method, header Header, req M
 		ver = VerStreamResp
 	}
 
-	err = c.SendMsg(ctx, ver, header.Channel, header.CallID, header.CallSN, resp)
+	err = c.SendMsg(ctx, ver, header.CallID, header.CallSN, resp)
 	if err != nil {
 		return
 	}
@@ -127,7 +127,7 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 			c.streams[key] = stream
 		}()
 
-		err = c.SendMsg(ctx, VerCmdResp, header.Channel, header.CallID, header.CallSN, res)
+		err = c.SendMsg(ctx, VerCmdResp, header.CallID, header.CallSN, res)
 		if err != nil {
 			return
 		}
@@ -145,13 +145,14 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 		res := &base.CmdRsp{
 			Status: base.CmdRsp_Succ,
 		}
-		err = c.SendMsg(ctx, VerCmdResp, header.Channel, header.CallID, header.CallSN, res)
+		err = c.SendMsg(ctx, VerCmdResp, header.CallID, header.CallSN, res)
 		if err != nil {
 			return
 		}
 		log.Ctx(ctx).Info().Caller().Interface("header", header).Msg("stream close by peer")
 	case base.CmdReq_Auth:
 	case base.CmdReq_CallIDs:
+		c.svcPassKeys = req.Fields
 		res := &base.CmdRsp{
 			Status: base.CmdRsp_Succ,
 			// Fields: c.callIDs,
@@ -160,7 +161,7 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 			res.Fields = append(res.Fields, caller.FuncName())
 		}
 
-		err = c.SendMsg(ctx, VerCmdResp, header.Channel, header.CallID, header.CallSN, res)
+		err = c.SendMsg(ctx, VerCmdResp, header.CallID, header.CallSN, res)
 		if err != nil {
 			return
 		}

@@ -53,3 +53,8 @@ service Hello {
 service Test {
   rpc TestHello(HelloReq) returns (HelloRsp) {}
 }
+
+message Ctx {
+  uint64 LogID=1; 
+  repeated string fields = 2;
+}
