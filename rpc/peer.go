@@ -9,14 +9,14 @@ import (
 	"github.com/lxt1045/utils/rpc/codec"
 )
 
-type PassthroughKey = codec.PassthroughKey // value 必须是 []string 类型的才会透传到 server 端
 type LogidKey = codec.LogidKey
 
 type Peer struct {
 	Client
 	Service
-	cancel context.CancelFunc
-	chDone <-chan struct{}
+	cancel      context.CancelFunc
+	chDone      <-chan struct{}
+	cliPassKeys []string // 客户端: ctx 透传 key
 }
 
 func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
@@ -117,9 +117,8 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 }
 
 func (rpc *Peer) bindCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, callers []codec.Method) (err error) {
-	ctxPassKeys, _ := ctx.Value(PassthroughKey{}).([]string) // 透传key
 	hasClient := len(rpc.Client.cliMethods) > 0
-	pCodec, err := codec.NewCodec(ctx, cancel, rwc, callers, ctxPassKeys, hasClient)
+	pCodec, err := codec.NewCodec(ctx, cancel, rwc, callers, rpc.cliPassKeys, hasClient)
 	if err != nil {
 		return
 	}
@@ -139,6 +138,11 @@ func (rpc *Peer) ServiceUse(middleware ...MiddlewareRespFunc) {
 }
 func (rpc *Peer) ClientUse(middleware ...MiddlewareReqFunc) {
 	rpc.Client.Use(middleware...)
+}
+
+// value 必须是 []string 类型的才会透传到 server 端
+func (rpc *Peer) ClientPassKey(cliPassKeys ...string) {
+	rpc.cliPassKeys = cliPassKeys
 }
 
 func (rpc Peer) Close(ctx context.Context) (err error) {

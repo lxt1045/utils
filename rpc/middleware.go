@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 
+	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc/codec"
 )
@@ -97,10 +98,16 @@ func (m WrapSvcMethod) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec
 
 func SvcLogid(p *SvcParam) {
 	logid, _ := p.Ctx.Value(LogidKey{}).(uint64)
+	if logid != 0 {
+		logid = uint64(gid.GetGID())
+	}
 	p.Ctx, _ = log.WithLogid(p.Ctx, int64(logid))
+
 }
 
 func CliLogid(p *CliParam) {
 	logid, _ := p.Ctx.Value(LogidKey{}).(uint64)
-	p.Ctx, _ = log.WithLogid(p.Ctx, int64(logid))
+	if logid != 0 {
+		p.Ctx, _ = log.WithLogid(p.Ctx, int64(logid))
+	}
 }

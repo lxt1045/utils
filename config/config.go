@@ -54,13 +54,14 @@ type Conn struct {
 	FlushTime        int
 	Heartbeat        int
 	Bandwidth        int // 带宽限制：Mbps
-	TLS              struct {
-		CACert     string
-		ServerCert string
-		ServerKey  string
-		ClientCert string
-		ClientKey  string
-	}
+	TLS              TLS
+}
+type TLS struct {
+	CACert     string
+	ServerCert string
+	ServerKey  string
+	ClientCert string
+	ClientKey  string
 }
 
 type Queue struct {

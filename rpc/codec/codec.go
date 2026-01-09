@@ -21,7 +21,6 @@ var (
 	ErrUnexpected = errors.NewCode(0, 1, "codec unexpected error")
 )
 
-type PassthroughKey struct{}
 type LogidKey struct{}
 
 var (
@@ -94,7 +93,7 @@ func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCl
 		rwc:         rwc,
 		resps:       make(map[uint64]resp),
 		segments:    make(map[uint64][]byte),
-		delay:       delay.New[post](64, int64(time.Minute), false),
+		delay:       delay.New[post](64, int64(time.Second*5), true),
 		streams:     make(map[uint64]*Stream),
 		callers:     callers,
 		cliPassKeys: ctxPassKeys,
@@ -107,9 +106,17 @@ func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCl
 }
 
 func (c *Codec) Close() (err error) {
+	if c == nil {
+		return
+	}
 	c.streamsLock.Lock()
 	defer c.streamsLock.Unlock()
 
+	if c.delay != nil {
+		c.delay.Range(func(t post) {
+			t.Post()
+		})
+	}
 	if c.rwc == nil {
 		err = errors.Errorf("has been closed")
 		return
@@ -203,7 +210,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			return // 检查是否已经退出，如果退出则返回
 		default:
 		}
-		ctxDo := ctx
+		ctxDo := context.TODO()
 
 		var header Header
 		var bsBody []byte
@@ -335,6 +342,9 @@ func ReadPack(ctx context.Context, r io.Reader, buf []byte) (header Header, bsBo
 }
 
 func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
+	if c == nil {
+		return
+	}
 	wbuf := make([]byte, HeaderSize)
 	h := Header{
 		Ver:          VerClose,
