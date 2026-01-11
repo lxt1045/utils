@@ -32,14 +32,16 @@ func (p *socksSvc) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp
 
 func (s *socksSvc) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, err error) {
 	log.Ctx(ctx).Debug().Caller().Interface("req", req).Msg("Auth")
-	resp = &pb.AuthRsp{
-		Status: pb.AuthRsp_Fail,
-		Err: &pb.Err{
-			Code: 9999,
-			Msg:  "Just Test!",
-		},
-	}
+	// resp = &pb.AuthRsp{
+	// 	Status: pb.AuthRsp_Fail,
+	// 	Err: &pb.Err{
+	// 		Code: 9999,
+	// 		Msg:  "Just Test!",
+	// 	},
+	// }
 
+	err = errors.NewCode(0, 888, "test error")
+	log.Ctx(ctx).Debug().Caller().Interface("req", req).Msg("resp error")
 	return
 }
 

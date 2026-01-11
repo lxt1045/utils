@@ -7,6 +7,8 @@ option go_package = "./;base";
 message Err {
   int64 code = 1;
   string msg = 2;
+  int64 logid =3;
+  repeated string stack = 4;
 }
 // 客户端发送给服务端
 message HelloReq {

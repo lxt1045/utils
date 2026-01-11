@@ -16,8 +16,8 @@ func TestPipe(t *testing.T) {
 
 	go Listen(ctx, "tcp", "127.0.0.1:1234")
 
-	go Dial(ctx, "tcp", "127.0.0.1:1234")
-	go Dial(ctx, "tcp", "localhost:1234")
+	go Dial(ctx, "tcp", "127.0.0.1:1234", "127.0.0.1:1234")
+	go Dial(ctx, "tcp", "localhost:1234", "localhost:1234")
 
 	time.Sleep(time.Second * 3)
 }

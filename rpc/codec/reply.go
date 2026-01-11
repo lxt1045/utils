@@ -2,6 +2,7 @@ package codec
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -23,6 +24,28 @@ func (c *Codec) Handler(ctx context.Context, caller Method, header Header, req M
 	}()
 	resp, err = caller.SvcInvoke(ctx, req)
 	if err != nil {
+		if header.Ver == VerCallReq {
+			log.Ctx(ctx).Debug().Caller().Err(err).Msg("rpc resp err")
+			pbErr := &base.Err{}
+			code, ok := err.(interface {
+				Code() int
+				Msg() string
+			})
+			if ok {
+				pbErr.Code = int64(code.Code())
+				pbErr.Msg = code.Msg()
+			} else {
+				pbErr.Code = -1
+				pbErr.Msg = err.Error()
+			}
+			if stack, ok := err.(interface{ Stack() (stack []string) }); ok {
+				pbErr.Stack = stack.Stack()
+			}
+			err = c.SendMsg(ctx, VerCallErrResp, header.CallID, header.CallSN, pbErr)
+			if err != nil {
+				return
+			}
+		}
 		return
 	}
 	if resp == nil || caller.RespType() == nil {
@@ -76,11 +99,24 @@ func (c *Codec) VerCallResp(ctx context.Context, header Header, bsBody []byte) (
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, res.r is nil")
 		return
 	}
+	if header.Ver == VerCallErrResp {
+		pbErr := &base.Err{}
+		err = proto.Unmarshal(bsBody, pbErr)
+		if err != nil {
+			err = errors.Errorf(err.Error())
+			log.Ctx(ctx).Error().Caller().Interface("header", header).Err(err).Msg("proto.Unmarshal(&base.Err{}) drop")
+			res.done <- err
+			return
+		}
+		res.done <- errors.NewCodeWithStack(int(pbErr.Code), pbErr.Msg, pbErr.Stack)
+		return
+	}
 
 	err = proto.Unmarshal(bsBody, res.r)
 	if err != nil {
 		err = errors.Errorf(err.Error())
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Err(err).Msg("drop")
+		res.done <- err
 		return
 	}
 	res.done <- nil
@@ -168,4 +204,22 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 	default:
 	}
 	return
+}
+
+type PbErr struct {
+	base.Err
+}
+
+func (e PbErr) Error() string {
+	if e.Logid == 0 {
+		return strconv.FormatInt(e.Err.Code, 10) + ", " + e.Err.Msg
+	}
+	return strconv.FormatInt(e.Err.Code, 10) + ", " + e.Err.Msg + ", " + "logid=" + strconv.FormatInt(e.Logid, 10)
+}
+
+func (e PbErr) Code() int {
+	return int(e.Err.Code)
+}
+func (e PbErr) Msg() string {
+	return e.Err.Msg
 }

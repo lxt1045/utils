@@ -2,7 +2,7 @@ package codec
 
 import (
 	"context"
-	stderrs "errors"
+	stderr "errors"
 	"io"
 	"math"
 	"reflect"
@@ -82,7 +82,7 @@ func (d post) Post() {
 	}
 
 	if d.done != nil {
-		d.done <- stderrs.New("timeout")
+		d.done <- stderr.New("resp timeout")
 	}
 }
 
@@ -272,6 +272,8 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			if err != nil {
 				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
 			}
+		case VerCallErrResp: // 返回Error
+			fallthrough
 		case VerCallResp:
 			err = c.VerCallResp(ctxDo, header, bsBody)
 			if err != nil {

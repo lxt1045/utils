@@ -93,6 +93,7 @@ func (m WrapSvcMethod) SvcInvoke(ctx context.Context, req codec.Msg) (resp codec
 		svc:    &m,
 	}
 	mResp.Next()
+	err = mResp.Err
 	return
 }
 

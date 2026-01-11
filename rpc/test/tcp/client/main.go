@@ -86,6 +86,19 @@ func main() {
 	}
 	log.Ctx(ctx).Debug().Caller().Interface("resp", resp).Msg("Hello")
 	//
+	{
+		req := &pb.AuthReq{
+			Name: cli.Name,
+		}
+		resp := &pb.AuthRsp{}
+		// stream, err := peer.StreamAsync(ctx, "Conn")
+		err = peer.Invoke(ctx, "Auth", req, resp)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
+		log.Ctx(ctx).Debug().Caller().Interface("resp", resp).Msg("Hello")
+	}
 
 	//
 
