@@ -46,7 +46,9 @@ type Method interface {
 }
 
 type Codec struct {
-	cancel    context.CancelFunc
+	cancel context.CancelFunc
+	chDone <-chan struct{}
+
 	rwc       io.ReadWriteCloser
 	tmpCallSN uint32
 
@@ -82,12 +84,16 @@ func (d post) Post() {
 	}
 
 	if d.done != nil {
-		d.done <- stderr.New("resp timeout")
+		select {
+		case d.done <- stderr.New("resp timeout"):
+		default:
+		}
 	}
 }
 
 // ctxPassKeys: 作为cli时, ctx 中需要透传给对方的key
-func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, callers []Method, ctxPassKeys []string, needHeartbeat bool) (c *Codec, err error) {
+func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method, ctxPassKeys []string, needHeartbeat bool) (c *Codec, err error) {
+	ctx, cancel := context.WithCancel(ctx)
 	c = &Codec{
 		cancel:      cancel,
 		rwc:         rwc,
@@ -97,6 +103,7 @@ func NewCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCl
 		streams:     make(map[uint64]*Stream),
 		callers:     callers,
 		cliPassKeys: ctxPassKeys,
+		chDone:      ctx.Done(),
 	}
 	go c.ReadLoop(ctx)
 	if needHeartbeat {
@@ -109,6 +116,7 @@ func (c *Codec) Close() (err error) {
 	if c == nil {
 		return
 	}
+	c.cancel()
 	c.streamsLock.Lock()
 	defer c.streamsLock.Unlock()
 
@@ -123,12 +131,15 @@ func (c *Codec) Close() (err error) {
 	}
 	err = c.rwc.Close()
 	c.rwc = nil
-	c.cancel()
 	return
 }
 
 func (c *Codec) IsClosed() (yes bool) {
 	return c == nil || c.rwc == nil
+}
+
+func (rpc *Codec) Done() <-chan struct{} {
+	return rpc.chDone
 }
 
 func (c *Codec) ClientCall(ctx context.Context, callID uint16, req, res Msg) (done <-chan error, err error) {
@@ -164,7 +175,6 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("Heartbeat.defer()")
 		}
-		c.Close()
 	}()
 	for {
 		select {

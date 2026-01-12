@@ -14,8 +14,6 @@ type LogidKey = codec.LogidKey
 type Peer struct {
 	Client
 	Service
-	cancel      context.CancelFunc
-	chDone      <-chan struct{}
 	cliPassKeys []string // 客户端: ctx 透传 key
 }
 
@@ -31,7 +29,6 @@ func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRe
 // ctx 里 PassthroughKey{} 的 []string 类型; ctx透传value 的key列表, 传value总和长度不能超过65532
 // fRegisters: 自己需要实现的server接口、需要请求对方的client接口注册函数.
 func NewPeer(ctx context.Context, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
-	ctx, cancel := context.WithCancel(ctx)
 	rpc = Peer{
 		Client: Client{
 			cliMethods: make(map[string]CliMethod),
@@ -42,9 +39,9 @@ func NewPeer(ctx context.Context, svc interface{}, fRegisters ...interface{}) (r
 			svcInterfaces: make(map[string]uint32),
 			_type:         reflect.TypeOf(svc),
 		},
-		cancel: cancel,
-		chDone: ctx.Done(),
 	}
+	// rpc.cancel = func() {
+	// }
 
 	for _, f := range fRegisters {
 		if f == nil {
@@ -97,7 +94,8 @@ func NewPeer(ctx context.Context, svc interface{}, fRegisters ...interface{}) (r
 
 func (rpc *Peer) Conn(ctx context.Context, rwc io.ReadWriteCloser) (err error) {
 	callers := rpc.Service.Methods()
-	return rpc.bindCodec(ctx, rpc.cancel, rwc, callers)
+
+	return rpc.bindCodec(ctx, rwc, callers)
 }
 
 func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
@@ -105,10 +103,8 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 		err = errors.Errorf("svc type is not equal")
 		return
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	rpc.cancel = cancel
 	callers := rpc.Service.CloneMethods(svc)
-	err = rpc.bindCodec(ctx, cancel, rwc, callers)
+	err = rpc.bindCodec(ctx, rwc, callers)
 	if err != nil {
 		return
 	}
@@ -116,9 +112,9 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 	return rpc, nil
 }
 
-func (rpc *Peer) bindCodec(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, callers []codec.Method) (err error) {
+func (rpc *Peer) bindCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []codec.Method) (err error) {
 	hasClient := len(rpc.Client.cliMethods) > 0
-	pCodec, err := codec.NewCodec(ctx, cancel, rwc, callers, rpc.cliPassKeys, hasClient)
+	pCodec, err := codec.NewCodec(ctx, rwc, callers, rpc.cliPassKeys, hasClient)
 	if err != nil {
 		return
 	}
@@ -146,9 +142,6 @@ func (rpc *Peer) ClientPassKey(cliPassKeys ...string) {
 }
 
 func (rpc Peer) Close(ctx context.Context) (err error) {
-	if rpc.cancel != nil {
-		rpc.cancel()
-	}
 	err = rpc.Client.Close(ctx)
 	err1 := rpc.Service.Close(ctx)
 	if err == nil {
@@ -156,7 +149,10 @@ func (rpc Peer) Close(ctx context.Context) (err error) {
 	}
 	return
 }
+func (rpc Peer) IsClosed() bool {
+	return rpc.Client.IsClosed()
+}
 
 func (rpc Peer) Done() <-chan struct{} {
-	return rpc.chDone
+	return rpc.Client.Done()
 }

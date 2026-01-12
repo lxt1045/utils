@@ -95,7 +95,7 @@ func main() {
 		err = peer.Invoke(ctx, "Auth", req, resp)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
+			// return
 		}
 		log.Ctx(ctx).Debug().Caller().Interface("resp", resp).Msg("Hello")
 	}
