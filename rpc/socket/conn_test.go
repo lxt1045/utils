@@ -84,7 +84,7 @@ func TestConnect(t *testing.T) {
 
 	<-ch
 
-	conn, err := Dial(ctx, "tcp4", addr)
+	conn, err := Dial(ctx, "tcp4", "10088", addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("listen failed")
 		return
@@ -144,7 +144,7 @@ func TestConnect(t *testing.T) {
 	}(":" + addrs[len(addrs)-1])
 	<-ch
 	go func(addr string) {
-		conn, err := Dial(ctx, "tcp4", addr)
+		conn, err := Dial(ctx, "tcp4", "10088", addr)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("listen failed")
 			return

@@ -2,6 +2,19 @@ debug: true
 pprof: false
 dev: false
 
+log:
+  log-level: trace # trace # 输出到console的日志
+  # store-level: info
+  report-level: debug # 上报到日志系统的日志等级
+  to-console: true
+  filename: "./logs/running.log"
+  max-size: 20
+  max-backups: 100
+  max-age: 60
+  local-time: false
+  compress: true
+
+# 服务端配置
 conn:
   proxy_addr: ":18087"
   addr: ":18086"
@@ -18,6 +31,7 @@ conn:
     client-cert: "static/ca/client-cert.pem" #Server certificate file path
     client-key: "static/ca/client-key.pem" #server rsa private key file path
 
+# 中继配置，中继可以不用
 proxy-conn:
   read-concurrency: 1
   write-concurrency: 1
@@ -33,17 +47,15 @@ proxy-conn:
     client-cert: "static/ca/client-cert.pem"
     client-key: "static/ca/client-key.pem"
 
+# 客户端配置
 client-conn:
   read-concurrency: 1
   write-concurrency: 1
   read-window: 20 # 1 << 20
   write-window: 21 # 1 << 21
   # addr: "127.0.0.1:18087"
-  addr: "39.100.74.134:18087"
   # addr: "127.0.0.1:18086"
-  # addr: "39.100.74.134:18086"
-  # addr: "152.32.218.32:18086"
-  # addr: "10.1.1.121:18086"
+  addr: "43.155.182.37:18086"
   host: lxt1045.com
   tls:
     ca-cert: "static/ca/root-cert.pem"

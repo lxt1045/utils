@@ -3,7 +3,11 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/config"
@@ -14,6 +18,15 @@ import (
 	"github.com/lxt1045/utils/rpc/test/socks/filesystem"
 	"github.com/lxt1045/utils/rpc/test/socks/pb"
 	_ "go.uber.org/automaxprocs"
+	"golang.org/x/sync/errgroup"
+)
+
+/*
+$env:CGO_ENABLED=0; $env:GOOS="linux"; $env:GOARCH="amd64"; go build ./
+*/
+
+var (
+	ErrUnexpected = errors.NewCode(0, -1, "unexpected error")
 )
 
 type Config struct {
@@ -34,61 +47,174 @@ func main() {
 	file := "static/conf/default.yml"
 	err := config.UnmarshalFS(file, filesystem.Static, conf)
 	if err != nil {
-		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+
+	// 初始化Log
+	err = log.Init(ctx, conf.Log)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 
 	cmtls := conf.Conn.TLS
 	tlsConfig, err := config.LoadTLSConfig(filesystem.Static, cmtls.ServerCert, cmtls.ServerKey, cmtls.CACert)
 	if err != nil {
-		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
+
 	listener, err := tls.Listen("tcp", conf.Conn.Addr, tlsConfig)
 	if err != nil {
-		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 	defer listener.Close()
-	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Send()
-
-	gPeer, err := rpc.StartPeer(ctx, cancel, nil, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
-	if err != nil {
-		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
-		return
-	}
-	for i := 0; ; i++ {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		ctx := context.TODO()
-		ctx, cancel := context.WithCancel(ctx)
-		_ = cancel
-		conn, err := listener.Accept()
-		if err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				log.Ctx(ctx).Error().Caller().Err(errors.Errorf(err.Error())).Send()
-				// panic(err)
-			} else {
-				log.Ctx(ctx).Error().Caller().Err(err).Send()
+	chSvcs := make(chan *socks.SocksSvc, 1024)
+	var g errgroup.Group
+	g.Go(func() (err error) {
+		defer func() {
+			e := recover()
+			if e != nil {
+				log.Ctx(ctx).Error().Caller().Interface("recover", e).Stack().Msg("listener defer")
 			}
-			continue
-		}
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Stack().Msg("listener defer")
+			} else {
+				log.Ctx(ctx).Info().Caller().Err(errors.Errorf("listener")).Stack().Msg("listener defer")
+			}
+			cancel()
+		}()
+		log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Msg("Listen")
 
-		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-
-		svc := &socks.SocksSvc{
-			RemoteAddr: conn.RemoteAddr().String(),
-		}
-		peer, err := gPeer.Clone(ctx, cancel, conn, svc)
+		gPeer, err := rpc.NewPeer(ctx, &socks.SocksSvc{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			continue
+			return
 		}
-		svc.Peer = peer
+		gPeer.ClientUse(rpc.CliLogid)
+		gPeer.ServiceUse(rpc.SvcLogid)
+		for i := 0; ; i++ {
+			select {
+			case <-ctx.Done():
+				log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Msg("Done")
+				return
+			default:
+			}
+			conn, err := listener.Accept()
+			if err != nil {
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					log.Ctx(ctx).Error().Caller().Err(ErrUnexpected.WithErr(err)).Send()
+					// panic(err)
+				} else {
+					err = ErrUnexpected.WithErr(err)
+					log.Ctx(ctx).Error().Caller().Err(err).Send()
+				}
+				continue
+			}
+			// conn.SetReadDeadline(time.Second)
+			log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
-		continue
+			svc := &socks.SocksSvc{
+				RemoteAddr: conn.RemoteAddr().String(),
+				LocalAddr:  conn.LocalAddr().String(),
+			}
+			peer, err := gPeer.Clone(ctx, conn, svc)
+			if err != nil {
+				log.Ctx(ctx).Warn().Caller().Err(err).Send()
+				continue
+			}
+			svc.Peer = peer
+			select {
+			case chSvcs <- svc:
+			default:
+			}
+		}
+	})
+
+	g.Go(func() (err error) {
+		defer func() {
+			e := recover()
+			if e != nil {
+				log.Ctx(ctx).Error().Caller().Interface("recover", e).Err(errors.Errorf("svcs check")).Stack().Msg("svcs check defer")
+			}
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Stack().Msg("svcs check defer")
+			} else {
+				log.Ctx(ctx).Info().Caller().Err(errors.Errorf("svcs check")).Stack().Msg("svcs check defer")
+			}
+			cancel()
+			listener.Close()
+		}()
+
+		ticker := time.NewTicker(time.Second * 600)
+		defer ticker.Stop()
+
+		// SocksSvc 需要存起来，要不有可能被垃圾回收
+		svcs := make([]*socks.SocksSvc, 0, 1024)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case svc := <-chSvcs:
+				svcs = append(svcs, svc)
+			case <-ticker.C:
+				SvcsNew := svcs[:0]
+				for _, svc := range svcs {
+					if svc != nil && !svc.Peer.IsClosed() {
+						SvcsNew = append(SvcsNew, svc)
+						continue
+					}
+					log.Ctx(ctx).Info().Caller().Interface("svc", svc).Msg("svc closed")
+				}
+				svcs = SvcsNew
+			}
+		}
+	})
+
+	WaitSysSignal(ctx)
+	listener.Close()
+	cancel()
+	// time.Sleep(time.Millisecond * 100)
+	err = g.Wait()
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+
+}
+
+func WaitSysSignal(ctx context.Context) {
+	// SIGINT	2	Term	用户发送INTR字符(Ctrl+C)触发
+	// SIGTERM	15	Term	结束程序(可以被捕获、阻塞或忽略)
+	// SIGHUP	1	Term	终端控制进程结束(终端连接断开)
+	// SIGQUIT	3	Core	用户发送QUIT字符(Ctrl+/)触发
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
+	for exit := false; !exit; {
+		select {
+		case s := <-ch:
+			switch s {
+			case syscall.SIGQUIT:
+				log.Ctx(ctx).Info().Caller().Msg("SIGSTOP")
+				exit = true
+			case syscall.SIGHUP:
+				log.Ctx(ctx).Info().Caller().Msg("SIGHUP")
+				// exit = true
+			case syscall.SIGINT:
+				log.Ctx(ctx).Info().Caller().Msg("SIGINT")
+				exit = true
+			case syscall.SIGTERM:
+				log.Ctx(ctx).Info().Caller().Msg("SIGINT")
+				exit = true
+			default:
+				log.Ctx(ctx).Info().Caller().Msgf("default:%v", s)
+				// exit = true
+			}
+		case <-ctx.Done():
+			exit = true
+			log.Ctx(ctx).Info().Caller().Msg("ctx.Done()")
+		}
 	}
 }

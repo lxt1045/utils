@@ -19,6 +19,9 @@ type SocksCli struct {
 	Name      string
 	SocksAddr string
 	ChPeer    chan *Peer
+
+	TlsConf  *tls.Config
+	PeerAddr string
 }
 
 type Peer struct {
@@ -30,9 +33,15 @@ type Peer struct {
 
 func (p *SocksCli) GetPeer() (peer *Peer) {
 	peer = <-p.ChPeer
-	for tsLast := time.Now().Unix() - int64(time.Second*60); peer.TsLast < tsLast; {
+	for tsLast := time.Now().Unix() - int64(time.Second*30); peer.TsLast < tsLast || peer.Peer.IsClosed(); {
+		peer.Close(context.TODO())
 		peer = <-p.ChPeer
 	}
+
+	// var err error
+	// for peer, err = p.GetConn(context.TODO()); peer == nil || err != nil; {
+	// 	log.Ctx(context.TODO()).Error().Caller().Err(err).Send()
+	// }
 	return
 }
 
@@ -109,7 +118,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 			// wg.Done()
 			rc.Close()
 
-			if true {
+			if false {
 				peer.TsLast = time.Now().Unix()
 				select {
 				case p.ChPeer <- peer:
@@ -252,7 +261,7 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 			// wg.Done()
 			rwc.Close()
 
-			if true {
+			if false {
 				peer.TsLast = time.Now().Unix()
 				select {
 				case p.ChPeer <- peer:
@@ -347,10 +356,11 @@ func (p *SocksCli) CopyLoop(ctx context.Context, rwc io.ReadWriteCloser, peer *P
 }
 
 // 创建备用connect，提前三次握手较少延时
-func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr string, tlsConfig *tls.Config) {
+func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, addr string, tlsConfig *tls.Config) {
 	var err error
 	defer func() {
 		e := recover()
+		cancel()
 		if e != nil {
 			err = errors.Errorf("recover : %v", e)
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
@@ -358,17 +368,27 @@ func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr 
 	}()
 	for {
 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
-		conn, err := socket.DialTLS(ctx, "tcp", addr, tlsConfig)
+		// conn, err := socket.DialTLS(ctx, "tcp", addr, tlsConfig)
+		conn, err := socket.DialTLSTimeout(ctx, "tcp", addr, tlsConfig, time.Second*5)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
+			continue
 		}
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-		peer, err1 := rpc.StartPeer(ctx, cancel, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+		peer, err1 := rpc.NewPeer(ctx, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-			return
+			continue
+		}
+
+		peer.ClientUse(rpc.CliLogid)
+		peer.ServiceUse(rpc.SvcLogid)
+
+		err = peer.Conn(ctx, conn)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			continue
 		}
 		p.ChPeer <- &Peer{
 			TsLast:      time.Now().Unix(),
@@ -377,4 +397,27 @@ func (p *SocksCli) RunConn(ctx context.Context, cancel context.CancelFunc, addr 
 			RemoteAddrs: conn.RemoteAddr().String(),
 		}
 	}
+}
+
+func (p *SocksCli) GetConn(ctx context.Context) (out *Peer, err error) {
+	// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
+	// conn, err := socket.DialTLS(ctx, "tcp", p.PeerAddr, p.TlsConf)
+	conn, err := socket.DialTLSTimeout(ctx, "tcp", p.PeerAddr, p.TlsConf, time.Second)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+	peer, err := rpc.StartPeer(ctx, conn, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	out = &Peer{
+		TsLast:      time.Now().Unix(),
+		Peer:        peer,
+		LocalAddrs:  conn.LocalAddr().String(),
+		RemoteAddrs: conn.RemoteAddr().String(),
+	}
+	return
 }

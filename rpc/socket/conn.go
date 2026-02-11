@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"syscall"
+	"time"
 
 	"github.com/lxt1045/errors"
 )
@@ -71,9 +72,20 @@ func DialTLS(ctx context.Context, network, addr string, conf *tls.Config) (conn 
 	}
 	conn = c.(*tls.Conn)
 	return
-
 }
 
+func DialTLSTimeout(ctx context.Context, network, addr string, tlsConfig *tls.Config, timeout time.Duration) (conn *tls.Conn, err error) {
+	dialer := &net.Dialer{
+		Timeout: 3 * time.Second, // 默认 3 minutes.
+	}
+	conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	return
+
+}
 func DialTLS1(ctx context.Context, network, addr string, conf *tls.Config) (conn *tls.Conn, err error) {
 	dialer := net.Dialer{
 		Control: control,

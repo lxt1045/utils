@@ -66,39 +66,15 @@ func main() {
 	cli := &socks.SocksCli{
 		Name:      flags.Client,
 		SocksAddr: flags.Socks,
-		ChPeer:    make(chan *socks.Peer, 20),
+		ChPeer:    make(chan *socks.Peer, 1),
+
+		TlsConf:  tlsConfig,
+		PeerAddr: conf.ClientConn.Addr,
 	}
 	var _ pb.SocksCliServer = cli
-	// go func() {
-	// 	defer func() {
-	// 		e := recover()
-	// 		if e != nil {
-	// 			err = errors.Errorf("recover : %v", e)
-	// 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-	// 		}
-	// 	}()
-	// 	for {
-	// 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
-	// 		conn, err := socket.DialTLS(ctx, "tcp", conf.ClientConn.Addr, tlsConfig)
-	// 		if err != nil {
-	// 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-	// 			return
-	// 		}
-	// 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
-	// 		peer, err1 := rpc.StartPeer(ctx, conn, cli, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
-	// 		if err1 != nil {
-	// 			err = err1
-	// 			log.Ctx(ctx).Error().Caller().Err(err).Send()
-	// 			return
-	// 		}
-	// 		cli.ChPeer <- &socks.Peer{
-	// 			Peer:        peer,
-	// 			LocalAddrs:  conn.LocalAddr().String(),
-	// 			RemoteAddrs: conn.RemoteAddr().String(),
-	// 		}
-	// 	}
-	// }()
-	go cli.RunConn(ctx, conf.ClientConn.Addr, tlsConfig)
+	for range 1 {
+		go cli.RunConnLoop(ctx, cancel, conf.ClientConn.Addr, tlsConfig)
+	}
 
 	//
 

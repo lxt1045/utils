@@ -38,10 +38,16 @@ func (s *SocksSvc) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp,
 func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp, err error) {
 	// defer p.close(ctx)
 	if stream := codec.GetStream(ctx); stream != nil {
-		rc, err1 := net.Dial("tcp", req.Addr)
+		ctx, cancel := context.WithCancel(ctx)
+		// rc, err1 := net.Dial("tcp", req.Addr)
+		d := net.Dialer{
+			Timeout: time.Second * 3,
+		}
+		rc, err1 := d.Dial("tcp", req.Addr)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to connect to target: %v", err)
+			cancel()
 			return
 		}
 		rc.(*net.TCPConn).SetKeepAlive(true)
@@ -55,14 +61,26 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 					err = errors.Errorf("recover : %v", e)
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
-				// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+				stream.Close(ctx)
+				cancel()
 			}()
 			var n int
 			ch := make(chan []byte, 1024)
 			go func() {
 				// TODO: Read 和Send 分两个进程处理
-				defer close(ch)
+				defer func() {
+					// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+					close(ch)
+					stream.Close(ctx)
+					cancel()
+				}()
 				for {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
 					if l := len(req.Body); l > 0 {
 						ch <- req.Body
 					}
@@ -74,7 +92,13 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 					req = iface.(*pb.ConnReq)
 				}
 			}()
-			for bs := range ch {
+			for {
+				var bs []byte
+				select {
+				case bs = <-ch:
+				case <-ctx.Done():
+					return
+				}
 				n, err = rc.Write(bs)
 				if n < 0 || n < len(bs) {
 					if err == nil {
@@ -83,6 +107,7 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 				}
 				if err != nil {
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
+					return
 				}
 			}
 		}()
@@ -98,13 +123,19 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 				stream.Close(ctx)
 				// p.close(ctx)
+				cancel()
 			}()
 			// buf := make([]byte, math.MaxUint16/2)
 			// buf := make([]byte, 1<<20)
 
 			ch := make(chan []byte, 1024)
 			go func() {
-				defer close(ch)
+				defer func() {
+					close(ch)
+					cancel()
+					// stream.Close(ctx)
+					rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+				}()
 				for {
 					// buf := make([]byte, math.MaxUint16/2)
 					buf := make([]byte, 1024*8)
@@ -123,7 +154,13 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 				}
 			}()
 			// TODO: Read 和Send 分两个进程处理
-			for bs := range ch {
+			for {
+				var bs []byte
+				select {
+				case bs = <-ch:
+				case <-ctx.Done():
+					return
+				}
 				err1 := stream.Send(ctx, &pb.ConnRsp{Body: bs})
 				if err1 != nil {
 					log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")

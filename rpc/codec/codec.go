@@ -180,6 +180,8 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-c.chDone:
+			return
 		case <-tickerHeartbeat.C:
 		}
 
@@ -372,7 +374,11 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 		err = errors.Errorf("has been closed")
 		return
 	}
-	c.rwc.Write(wbuf)
+	_, err = c.rwc.Write(wbuf)
+	if err != nil {
+		err = errors.New(err.Error())
+		return
+	}
 	return
 }
 
@@ -395,6 +401,9 @@ func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
 		return
 	}
 	_, err = c.rwc.Write(wbuf)
+	if err != nil {
+		err = errors.New(err.Error())
+	}
 	return
 }
 
@@ -509,6 +518,9 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 			return
 		}
 		_, err = c.rwc.Write(wbuf)
+		if err != nil {
+			err = errors.New(err.Error())
+		}
 		return
 	}
 
@@ -531,7 +543,7 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 		}
 		_, err = c.rwc.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
 		if err != nil {
-			return
+			err = errors.New(err.Error())
 		}
 		wbuf0 = wbuf0[lBodyOne:] // 这样 header 部分还有
 	}

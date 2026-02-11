@@ -55,7 +55,7 @@ func main() {
 	defer listener.Close()
 	log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.ProxyAddr).Send()
 
-	gPeer, err := rpc.StartPeer(ctx, cancel, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
+	gPeer, err := rpc.StartPeer(ctx, nil, &socks.SocksProxy{}, pb.NewSocksCliClient, pb.RegisterSocksSvcServer)
 	if err != nil {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
@@ -102,7 +102,7 @@ func main() {
 		var _ pb.SocksCliServer = svc
 
 		tlsConfig.ServerName = conf.ProxyConn.Host
-		go svc.Svc.RunConn(ctx, conf.ProxyConn.Addr, tlsConfig)
+		go svc.Svc.RunConnLoop(ctx, cancel, conf.ProxyConn.Addr, tlsConfig)
 
 		continue
 	}
