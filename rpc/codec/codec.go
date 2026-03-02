@@ -5,6 +5,7 @@ import (
 	stderr "errors"
 	"io"
 	"math"
+	"net"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -65,6 +66,9 @@ type Codec struct {
 
 	cliPassKeys []string // 客户端: ctx 透传 key
 	svcPassKeys []string // 服务端: ctx 透传 key
+
+	local  string
+	remote string
 }
 
 type resp struct {
@@ -105,6 +109,14 @@ func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method, ctx
 		callers:     callers,
 		cliPassKeys: ctxPassKeys,
 		chDone:      ctx.Done(),
+	}
+
+	rw, ok := c.rwc.(interface {
+		RemoteAddr() net.Addr
+		LocalAddr() net.Addr
+	})
+	if ok {
+		c.local, c.remote = rw.LocalAddr().String(), rw.RemoteAddr().String()
 	}
 	go c.ReadLoop(ctx)
 	if needHeartbeat {
@@ -168,13 +180,13 @@ func respsKey(callSN uint32) uint64 {
 
 func (c *Codec) Heartbeat(ctx context.Context) {
 	// return
-	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 100)) // 心跳包; client 发送
+	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 60)) // 心跳包; client 发送
 	defer func() {
 		tickerHeartbeat.Stop()
-		log.Ctx(ctx).Info().Caller().Msg("Heartbeat.defer()")
+		log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Msg("Heartbeat.defer()")
 		err := c.Close()
 		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("Heartbeat.defer()")
+			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat.defer()")
 		}
 	}()
 	for {
@@ -191,7 +203,7 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 		// 	break
 		// }
 		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("Heartbeat")
+			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat")
 			continue
 		}
 	}
@@ -205,9 +217,9 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			err = ErrUnexpected.Clonef("recove:%v", e)
 		}
 		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("defer")
+			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
 		} else {
-			log.Ctx(ctx).Debug().Caller().Err(err).Msg("defer")
+			log.Ctx(ctx).Debug().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
 		}
 
 		if c.rwc != nil {
@@ -243,7 +255,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			if header.SegmentIdx == 0 {
 				c.delay.Push(post{Codec: c, key: key, segments: true})
 			} else if !ok {
-				log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop")
+				log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Msg("drop")
 				continue
 			}
 
@@ -281,12 +293,12 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 
 		switch header.Ver {
 		case VerHeartbeat:
-			log.Ctx(ctxDo).Trace().Caller().Msg("heartbeat by peer")
+			log.Ctx(ctxDo).Trace().Caller().Str("local", c.local).Str("remote", c.remote).Msg("heartbeat by peer")
 
 		case VerCallReq:
 			err = c.VerCallReq(ctxDo, header, bsBody)
 			if err != nil {
-				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
 		case VerCallErrResp: // 返回Error
 			fallthrough
@@ -296,30 +308,30 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
 			}
 		case VerClose:
-			log.Ctx(ctxDo).Debug().Caller().Msg("close by peer")
+			log.Ctx(ctxDo).Debug().Caller().Str("local", c.local).Str("remote", c.remote).Msg("close by peer")
 			return
 		case VerCmdReq:
 			err = c.VerCmdReq(ctxDo, header, bsBody)
 			if err != nil {
-				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
 		case VerCmdResp:
 			err = c.VerCallResp(ctxDo, header, bsBody)
 			if err != nil {
-				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
 		case VerStreamReq:
 			err = c.VerStreamReq(ctxDo, header, bsBody)
 			if err != nil {
-				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
 		case VerStreamResp:
 			err = c.VerStreamResp(ctxDo, header, bsBody)
 			if err != nil {
-				log.Ctx(ctxDo).Error().Caller().Err(err).Send()
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
 		default:
-			log.Ctx(ctxDo).Error().Caller().Interface("header", header).Send()
+			log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Send()
 		}
 	}
 }
