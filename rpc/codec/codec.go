@@ -13,6 +13,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/delay"
+	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc/base"
 )
@@ -222,7 +223,6 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			return // 检查是否已经退出，如果退出则返回
 		default:
 		}
-		ctxDo := context.TODO()
 
 		var header Header
 		var bsBody []byte
@@ -257,6 +257,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			delete(c.segments, key) // 会不会出现意外而无法清理的情况
 		}
 
+		ctxDo, logID := context.TODO(), uint64(gid.GetGID())
 		if header.CtxLen != 0 {
 			m := base.Ctx{}
 			err = proto.Unmarshal(bsBody[:header.CtxLen], &m)
@@ -265,8 +266,9 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 				return
 			}
 			if m.LogID > 0 {
-				ctxDo = context.WithValue(ctxDo, LogidKey{}, m.LogID)
+				logID = m.LogID
 			}
+
 			if len(c.svcPassKeys) == len(m.Fields) {
 				for i, k := range c.svcPassKeys {
 					ctxDo = context.WithValue(ctxDo, k, m.Fields[i])
@@ -274,6 +276,8 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			}
 			bsBody = bsBody[header.CtxLen:]
 		}
+		ctxDo = context.WithValue(ctxDo, LogidKey{}, logID)
+		ctxDo, _ = log.WithLogid(ctxDo, int64(logID))
 
 		switch header.Ver {
 		case VerHeartbeat:
@@ -461,6 +465,10 @@ func (c *Codec) SendMsg(ctx context.Context, ver, callID uint16, callSN uint32, 
 	{
 		m := base.Ctx{}
 		m.LogID, _ = ctx.Value(LogidKey{}).(uint64)
+		if m.LogID == 0 {
+			logid, _ := log.Logid(ctx)
+			m.LogID = uint64(logid)
+		}
 		if len(c.cliPassKeys) > 0 {
 			for _, k := range c.cliPassKeys {
 				v, _ := ctx.Value(k).(string)

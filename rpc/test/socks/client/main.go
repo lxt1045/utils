@@ -72,7 +72,7 @@ func main() {
 		PeerAddr: conf.ClientConn.Addr,
 	}
 	var _ pb.SocksCliServer = cli
-	for range 1 {
+	for range 18 {
 		go cli.RunConnLoop(ctx, cancel, conf.ClientConn.Addr, tlsConfig)
 	}
 

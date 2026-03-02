@@ -382,8 +382,8 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 			continue
 		}
 
-		peer.ClientUse(rpc.CliLogid)
-		peer.ServiceUse(rpc.SvcLogid)
+		// peer.ClientUse(rpc.CliLogid)
+		// peer.ServiceUse(rpc.SvcLogid)
 
 		err = peer.Conn(ctx, conn)
 		if err != nil {

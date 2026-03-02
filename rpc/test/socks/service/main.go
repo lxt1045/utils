@@ -93,8 +93,8 @@ func main() {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			return
 		}
-		gPeer.ClientUse(rpc.CliLogid)
-		gPeer.ServiceUse(rpc.SvcLogid)
+		// gPeer.ClientUse(rpc.CliLogid)
+		// gPeer.ServiceUse(rpc.SvcLogid)
 		for i := 0; ; i++ {
 			select {
 			case <-ctx.Done():
