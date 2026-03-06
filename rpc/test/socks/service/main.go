@@ -138,7 +138,8 @@ func main() {
 	})
 
 	// g.Go(func() (err error) {
-	go fun(){
+	go func() {
+		var err error
 		defer func() {
 			e := recover()
 			if e != nil {
@@ -178,7 +179,7 @@ func main() {
 			}
 			log.Ctx(ctx).Info().Caller().Int("svcs", len(svcs)).Msg("check")
 		}
-	// })
+		// })
 	}()
 
 	WaitSysSignal(ctx)
