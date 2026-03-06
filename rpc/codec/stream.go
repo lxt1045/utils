@@ -238,15 +238,31 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte) 
 }
 
 func (c *Codec) VerStreamResp(ctx context.Context, header Header, bsBody []byte) (err error) {
+	key := respsKey(header.CallSN)
 	stream := func() *Stream {
-		key := respsKey(header.CallSN)
 		c.streamsLock.RLock()
 		defer c.streamsLock.RUnlock()
-		return c.streams[key]
+		stream := c.streams[key]
+		if stream != nil {
+			stream.deadline = time.Now().Unix() + 30*60 // 连续2min没有数据就删除
+		}
+		return stream
 	}()
 	if stream == nil || stream.caller == nil {
-		err = ErrUnexpected.Clonef("CallSN is not exist, header.Channel: %d, header.CallSN: %d", header.CtxLen, header.CallSN)
-		return
+		stream = func() *Stream {
+			// time.Sleep(time.Millisecond * 10)
+			c.streamsLock.Lock()
+			defer c.streamsLock.Unlock()
+			stream := c.streams[key]
+			if stream != nil {
+				stream.deadline = time.Now().Unix() + 30*60 // 连续2min没有数据就删除
+			}
+			return stream
+		}()
+		if stream == nil || stream.caller == nil {
+			err = ErrUnexpected.Clonef("CallSN is not exist, header.Channel: %d, header.CallSN: %d", header.CtxLen, header.CallSN)
+			return
+		}
 	}
 
 	resp := stream.caller.NewResp()

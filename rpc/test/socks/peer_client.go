@@ -119,7 +119,8 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		return
 	}
 	peer := p.GetPeer()
-	stream, err := peer.StreamAsync(ctx, "Conn")
+	// stream, err := peer.StreamAsync(ctx, "Conn")
+	stream, err := peer.Stream(ctx, "Conn")
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return

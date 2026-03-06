@@ -234,7 +234,7 @@ func (c *Codec) Heartbeat() {
 			c.streamsLock.RLock()
 			defer c.streamsLock.RUnlock()
 			for k, s := range c.streams {
-				if s.deadline < tsNow {
+				if s.deadline > 0 && s.deadline < tsNow {
 					delKeys = append(delKeys, k)
 				}
 			}
