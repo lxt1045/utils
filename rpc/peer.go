@@ -93,6 +93,12 @@ func NewPeer(ctx context.Context, svc interface{}, fRegisters ...interface{}) (r
 }
 
 func (rpc *Peer) Conn(ctx context.Context, rwc io.ReadWriteCloser) (err error) {
+	// TLS 需要先握手，否则可能会因为并发读写而造成并发握手死锁
+	if handshake, ok := rwc.(interface{ Handshake() error }); ok {
+		if err = handshake.Handshake(); err != nil {
+			return err
+		}
+	}
 	callers := rpc.Service.Methods()
 
 	return rpc.bindCodec(ctx, rwc, callers)
@@ -102,6 +108,12 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 	if reflect.TypeOf(svc) != rpc.Service._type {
 		err = errors.Errorf("svc type is not equal")
 		return
+	}
+	// TLS 需要先握手，否则可能会因为并发读写而造成并发握手死锁
+	if handshake, ok := rwc.(interface{ Handshake() error }); ok {
+		if err = handshake.Handshake(); err != nil {
+			return
+		}
 	}
 	callers := rpc.Service.CloneMethods(svc)
 	err = rpc.bindCodec(ctx, rwc, callers)

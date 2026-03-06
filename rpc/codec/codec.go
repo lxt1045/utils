@@ -53,6 +53,7 @@ type Codec struct {
 	// chDone <-chan struct{}
 	ctx context.Context
 
+	// rwcLock sync.Mutex
 	rwc       io.ReadWriteCloser
 	tmpCallSN uint32
 
@@ -288,7 +289,7 @@ func (c *Codec) ReadLoop() {
 
 		var header Header
 		var bsBody []byte
-		header, bsBody, err = ReadPack(ctx, c.rwc, rbuf)
+		header, bsBody, err = ReadPack(ctx, c.rwc, rbuf) // TODO: 设置读超时？？
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return
