@@ -95,6 +95,9 @@ func newQueue[T Delay](initCap int, timeWindow int64, fOK func(t T) bool, popSle
 
 // MustSend 超过容量后，扩充容量
 func (p *Queue[T]) Push(t T) (closed bool) {
+	if p == nil {
+		return true
+	}
 	d := Data[T]{
 		deadline: time.Now().UnixNano() + p.timeWindow,
 		data:     t,
