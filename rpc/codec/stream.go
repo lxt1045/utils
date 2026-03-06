@@ -207,7 +207,7 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte) 
 			bFirstCall = true
 			stream.bFirstCall = false
 		}
-		stream.deadline = time.Now().Unix() + 2*60 // 连续2min没有数据就删除
+		stream.deadline = time.Now().Unix() + 30*60 // 连续2min没有数据就删除
 		return
 	}()
 	if stream == nil || stream.caller == nil {
