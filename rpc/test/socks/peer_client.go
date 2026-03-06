@@ -67,8 +67,26 @@ func (p *SocksCli) RunLocal(ctx context.Context, socksAddr string) {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
 		return
 	}
+	defer func() {
+		e := recover()
+		if e != nil {
+			log.Ctx(ctx).Error().Caller().Interface("recover", e).Stack().Msg("listener defer")
+		}
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Stack().Msg("listener defer")
+		} else {
+			log.Ctx(ctx).Info().Caller().Err(errors.Errorf("listener")).Stack().Msg("listener defer")
+		}
+		l.Close()
+	}()
 
 	for {
+		select {
+		case <-ctx.Done():
+			log.Ctx(ctx).Info().Caller().Str("socksAddr", socksAddr).Msg("Done")
+			return
+		default:
+		}
 		c, err := l.Accept()
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("failed to accept")
@@ -367,6 +385,12 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 		}
 	}()
 	for {
+		select {
+		case <-ctx.Done():
+			log.Ctx(ctx).Info().Caller().Str("addr", addr).Msg("ctx.Done")
+			return
+		default:
+		}
 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
 		// conn, err := socket.DialTLS(ctx, "tcp", addr, tlsConfig)
 		conn, err := socket.DialTLSTimeout(ctx, "tcp", addr, tlsConfig, time.Second*5)

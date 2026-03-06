@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -185,8 +186,8 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 		tickerHeartbeat.Stop()
 		log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Msg("Heartbeat.defer()")
 		err := c.Close()
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat.defer()")
+		if err != nil && !strings.Contains(err.Error(), "has been closed") {
+			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat.defer()")
 		}
 	}()
 	for {
@@ -217,7 +218,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 			err = ErrUnexpected.Clonef("recove:%v", e)
 		}
 		if err != nil {
-			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
+			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
 		} else {
 			log.Ctx(ctx).Debug().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
 		}

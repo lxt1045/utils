@@ -13,3 +13,5 @@ rpc/test/socks_quic2/proxy/proxy
 sigma/engine/test_new.json
 sigma/engine/x.json
 sigma/engine/test.json
+rpc/test/socks/filesystem/static/ca/*.pem
+rpc/test/socks/filesystem/static/conf

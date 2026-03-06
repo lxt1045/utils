@@ -23,6 +23,8 @@ import (
 
 /*
 $env:CGO_ENABLED=0; $env:GOOS="linux"; $env:GOARCH="amd64"; go build ./
+
+
 */
 
 var (
@@ -111,7 +113,8 @@ func main() {
 					err = ErrUnexpected.WithErr(err)
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
-				continue
+				// continue
+				return err
 			}
 			// conn.SetReadDeadline(time.Second)
 			log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
@@ -129,6 +132,7 @@ func main() {
 			select {
 			case chSvcs <- svc:
 			default:
+				log.Ctx(ctx).Warn().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Msg("send error")
 			}
 		}
 	})
@@ -148,7 +152,7 @@ func main() {
 			listener.Close()
 		}()
 
-		ticker := time.NewTicker(time.Second * 600)
+		ticker := time.NewTicker(time.Second * 10)
 		defer ticker.Stop()
 
 		// SocksSvc 需要存起来，要不有可能被垃圾回收
@@ -156,6 +160,7 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
+				log.Ctx(ctx).Info().Caller().Str("Listen", conf.Conn.Addr).Msg("Done")
 				return
 			case svc := <-chSvcs:
 				svcs = append(svcs, svc)
@@ -170,12 +175,13 @@ func main() {
 				}
 				svcs = SvcsNew
 			}
+			log.Ctx(ctx).Info().Caller().Int("svcs", len(svcs)).Msg("check")
 		}
 	})
 
 	WaitSysSignal(ctx)
-	listener.Close()
 	cancel()
+	listener.Close()
 	// time.Sleep(time.Millisecond * 100)
 	err = g.Wait()
 	if err != nil {
