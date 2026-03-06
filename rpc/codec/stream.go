@@ -52,7 +52,7 @@ func (s *Stream) Close(ctx context.Context) {
 	// 2. 从 s.codec.streams 删除
 	key := respsKey(s.callSN)
 	s.codec.streamsLock.Lock()
-	defer s.codec.streamsLock.Lock()
+	defer s.codec.streamsLock.Unlock()
 	delete(s.codec.streams, key)
 
 	// 3. 关闭标志
