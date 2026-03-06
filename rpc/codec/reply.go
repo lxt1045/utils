@@ -93,7 +93,9 @@ func (c *Codec) VerCallResp(ctx context.Context, header Header, bsBody []byte) (
 		key := respsKey(header.CallSN)
 		c.respsLock.Lock()
 		defer c.respsLock.Unlock()
-		return c.resps[key]
+		res := c.resps[key]
+		delete(c.resps, key)
+		return res
 	}()
 	if res.r == nil {
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, res.r is nil")

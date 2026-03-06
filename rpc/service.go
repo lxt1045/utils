@@ -67,9 +67,7 @@ func StartService(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, 
 }
 
 func (c Service) Close(ctx context.Context) (err error) {
-	defer c.Codec.Close()
-	err = c.Codec.SendCloseMsg(ctx)
-	return
+	return c.Codec.Close()
 }
 
 // func (s Service) Clone(ctx context.Context, cancel context.CancelFunc, rwc io.ReadWriteCloser, svc interface{}) (sNew Service, err error) {

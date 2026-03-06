@@ -15,3 +15,4 @@ sigma/engine/x.json
 sigma/engine/test.json
 rpc/test/socks/filesystem/static/ca/*.pem
 rpc/test/socks/filesystem/static/conf
+ __debug_bin*

@@ -20,7 +20,7 @@ type Peer struct {
 func StartPeer(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}, fRegisters ...interface{}) (rpc Peer, err error) {
 	rpc, err = NewPeer(ctx, svc, fRegisters...)
 
-	if rwc != nil {
+	if err == nil && rwc != nil {
 		err = rpc.Conn(ctx, rwc)
 	}
 	return

@@ -76,8 +76,15 @@ func newQueue[T Delay](initCap int, timeWindow int64, fOK func(t T) bool, popSle
 		popSleep:   popSleep,
 	}
 	if p.popSleep != 0 {
+		popSleep := p.popSleep
+		if popSleep > 10 {
+			popSleep /= 10
+		}
 		go func() {
 			for {
+				if p.IsClosed() {
+					return
+				}
 				p.pop(fOK)
 				time.Sleep(p.popSleep)
 			}
@@ -263,4 +270,11 @@ func (p *Queue[T]) Close() {
 	}
 	p.closed = 1
 	return
+}
+
+func (p *Queue[T]) IsClosed() bool {
+	p.wlock.Lock()
+	defer p.wlock.Unlock()
+
+	return p.closed != 0
 }

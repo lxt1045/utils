@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	stderr "errors"
 	"io"
 	"reflect"
 	"strings"
@@ -61,9 +62,7 @@ func (c *Client) getMethodsFromSvc(ctx context.Context) (err error) {
 }
 
 func (c Client) Close(ctx context.Context) (err error) {
-	defer c.Codec.Close()
-	err = c.Codec.SendCloseMsg(ctx)
-	return
+	return c.Codec.Close()
 }
 
 func (c Client) Invoke(ctx context.Context, method string, req codec.Msg, resp codec.Msg) (err error) {
@@ -113,7 +112,13 @@ func (c Client) invoke(ctx context.Context, method string, req codec.Msg, resp c
 		return
 	}
 	if done != nil {
-		err = <-done
+		select {
+		case err = <-done:
+		case <-c.Codec.Done():
+			err = stderr.New("resp timeout")
+		case <-ctx.Done():
+			err = stderr.New("resp timeout")
+		}
 	}
 	return
 }

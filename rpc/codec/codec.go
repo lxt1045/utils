@@ -50,19 +50,22 @@ type Method interface {
 
 type Codec struct {
 	cancel context.CancelFunc
-	chDone <-chan struct{}
+	// chDone <-chan struct{}
+	ctx context.Context
 
 	rwc       io.ReadWriteCloser
 	tmpCallSN uint32
 
-	respsLock sync.Mutex
-	resps     map[uint64]resp
-	segments  map[uint64][]byte // 分片
-	delay     *delay.Queue[post]
+	respsLock    sync.Mutex
+	resps        map[uint64]resp
+	segmentsLock sync.Mutex
+	segments     map[uint64][]byte // 分片
+	delay        *delay.Queue[post]
+	delayTime    int64
 
 	callers []Method
 
-	streamsLock sync.Mutex
+	streamsLock sync.RWMutex
 	streams     map[uint64]*Stream
 
 	cliPassKeys []string // 客户端: ctx 透传 key
@@ -78,22 +81,30 @@ type resp struct {
 }
 
 type post struct {
-	key      uint64
-	Codec    *Codec
-	segments bool
-	done     chan error
+	key   uint64
+	Codec *Codec
+	done  chan error
 }
 
 func (d post) Post() {
-	if d.segments {
-		delete(d.Codec.segments, d.key)
-	}
-
 	if d.done != nil {
 		select {
 		case d.done <- stderr.New("resp timeout"):
 		default:
 		}
+		func() {
+			d.Codec.respsLock.Lock()
+			defer d.Codec.respsLock.Unlock()
+
+			delete(d.Codec.resps, d.key)
+		}()
+	} else {
+		func() {
+			d.Codec.segmentsLock.Lock()
+			defer d.Codec.segmentsLock.Unlock()
+
+			delete(d.Codec.segments, d.key)
+		}()
 	}
 }
 
@@ -101,15 +112,16 @@ func (d post) Post() {
 func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method, ctxPassKeys []string, needHeartbeat bool) (c *Codec, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	c = &Codec{
+		// chDone:      ctx.Done(),
+		ctx:         ctx,
 		cancel:      cancel,
 		rwc:         rwc,
 		resps:       make(map[uint64]resp),
 		segments:    make(map[uint64][]byte),
-		delay:       delay.New[post](64, int64(time.Second*5), true),
+		delay:       delay.New[post](64, int64(time.Second)*10, true),
 		streams:     make(map[uint64]*Stream),
 		callers:     callers,
 		cliPassKeys: ctxPassKeys,
-		chDone:      ctx.Done(),
 	}
 
 	rw, ok := c.rwc.(interface {
@@ -119,9 +131,9 @@ func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method, ctx
 	if ok {
 		c.local, c.remote = rw.LocalAddr().String(), rw.RemoteAddr().String()
 	}
-	go c.ReadLoop(ctx)
+	go c.ReadLoop()
 	if needHeartbeat {
-		go c.Heartbeat(ctx)
+		go c.Heartbeat()
 	}
 	return
 }
@@ -130,21 +142,39 @@ func (c *Codec) Close() (err error) {
 	if c == nil {
 		return
 	}
-	c.cancel()
-	c.streamsLock.Lock()
-	defer c.streamsLock.Unlock()
 
+	if c.cancel != nil {
+		c.cancel()
+		c.cancel = nil
+	}
 	if c.delay != nil {
 		c.delay.Range(func(t post) {
 			t.Post()
 		})
+		c.delay.Close()
+		c.delay = nil
 	}
-	if c.rwc == nil {
-		err = errors.Errorf("has been closed")
-		return
+
+	if c.streams != nil {
+		func() {
+			c.streamsLock.Lock()
+			defer c.streamsLock.Unlock()
+			for _, s := range c.streams {
+				s.close()
+			}
+		}()
+		c.streams = nil
 	}
-	err = c.rwc.Close()
-	c.rwc = nil
+
+	c.SendCloseMsg(c.ctx)
+	time.Sleep(time.Millisecond * 10)
+
+	c.respsLock.Lock()
+	defer c.respsLock.Unlock()
+	if c.rwc != nil {
+		err = c.rwc.Close()
+		c.rwc = nil
+	}
 	return
 }
 
@@ -153,7 +183,7 @@ func (c *Codec) IsClosed() (yes bool) {
 }
 
 func (rpc *Codec) Done() <-chan struct{} {
-	return rpc.chDone
+	return rpc.ctx.Done()
 }
 
 func (c *Codec) ClientCall(ctx context.Context, callID uint16, req, res Msg) (done <-chan error, err error) {
@@ -163,13 +193,13 @@ func (c *Codec) ClientCall(ctx context.Context, callID uint16, req, res Msg) (do
 func (c *Codec) StreamCall(ctx context.Context, ver, callID uint16, callSN uint32, req Msg) (err error) {
 	yes := func() bool {
 		key := respsKey(callSN)
-		c.streamsLock.Lock()
-		defer c.streamsLock.Unlock()
+		c.streamsLock.RLock()
+		defer c.streamsLock.RUnlock()
 		stream := c.streams[key]
 		return stream != nil
 	}()
 	if !yes {
-		return errors.Errorf("stream has been closed by peer")
+		return errors.Errorf("stream has been closed")
 	}
 	_, err = c.clientCall(ctx, ver, callID, callSN, req, nil)
 	return
@@ -179,8 +209,8 @@ func respsKey(callSN uint32) uint64 {
 	return uint64(callSN)
 }
 
-func (c *Codec) Heartbeat(ctx context.Context) {
-	// return
+func (c *Codec) Heartbeat() {
+	ctx := c.ctx
 	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 60)) // 心跳包; client 发送
 	defer func() {
 		tickerHeartbeat.Stop()
@@ -194,10 +224,29 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-c.chDone:
-			return
 		case <-tickerHeartbeat.C:
 		}
+
+		delKeys := []uint64{}
+		tsNow := time.Now().Unix()
+		func() {
+			c.streamsLock.RLock()
+			defer c.streamsLock.RUnlock()
+			for k, s := range c.streams {
+				if s.deadline < tsNow {
+					delKeys = append(delKeys, k)
+				}
+			}
+		}()
+		func() {
+			if len(delKeys) > 0 {
+				c.streamsLock.Lock()
+				defer c.streamsLock.Unlock()
+				for _, k := range delKeys {
+					delete(c.streams, k)
+				}
+			}
+		}()
 
 		err := c.SendHeartbeatMsg(ctx)
 		// if ErrHasBeenClosed.Is(err) {
@@ -210,8 +259,9 @@ func (c *Codec) Heartbeat(ctx context.Context) {
 	}
 }
 
-func (c *Codec) ReadLoop(ctx context.Context) {
+func (c *Codec) ReadLoop() {
 	var err error
+	ctx := c.ctx
 	defer func() {
 		e := recover()
 		if e != nil {
@@ -224,7 +274,6 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 		}
 
 		if c.rwc != nil {
-			c.SendCloseMsg(ctx)
 			c.Close()
 		}
 	}()
@@ -251,26 +300,35 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 		// 需要分片时
 		if header.SegmentCount > 1 {
 			key := respsKey(header.CallSN)
-			bsOld, ok := c.segments[key]
+			bContinue := func() (bContinue bool) {
+				c.segmentsLock.Lock()
+				defer c.segmentsLock.Unlock()
 
-			if header.SegmentIdx == 0 {
-				c.delay.Push(post{Codec: c, key: key, segments: true})
-			} else if !ok {
-				log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Msg("drop")
+				bsOld, ok := c.segments[key]
+
+				if header.SegmentIdx == 0 {
+					c.delay.Push(post{Codec: c, key: key})
+				} else if !ok {
+					log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Msg("the stream has been closed, drop")
+					return true
+				}
+
+				bsBody = append(bsOld, bsBody...) // 都是再同一个 ClientReadLoop 协程中，无需加锁
+
+				// 不是最后一个分片
+				if header.SegmentCount-1 > header.SegmentIdx {
+					c.segments[key] = bsBody
+					return true
+				}
+				delete(c.segments, key) // 会不会出现意外而无法清理的情况
+				return false
+			}()
+			if bContinue {
 				continue
 			}
-
-			bsBody = append(bsOld, bsBody...) // 都是再同一个 ClientReadLoop 协程中，无需加锁
-
-			// 不是最后一个分片
-			if header.SegmentCount-1 > header.SegmentIdx {
-				c.segments[key] = bsBody
-				continue
-			}
-			delete(c.segments, key) // 会不会出现意外而无法清理的情况
 		}
 
-		ctxDo, logID := context.TODO(), uint64(gid.GetGID())
+		ctxDo, logID := ctx, uint64(gid.GetGID())
 		if header.CtxLen != 0 {
 			m := base.Ctx{}
 			err = proto.Unmarshal(bsBody[:header.CtxLen], &m)
@@ -338,7 +396,7 @@ func (c *Codec) ReadLoop(ctx context.Context) {
 }
 
 // ReadPack 读一个裸消息
-func ReadPack(ctx context.Context, r io.Reader, buf []byte) (header Header, bsBody []byte, err error) {
+func ReadPack(ctx context.Context, r io.ReadCloser, buf []byte) (header Header, bsBody []byte, err error) {
 	n, err := io.ReadFull(r, buf[:2]) // 先读长度
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -438,7 +496,13 @@ func (c *Codec) SendCmd(ctx context.Context, req *base.CmdReq) (res *base.CmdRsp
 		return
 	}
 	if done != nil {
-		err = <-done
+		select {
+		case err = <-done:
+		case <-c.Done():
+			err = stderr.New("resp timeout")
+		case <-ctx.Done():
+			err = stderr.New("resp timeout")
+		}
 	}
 	return
 }

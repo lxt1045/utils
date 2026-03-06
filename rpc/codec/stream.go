@@ -2,6 +2,7 @@ package codec
 
 import (
 	"context"
+	stderr "errors"
 	"io"
 	"reflect"
 	"sync"
@@ -38,18 +39,15 @@ func (s *Stream) Close(ctx context.Context) {
 		return
 	}
 	if done != nil {
-		err = <-done
+		select {
+		case err = <-done:
+		case <-ctx.Done():
+			err = stderr.New("resp timeout")
+		}
 		if err != nil {
 			log.Ctx(ctx).Warn().Caller().Err(err).Msg("Stream.close")
 		}
 	}
-
-	// 2. 再删除
-	c := s.codec
-	key := respsKey(s.callSN)
-	c.streamsLock.Lock()
-	defer c.streamsLock.Unlock()
-	delete(c.streams, key)
 
 	// 3. 关闭标志
 	s.close()
@@ -62,6 +60,11 @@ func (s *Stream) close() {
 	default:
 	}
 	// close(s.cacheCh)
+
+	key := respsKey(s.callSN)
+	s.codec.streamsLock.Lock()
+	defer s.codec.streamsLock.Lock()
+	delete(s.codec.streams, key)
 }
 
 // func (s *Stream) Method() (method string) {
@@ -93,7 +96,10 @@ func (s *Stream) Recv(ctx context.Context) (resp Msg, err error) {
 			err = io.EOF
 			return
 		}
-		<-s.cacheCh
+		select {
+		case <-s.cacheCh:
+		case <-ctx.Done():
+		}
 	}
 }
 
@@ -167,7 +173,13 @@ func (c *Codec) Stream(ctx context.Context, callID uint16, caller Method, sync b
 		return
 	}
 	if sync && done != nil {
-		err = <-done
+		select {
+		case err = <-done:
+		case <-c.Done():
+			err = stderr.New("resp timeout")
+		case <-ctx.Done():
+			err = stderr.New("resp timeout")
+		}
 	}
 	return
 }
@@ -186,13 +198,14 @@ func GetStream(ctx context.Context) (stream *Stream) {
 func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte) (err error) {
 	stream, bFirstCall := func() (stream *Stream, bFirstCall bool) {
 		key := respsKey(header.CallSN)
-		c.streamsLock.Lock()
-		defer c.streamsLock.Unlock()
+		c.streamsLock.RLock()
+		defer c.streamsLock.RUnlock()
 		stream = c.streams[key]
 		if stream != nil && stream.bFirstCall {
 			bFirstCall = true
 			stream.bFirstCall = false
 		}
+		stream.deadline = time.Now().Unix() + 2*60 // 连续2min没有数据就删除
 		return
 	}()
 	if stream == nil || stream.caller == nil {
@@ -200,7 +213,6 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte) 
 		log.Ctx(ctx).Error().Caller().Err(err).Interface("header", header).Msg("drop, stream is nil")
 		return
 	}
-	stream.deadline = time.Now().Unix() + 1*60*60 // 最新一个请求之后一个小时都没有新的请求就删除
 
 	req := stream.caller.NewReq()
 	err = proto.Unmarshal(bsBody, req)
@@ -226,8 +238,8 @@ func (c *Codec) VerStreamReq(ctx context.Context, header Header, bsBody []byte) 
 func (c *Codec) VerStreamResp(ctx context.Context, header Header, bsBody []byte) (err error) {
 	stream := func() *Stream {
 		key := respsKey(header.CallSN)
-		c.streamsLock.Lock()
-		defer c.streamsLock.Unlock()
+		c.streamsLock.RLock()
+		defer c.streamsLock.RUnlock()
 		return c.streams[key]
 	}()
 	if stream == nil || stream.caller == nil {
