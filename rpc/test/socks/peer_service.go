@@ -234,6 +234,7 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 	var n int
 	ch := make(chan []byte, 1024)
 	go func() {
+		var err error
 		// TODO: Read 和Send 分两个进程处理
 		defer func() {
 			e := recover()
