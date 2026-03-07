@@ -285,7 +285,9 @@ func (c *Codec) ReadLoop() {
 			log.Ctx(ctx).Debug().Caller().Bool("isUpgrade", isUpgrade).Str("local", c.local).Str("remote", c.remote).Err(err).Msg("ReadLoop defer")
 		}
 
-		if !isUpgrade && c.rwc != nil {
+		if isUpgrade {
+			c.delay.Close()
+		} else if c.rwc != nil {
 			c.Close()
 		}
 	}()

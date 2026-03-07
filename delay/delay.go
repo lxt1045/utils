@@ -82,7 +82,7 @@ func newQueue[T Delay](initCap int, timeWindow int64, fOK func(t T) bool, popSle
 		}
 		go func() {
 			for {
-				if p.IsClosed() {
+				if p.IsClosed() && p.qlen == 0 {
 					return
 				}
 				p.pop(fOK)

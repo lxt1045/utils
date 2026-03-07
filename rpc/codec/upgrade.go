@@ -38,7 +38,7 @@ func (s *Upgrade) Write(p []byte) (n int, err error) {
 func (s *Upgrade) Close() error {
 	s.bClosed = true
 	if s.codec != nil {
-		return s.codec.rwc.Close()
+		s.codec.Close()
 	}
 	return nil
 }
