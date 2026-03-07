@@ -262,6 +262,9 @@ func (p *Queue[T]) Range(do func(t T)) {
 }
 
 func (p *Queue[T]) Close() {
+	if p == nil {
+		return
+	}
 	p.rLock.RLock()         // 注意加锁顺序: p.rLock -> r.lock -> p.lock
 	defer p.rLock.RUnlock() //
 

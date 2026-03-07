@@ -148,6 +148,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			// cancel()
 			// rc.Close()
+			time.Sleep(time.Second * 3)
 			upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
@@ -157,6 +158,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 	defer func() {
 		// cancel()
 		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		time.Sleep(time.Second * 3)
 		rc.Close()
 		upgrade.Close()
 	}()

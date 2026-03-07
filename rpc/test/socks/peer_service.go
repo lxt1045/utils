@@ -225,6 +225,7 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 			// cancel()
 			rc.Close()
+			time.Sleep(time.Second * 3)
 			upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
