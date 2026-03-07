@@ -141,24 +141,25 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 	}
 
 	// ctx, cancel := context.WithCancel(ctx)
-	go io.Copy(rc, upgrade)
-	io.Copy(upgrade, rc)
-	// go func() {
-	// 	defer func() {
-	// 		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
-	// 		// cancel()
-	// 		// rc.Close()
-	// 		upgrade.Close()
-	// 	}()
-	// 	Copy(ctx, rc, upgrade)
-	// }()
+	// go io.Copy(rc, upgrade)
+	// io.Copy(upgrade, rc)
+	go func() {
+		defer func() {
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// cancel()
+			// rc.Close()
+			upgrade.Close()
+		}()
+		// Copy(ctx, rc, upgrade)
+		io.Copy(rc, upgrade)
+	}()
 
-	// defer func() {
-	// 	// cancel()
-	// 	// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
-	// }()
+	defer func() {
+		// cancel()
+		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+	}()
 	// Copy(ctx, upgrade, rc)
-
+	io.Copy(upgrade, rc)
 	return
 }
 func (p *SocksCli) connect1(ctx context.Context, rc net.Conn) (err error) {
@@ -458,7 +459,7 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 		}
 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
 		// conn, err := socket.DialTLS(ctx, "tcp", addr, tlsConfig)
-		conn, err := socket.DialTLSTimeout(ctx, "tcp", addr, tlsConfig, time.Second*5)
+		conn, err := socket.DialTLSTimeout(ctx, "tcp", addr, tlsConfig, time.Second*10)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue

@@ -185,7 +185,7 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 	}
 	// rc, err1 := net.Dial("tcp", req.Addr)
 	d := net.Dialer{
-		Timeout: time.Second * 3,
+		Timeout: time.Second * 30,
 	}
 	rc, err1 := d.Dial("tcp", req.Addr)
 	if err1 != nil {
@@ -207,26 +207,28 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 	}
 
 	// ctx, cancel := context.WithCancel(ctx)
-	go io.Copy(rc, upgrade)
-	go io.Copy(upgrade, rc)
-	// go func() {
-	// 	defer func() {
-	// 		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
-	// 		// cancel()
-	// 		// rc.Close()
-	// 		upgrade.Close()
-	// 	}()
-	// 	Copy(ctx, upgrade, rc)
-	// }()
+	// go io.Copy(rc, upgrade)
+	// go io.Copy(upgrade, rc)
+	go func() {
+		defer func() {
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// cancel()
+			// rc.Close()
+			upgrade.Close()
+		}()
+		// Copy(ctx, upgrade, rc)
+		io.Copy(upgrade, rc)
+	}()
 
-	// go func() {
-	// 	defer func() {
-	// 		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
-	// 		// cancel()
-	// 		// upgrade.Close()
-	// 	}()
-	// 	Copy(ctx, rc, upgrade)
-	// }()
+	go func() {
+		defer func() {
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// cancel()
+			// upgrade.Close()
+		}()
+		// Copy(ctx, rc, upgrade)
+		io.Copy(rc, upgrade)
+	}()
 
 	return &pb.ConnUpgradeRsp{}, nil
 }
