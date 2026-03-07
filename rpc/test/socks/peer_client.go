@@ -145,17 +145,17 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 	// io.Copy(rc, upgrade)
 	go func() {
 		defer func() {
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 			// cancel()
-			rc.Close()
-			upgrade.Close()
+			// rc.Close()
+			// upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
 	}()
 
 	defer func() {
 		// cancel()
-		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 	}()
 	Copy(ctx, upgrade, rc)
 

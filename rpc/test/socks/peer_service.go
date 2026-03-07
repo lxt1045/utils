@@ -208,21 +208,22 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 
 	// ctx, cancel := context.WithCancel(ctx)
 	// go io.Copy(upgrade, rc)
-	// io.Copy(rc, upgrade)
+	io.Copy(rc, upgrade)
 	go func() {
 		defer func() {
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 			// cancel()
-			rc.Close()
-			upgrade.Close()
+			// rc.Close()
+			// upgrade.Close()
 		}()
 		Copy(ctx, upgrade, rc)
 	}()
 
 	go func() {
 		defer func() {
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 			// cancel()
+			upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
 	}()
