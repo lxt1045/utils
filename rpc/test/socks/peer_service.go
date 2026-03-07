@@ -206,40 +206,29 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 		}
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	// ctx, cancel := context.WithCancel(ctx)
 	// go io.Copy(upgrade, rc)
 	// io.Copy(rc, upgrade)
 	go func() {
 		defer func() {
 			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// cancel()
 		}()
-		Copy(ctx, cancel, upgrade, rc)
+		Copy(ctx, upgrade, rc)
 	}()
 
 	go func() {
 		defer func() {
 			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// cancel()
 		}()
-		Copy(ctx, cancel, rc, upgrade)
+		Copy(ctx, rc, upgrade)
 	}()
 
 	return &pb.ConnUpgradeRsp{}, nil
 }
 
-func Copy(ctx context.Context, cancel context.CancelFunc, dst io.WriteCloser, src io.ReadCloser) (written int64, err error) {
-	defer func() {
-		e := recover()
-		if e != nil {
-			err = errors.Errorf("recover : %v", e)
-		}
-		if err != nil {
-			log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
-			return
-		}
-		dst.Close()
-		src.Close()
-		cancel()
-	}()
+func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written int64, err error) {
 	var n int
 	ch := make(chan []byte, 1024)
 	go func() {
@@ -247,9 +236,7 @@ func Copy(ctx context.Context, cancel context.CancelFunc, dst io.WriteCloser, sr
 		defer func() {
 			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			close(ch)
-			dst.Close()
 			src.Close()
-			cancel()
 		}()
 		buf := make([]byte, 1024*64)
 		for {
@@ -268,10 +255,26 @@ func Copy(ctx context.Context, cancel context.CancelFunc, dst io.WriteCloser, sr
 			ch <- bs
 		}
 	}()
+	defer func() {
+		e := recover()
+		if e != nil {
+			err = errors.Errorf("recover : %v", e)
+		}
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
+			return
+		}
+		dst.Close()
+		src.Close()
+	}()
 	for {
 		var bs []byte
+		var ok bool
 		select {
-		case bs = <-ch:
+		case bs, ok = <-ch:
+			if !ok {
+				return
+			}
 		case <-ctx.Done():
 			return
 		}

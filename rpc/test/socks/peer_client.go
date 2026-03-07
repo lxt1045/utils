@@ -140,21 +140,22 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
+	// ctx, cancel := context.WithCancel(ctx)
 	// go io.Copy(upgrade, rc)
 	// io.Copy(rc, upgrade)
 	go func() {
 		defer func() {
 			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			// cancel()
 		}()
-		Copy(ctx, cancel, rc, upgrade)
+		Copy(ctx, rc, upgrade)
 	}()
 
 	defer func() {
+		// cancel()
 		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 	}()
-	Copy(ctx, cancel, upgrade, rc)
+	Copy(ctx, upgrade, rc)
 
 	return
 }
