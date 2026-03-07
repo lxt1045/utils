@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -117,23 +118,25 @@ func main() {
 				return err
 			}
 			// conn.SetReadDeadline(time.Second)
-			log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
 
-			svc := &socks.SocksSvc{
-				RemoteAddr: conn.RemoteAddr().String(),
-				LocalAddr:  conn.LocalAddr().String(),
-			}
-			peer, err := gPeer.Clone(ctx, conn, svc)
-			if err != nil {
-				log.Ctx(ctx).Warn().Caller().Err(err).Send()
-				continue
-			}
-			svc.Peer = peer
-			select {
-			case chSvcs <- svc:
-			default:
-				log.Ctx(ctx).Warn().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Msg("send error")
-			}
+			go func(conn net.Conn) {
+				log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+				svc := &socks.SocksSvc{
+					RemoteAddr: conn.RemoteAddr().String(),
+					LocalAddr:  conn.LocalAddr().String(),
+				}
+				peer, err := gPeer.Clone(ctx, conn, svc)
+				if err != nil {
+					log.Ctx(ctx).Warn().Caller().Err(err).Send()
+					return
+				}
+				svc.Peer = peer
+				select {
+				case chSvcs <- svc:
+				default:
+					log.Ctx(ctx).Warn().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Msg("send error")
+				}
+			}(conn)
 		}
 	})
 
