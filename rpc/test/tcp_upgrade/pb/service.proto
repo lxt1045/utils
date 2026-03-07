@@ -87,6 +87,16 @@ message ConnRsp {
   Err err = 2;
 }
 
+message HelloReq {
+  string name = 1;
+  string msg = 2;
+}
+
+message HelloRsp {
+  string name = 1;
+  string msg = 2;
+  Err err = 3;
+}
 
 message ConnUpgradeReq {
   string addr = 1;
@@ -101,28 +111,12 @@ message ConnUpgradeRsp {
 // 定义服务
 service Service {
   rpc Close(CloseReq) returns (CloseRsp) {}
-  rpc Latency(LatencyReq) returns (LatencyRsp) {}
   rpc Auth(AuthReq) returns (AuthRsp) {}
-  rpc Clients(ClientsReq) returns (ClientsRsp) {}
-  rpc ConnPeer(ConnPeerReq) returns (ConnPeerRsp) {}
-  
-  // 双向流模式：双方均可随时发送数据
-  // rpc ConnStream(stream ConnPeerReq) returns (stream ConnPeerReq);
+  rpc Hello(HelloReq) returns (HelloRsp) {}
+  rpc ConnUpgrade(ConnUpgradeReq) returns (ConnUpgradeRsp) {}
 }
 
 service Client {
   rpc Close(CloseReq) returns (CloseRsp) {}
-  rpc Latency(LatencyReq) returns (LatencyRsp) {}
-  rpc ConnPeer(ConnPeerReq) returns (ConnPeerRsp) {}
-}
-
-service SocksCli {
-  rpc Close(CloseReq) returns (CloseRsp) {}
-}
-
-service SocksSvc {
-  rpc Close(CloseReq) returns (CloseRsp) {}
-  rpc Auth(AuthReq) returns (AuthRsp) {}
-  rpc Conn(ConnReq) returns (ConnRsp) {}
-  rpc ConnUpgrade(ConnUpgradeReq) returns (ConnUpgradeRsp) {}
+  rpc Hello(HelloReq) returns (HelloRsp) {}
 }

@@ -24,7 +24,7 @@ func (c *Codec) Handler(ctx context.Context, caller Method, header Header, req M
 	}()
 	resp, err = caller.SvcInvoke(ctx, req)
 	if err != nil {
-		if header.Ver == VerCallReq {
+		if header.Ver == VerCallReq || header.Ver == VerUpgradeReq {
 			log.Ctx(ctx).Debug().Caller().Err(err).Msg("rpc resp err")
 			pbErr := &base.Err{}
 			code, ok := err.(interface {
@@ -41,7 +41,11 @@ func (c *Codec) Handler(ctx context.Context, caller Method, header Header, req M
 			if stack, ok := err.(interface{ Stack() (stack []string) }); ok {
 				pbErr.Stack = stack.Stack()
 			}
-			err = c.SendMsg(ctx, VerCallErrResp, header.CallID, header.CallSN, pbErr)
+			ver := uint16(VerCallErrResp)
+			if header.Ver == VerUpgradeReq {
+				ver = VerUpgradeErrResp
+			}
+			err = c.SendMsg(ctx, ver, header.CallID, header.CallSN, pbErr)
 			if err != nil {
 				return
 			}
@@ -55,6 +59,8 @@ func (c *Codec) Handler(ctx context.Context, caller Method, header Header, req M
 	ver := uint16(VerCallResp)
 	if header.Ver == VerStreamReq {
 		ver = VerStreamResp
+	} else if header.Ver == VerUpgradeReq {
+		ver = VerUpgradeResp
 	}
 
 	err = c.SendMsg(ctx, ver, header.CallID, header.CallSN, resp)
@@ -101,7 +107,7 @@ func (c *Codec) VerCallResp(ctx context.Context, header Header, bsBody []byte) (
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Msg("drop, res.r is nil")
 		return
 	}
-	if header.Ver == VerCallErrResp {
+	if header.Ver == VerCallErrResp || header.Ver == VerUpgradeErrResp {
 		pbErr := &base.Err{}
 		err = proto.Unmarshal(bsBody, pbErr)
 		if err != nil {
@@ -110,7 +116,10 @@ func (c *Codec) VerCallResp(ctx context.Context, header Header, bsBody []byte) (
 			res.done <- err
 			return
 		}
-		res.done <- errors.NewCodeWithStack(int(pbErr.Code), pbErr.Msg, pbErr.Stack)
+		select {
+		case res.done <- errors.NewCodeWithStack(int(pbErr.Code), pbErr.Msg, pbErr.Stack):
+		default:
+		}
 		return
 	}
 
@@ -118,10 +127,17 @@ func (c *Codec) VerCallResp(ctx context.Context, header Header, bsBody []byte) (
 	if err != nil {
 		err = errors.Errorf(err.Error())
 		log.Ctx(ctx).Error().Caller().Interface("header", header).Err(err).Msg("drop")
-		res.done <- err
+		select {
+		case res.done <- err:
+		default:
+		}
 		return
 	}
-	res.done <- nil
+
+	select {
+	case res.done <- nil:
+	default:
+	}
 	return
 }
 

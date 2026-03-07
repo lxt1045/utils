@@ -177,7 +177,7 @@ func main() {
 				}
 				svcs = SvcsNew
 			}
-			// log.Ctx(ctx).Info().Caller().Int("svcs", len(svcs)).Msg("check")
+			log.Ctx(ctx).Info().Caller().Int("svcs", len(svcs)).Msg("check")
 		}
 		// })
 	}()

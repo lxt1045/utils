@@ -141,6 +141,21 @@ func (c *Client) doStream(ctx context.Context, method string, sync bool) (stream
 	stream, err = c.Codec.Stream(ctx, m.CallID, m, sync)
 	return
 }
+
+// Stream 流式调用
+func (c *Client) Upgrade(ctx context.Context, method string, req, res codec.Msg) (upgrade *codec.Upgrade, err error) {
+	return c.doUpgrade(ctx, method, req, res)
+}
+func (c *Client) doUpgrade(ctx context.Context, method string, req, res codec.Msg) (upgrade *codec.Upgrade, err error) {
+	m, ok := c.svcMethods[method]
+	if !ok {
+		err = errors.Errorf("method not found: %s", method)
+		return
+	}
+	upgrade, err = c.Codec.Upgrade(ctx, m.CallID, req, res)
+	return
+}
+
 func (rpc *Client) Use(middleware ...MiddlewareReqFunc) {
 	rpc.middleware = append(rpc.middleware, middleware...)
 	return

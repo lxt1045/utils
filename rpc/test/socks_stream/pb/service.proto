@@ -87,17 +87,6 @@ message ConnRsp {
   Err err = 2;
 }
 
-
-message ConnUpgradeReq {
-  string addr = 1;
-  Network network = 2;
-  bytes body = 3;
-}
-
-message ConnUpgradeRsp {
-  Err err = 1;
-}
-
 // 定义服务
 service Service {
   rpc Close(CloseReq) returns (CloseRsp) {}
@@ -124,5 +113,4 @@ service SocksSvc {
   rpc Close(CloseReq) returns (CloseRsp) {}
   rpc Auth(AuthReq) returns (AuthRsp) {}
   rpc Conn(ConnReq) returns (ConnRsp) {}
-  rpc ConnUpgrade(ConnUpgradeReq) returns (ConnUpgradeRsp) {}
 }

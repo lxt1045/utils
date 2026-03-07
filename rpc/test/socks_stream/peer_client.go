@@ -119,67 +119,6 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		return
 	}
 	peer := p.GetPeer()
-
-	// 第一个请求很大概率是HTTP，提前握手可以减少一次RTT
-	buf := make([]byte, 1024*64)
-	n, err := rc.Read(buf)
-	if err != nil {
-		err = errors.Errorf("Read:%s", err.Error())
-		return
-	}
-	req := &pb.ConnUpgradeReq{
-		Addr: tgtAddr.String(),
-		Body: buf[:n],
-	}
-
-	resp := &pb.ConnUpgradeRsp{}
-	// stream, err := peer.StreamAsync(ctx, "Conn")
-	upgrade, err := peer.Upgrade(ctx, "ConnUpgrade", req, resp)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	// go io.Copy(upgrade, rc)
-	// io.Copy(rc, upgrade)
-	go func() {
-		defer func() {
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
-		}()
-		Copy(ctx, cancel, rc, upgrade)
-	}()
-
-	defer func() {
-		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
-	}()
-	Copy(ctx, cancel, upgrade, rc)
-
-	return
-}
-func (p *SocksCli) connect1(ctx context.Context, rc net.Conn) (err error) {
-	rc.(*net.TCPConn).SetKeepAlive(true)
-	tgtAddr, err := socks.Handshake(rc)
-	if err != nil {
-		// UDP: keep the connection until disconnect then free the UDP socket
-		if err == socks.InfoUDPAssociate {
-			buf := make([]byte, 1)
-			// block here
-			for {
-				_, err = rc.Read(buf)
-				if err, ok := err.(net.Error); ok && err.Timeout() {
-					continue
-				}
-				log.Ctx(ctx).Error().Caller().Err(err).Msgf("UDP Associate End.")
-				return
-			}
-		}
-
-		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to get target address: %v", err)
-		return
-	}
-	peer := p.GetPeer()
 	// stream, err := peer.StreamAsync(ctx, "Conn")
 	stream, err := peer.Stream(ctx, "Conn")
 	if err != nil {

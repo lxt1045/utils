@@ -101,7 +101,7 @@ func (rpc *Peer) Conn(ctx context.Context, rwc io.ReadWriteCloser) (err error) {
 	}
 	callers := rpc.Service.Methods()
 
-	return rpc.bindCodec(ctx, rwc, callers)
+	return rpc.bindCodec(ctx, rwc, callers, true)
 }
 
 func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface{}) (out Peer, err error) {
@@ -116,7 +116,7 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 		}
 	}
 	callers := rpc.Service.CloneMethods(svc)
-	err = rpc.bindCodec(ctx, rwc, callers)
+	err = rpc.bindCodec(ctx, rwc, callers, false)
 	if err != nil {
 		return
 	}
@@ -124,15 +124,15 @@ func (rpc Peer) Clone(ctx context.Context, rwc io.ReadWriteCloser, svc interface
 	return rpc, nil
 }
 
-func (rpc *Peer) bindCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []codec.Method) (err error) {
-	hasClient := len(rpc.Client.cliMethods) > 0
-	pCodec, err := codec.NewCodec(ctx, rwc, callers, rpc.cliPassKeys, hasClient)
+func (rpc *Peer) bindCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []codec.Method, isClient bool) (err error) {
+	pCodec, err := codec.NewCodec(ctx, rwc, callers, rpc.cliPassKeys, isClient)
 	if err != nil {
 		return
 	}
 	rpc.Client.Codec = pCodec
 	rpc.Service.Codec = pCodec
 
+	hasClient := len(rpc.Client.cliMethods) > 0
 	if hasClient {
 		err = rpc.Client.getMethodsFromSvc(ctx)
 		if err != nil {

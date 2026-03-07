@@ -6,16 +6,19 @@ import (
 )
 
 const (
-	VerHeartbeat   = 0
-	VerRaw         = 1
-	VerCallReq     = 2
-	VerCallResp    = 3
-	VerClose       = 4
-	VerCmdReq      = 5 // 发送控制命令
-	VerCmdResp     = 6 // 响应控制命令
-	VerStreamReq   = 7
-	VerStreamResp  = 8
-	VerCallErrResp = 9
+	VerHeartbeat      = 0
+	VerRaw            = 1
+	VerCallReq        = 2
+	VerCallResp       = 3
+	VerClose          = 4
+	VerCmdReq         = 5 // 发送控制命令
+	VerCmdResp        = 6 // 响应控制命令
+	VerStreamReq      = 7
+	VerStreamResp     = 8
+	VerUpgradeReq     = 9
+	VerUpgradeResp    = 10
+	VerCallErrResp    = 11
+	VerUpgradeErrResp = 12
 )
 const (
 	HeaderSizeRaw = 6

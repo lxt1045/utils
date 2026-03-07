@@ -14,6 +14,11 @@ import (
 	"github.com/lxt1045/utils/rpc/base"
 )
 
+/*
+TODO:
+  切换stream后，放弃此连接，全力供应stream，类似 websocket那种方式！
+*/
+
 type Stream struct {
 	codec     *Codec
 	callID    uint16
@@ -187,10 +192,19 @@ func (c *Codec) Stream(ctx context.Context, callID uint16, caller Method, sync b
 }
 
 type ctxStreamKey struct{}
+type ctxUpgradeKey struct{}
 
 func GetStream(ctx context.Context) (stream *Stream) {
 	s := ctx.Value(ctxStreamKey{})
 	stream, ok := s.(*Stream)
+	if !ok {
+		log.Ctx(ctx).Info().Caller().Msgf("unkonw type: %T", s)
+	}
+	return
+}
+func GetUpgrade(ctx context.Context) (upgrade *Upgrade) {
+	s := ctx.Value(ctxUpgradeKey{})
+	upgrade, ok := s.(*Upgrade)
 	if !ok {
 		log.Ctx(ctx).Info().Caller().Msgf("unkonw type: %T", s)
 	}

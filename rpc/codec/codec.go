@@ -57,6 +57,10 @@ type Codec struct {
 	rwc       io.ReadWriteCloser
 	tmpCallSN uint32
 
+	upgradeLock sync.Mutex
+	upgrade     *Upgrade
+	status      uint32 // 0: normal, 1: upgrading, 2: upgraded
+
 	respsLock    sync.Mutex
 	resps        map[uint64]resp
 	segmentsLock sync.Mutex
@@ -249,6 +253,10 @@ func (c *Codec) Heartbeat() {
 			}
 		}()
 
+		if atomic.LoadUint32(&c.status) != 0 {
+			<-ctx.Done()
+			return
+		}
 		err := c.SendHeartbeatMsg(ctx)
 		// if ErrHasBeenClosed.Is(err) {
 		// 	break
@@ -289,6 +297,10 @@ func (c *Codec) ReadLoop() {
 
 		var header Header
 		var bsBody []byte
+		if atomic.LoadUint32(&c.status) != 0 {
+			err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
+			return
+		}
 		header, bsBody, err = ReadPack(ctx, c.rwc, rbuf) // TODO: 设置读超时？？
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -360,7 +372,7 @@ func (c *Codec) ReadLoop() {
 			if err != nil {
 				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
-		case VerCallErrResp: // 返回Error
+		case VerCallErrResp, VerUpgradeErrResp: // 返回Error
 			fallthrough
 		case VerCallResp:
 			err = c.VerCallResp(ctxDo, header, bsBody)
@@ -390,8 +402,23 @@ func (c *Codec) ReadLoop() {
 			if err != nil {
 				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
+
+		case VerUpgradeReq:
+			err = c.VerUpgradeReq(ctxDo, header, bsBody)
+			if err != nil {
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
+			} else {
+				<-c.Done() // conn 已被接管，等待连接关闭
+			}
+		case VerUpgradeResp:
+			err = c.VerUpgradeResp(ctxDo, header, bsBody)
+			if err != nil {
+				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
+			} else {
+				<-c.Done() // conn 已被接管，等待连接关闭
+			}
 		default:
-			log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Send()
+			log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Msg("unknown version")
 		}
 	}
 }
@@ -450,6 +477,10 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 		err = errors.Errorf("has been closed")
 		return
 	}
+	if atomic.LoadUint32(&c.status) != 0 {
+		err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
+		return
+	}
 	_, err = c.rwc.Write(wbuf)
 	if err != nil {
 		err = errors.New(err.Error())
@@ -459,6 +490,7 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 }
 
 var ErrHasBeenClosed = errors.NewCode(0, 0x1111, "has been closed")
+var ErrHasBeenUpgraded = errors.NewCode(0, 0x1111, "has been upgraded")
 
 func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
 	wbuf := make([]byte, HeaderSize)
@@ -473,7 +505,7 @@ func (c *Codec) SendHeartbeatMsg(ctx context.Context) (err error) {
 	}
 	h.FormatRaw(wbuf)
 	if c.rwc == nil {
-		err = ErrHasBeenClosed.Clone("SendHeartbeatMsg")
+		err = ErrHasBeenClosed.Clone("SendHeartbeatMsg rwc is nil")
 		return
 	}
 	_, err = c.rwc.Write(wbuf)
@@ -603,6 +635,11 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 			err = ErrHasBeenClosed
 			return
 		}
+		if status := atomic.LoadUint32(&c.status); status > 1 ||
+			(status == 1 && ver != VerUpgradeReq && ver != VerUpgradeResp) { // 升级过程中允许发送 UpgradeReq 和 UpgradeResp
+			err = ErrHasBeenUpgraded.Clonef("Send c.status: %d, callID: %d", c.status, callID)
+			return
+		}
 		_, err = c.rwc.Write(wbuf)
 		if err != nil {
 			err = errors.New(err.Error())
@@ -625,6 +662,10 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 		h.FormatCall(wbuf0)
 		if c.rwc == nil {
 			err = errors.Errorf("has been closed")
+			return
+		}
+		if atomic.LoadUint32(&c.status) != 0 {
+			err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
 			return
 		}
 		_, err = c.rwc.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁
@@ -652,6 +693,10 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 	h.FormatCall(wbuf0)
 	if c.rwc == nil {
 		err = errors.Errorf("has been closed")
+		return
+	}
+	if atomic.LoadUint32(&c.status) != 0 {
+		err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
 		return
 	}
 	_, err = c.rwc.Write(wbuf0)
