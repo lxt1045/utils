@@ -129,8 +129,13 @@ func main() {
 		log.Ctx(ctx).Info().Caller().Str("upgrade write", string(buf)).Send()
 
 		go func() {
+			defer func() {
+				cancel()
+				upgrade.Close()
+				log.Ctx(ctx).Info().Caller().Msg("upgrade closed")
+			}()
 			buf = make([]byte, 1024)
-			for range 2 {
+			for {
 				n, err := upgrade.Read(buf)
 				if err != nil {
 					log.Ctx(ctx).Error().Caller().Err(err).Send()

@@ -213,6 +213,8 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 		defer func() {
 			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
 			// cancel()
+			rc.Close()
+			upgrade.Close()
 		}()
 		Copy(ctx, upgrade, rc)
 	}()
@@ -234,9 +236,16 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 	go func() {
 		// TODO: Read 和Send 分两个进程处理
 		defer func() {
+			e := recover()
+			if e != nil {
+				err = errors.Errorf("recover : %v", e)
+			}
 			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			close(ch)
-			src.Close()
+			// src.Close()
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
+			}
 		}()
 		buf := make([]byte, 1024*64)
 		for {
@@ -246,13 +255,15 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			default:
 			}
 			n, err := src.Read(buf)
+			if n > 0 {
+				bs := make([]byte, n)
+				copy(bs, buf[:n])
+				ch <- bs
+			}
 			if err != nil {
 				err = errors.Errorf("Read:%s", err.Error())
 				return
 			}
-			bs := make([]byte, n)
-			copy(bs, buf[:n])
-			ch <- bs
 		}
 	}()
 	defer func() {
@@ -264,8 +275,8 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
 			return
 		}
-		dst.Close()
-		src.Close()
+		// dst.Close()
+		// src.Close()
 	}()
 	for {
 		var bs []byte
@@ -275,12 +286,12 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			if !ok {
 				return
 			}
+			n, err = dst.Write(bs)
+			if n < len(bs) || err != nil {
+				err = errors.Errorf(" n < l, err: %v", err)
+				return
+			}
 		case <-ctx.Done():
-			return
-		}
-		n, err = dst.Write(bs)
-		if n < 0 || n < len(bs) {
-			err = errors.Errorf("n < 0 || n < l, err: %s", err.Error())
 			return
 		}
 	}

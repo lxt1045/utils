@@ -220,9 +220,11 @@ func (c *Codec) Heartbeat() {
 	defer func() {
 		tickerHeartbeat.Stop()
 		log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Msg("Heartbeat.defer()")
-		err := c.Close()
-		if err != nil && !strings.Contains(err.Error(), "has been closed") {
-			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat.defer()")
+		if atomic.LoadUint32(&c.status) == 0 {
+			err := c.Close()
+			if err != nil && !strings.Contains(err.Error(), "has been closed") {
+				log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat.defer()")
+			}
 		}
 	}()
 	for {
@@ -254,7 +256,7 @@ func (c *Codec) Heartbeat() {
 		}()
 
 		if atomic.LoadUint32(&c.status) != 0 {
-			<-ctx.Done()
+			// <-ctx.Done()
 			return
 		}
 		err := c.SendHeartbeatMsg(ctx)
@@ -271,18 +273,19 @@ func (c *Codec) Heartbeat() {
 func (c *Codec) ReadLoop() {
 	var err error
 	ctx := c.ctx
+	isUpgrade := false
 	defer func() {
 		e := recover()
 		if e != nil {
 			err = ErrUnexpected.Clonef("recove:%v", e)
 		}
 		if err != nil {
-			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
+			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("ReadLoop defer")
 		} else {
-			log.Ctx(ctx).Debug().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("defer")
+			log.Ctx(ctx).Debug().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("ReadLoop defer")
 		}
 
-		if c.rwc != nil {
+		if !isUpgrade && c.rwc != nil {
 			c.Close()
 		}
 	}()
@@ -298,7 +301,7 @@ func (c *Codec) ReadLoop() {
 		var header Header
 		var bsBody []byte
 		if atomic.LoadUint32(&c.status) != 0 {
-			err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
+			err = ErrHasBeenClosed.Clonef("ReadLoop c.status: %d", c.status)
 			return
 		}
 		header, bsBody, err = ReadPack(ctx, c.rwc, rbuf) // TODO: 设置读超时？？
@@ -408,14 +411,18 @@ func (c *Codec) ReadLoop() {
 			if err != nil {
 				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			} else {
-				<-c.Done() // conn 已被接管，等待连接关闭
+				// <-c.Done() // conn 已被接管，等待连接关闭
+				isUpgrade = true
+				return
 			}
 		case VerUpgradeResp:
 			err = c.VerUpgradeResp(ctxDo, header, bsBody)
 			if err != nil {
 				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			} else {
-				<-c.Done() // conn 已被接管，等待连接关闭
+				// <-c.Done() // conn 已被接管，等待连接关闭
+				isUpgrade = true
+				return
 			}
 		default:
 			log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Interface("header", header).Msg("unknown version")
@@ -478,7 +485,7 @@ func (c *Codec) SendCloseMsg(ctx context.Context) (err error) {
 		return
 	}
 	if atomic.LoadUint32(&c.status) != 0 {
-		err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
+		err = ErrHasBeenClosed.Clonef("SendCloseMsg c.status: %d", c.status)
 		return
 	}
 	_, err = c.rwc.Write(wbuf)
@@ -665,7 +672,7 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 			return
 		}
 		if atomic.LoadUint32(&c.status) != 0 {
-			err = ErrHasBeenClosed.Clonef("SendHeartbeatMsg c.status: %d", c.status)
+			err = ErrHasBeenClosed.Clonef("Send c.status: %d", c.status)
 			return
 		}
 		_, err = c.rwc.Write(wbuf0[:math.MaxUint16]) // 原子写，内部有锁

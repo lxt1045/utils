@@ -56,6 +56,7 @@ func main() {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
+	srcs := make([]*socksSvc, 0, 16)
 	for i := 0; ; i++ {
 		select {
 		case <-ctx.Done():
@@ -85,7 +86,6 @@ func main() {
 			continue
 		}
 		svc.Peer = peer
-
-		continue
+		srcs = append(srcs, svc)
 	}
 }

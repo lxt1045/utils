@@ -202,8 +202,12 @@ func (p *socksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 		}()
 
 		go func() {
+			defer func() {
+				upgrade.Close()
+				log.Ctx(ctx).Info().Caller().Msg("upgrade closed")
+			}()
 			buf := make([]byte, 1024)
-			for range 2 {
+			for {
 				n, err := upgrade.Read(buf)
 				if err != nil {
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
