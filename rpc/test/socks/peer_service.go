@@ -216,8 +216,8 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 			// rc.Close()
 			upgrade.Close()
 		}()
-		// Copy(ctx, upgrade, rc)
-		io.Copy(upgrade, rc)
+		Copy(ctx, upgrade, rc)
+		// io.Copy(upgrade, rc)
 	}()
 
 	go func() {
@@ -226,8 +226,8 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 			// cancel()
 			// upgrade.Close()
 		}()
-		// Copy(ctx, rc, upgrade)
-		io.Copy(rc, upgrade)
+		Copy(ctx, rc, upgrade)
+		// io.Copy(rc, upgrade)
 	}()
 
 	return &pb.ConnUpgradeRsp{}, nil
