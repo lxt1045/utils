@@ -32,6 +32,9 @@ func (s *Upgrade) Read(p []byte) (n int, err error) {
 }
 
 func (s *Upgrade) Write(p []byte) (n int, err error) {
+	if s.codec == nil || s.codec.IsClosed() {
+		return 0, ErrUpgradeClosed.Clone()
+	}
 	return s.codec.rwc.Write(p)
 }
 
