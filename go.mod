@@ -13,6 +13,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/klauspost/compress v1.17.4
+	github.com/lxt1045/errors v0.0.0-20260115140637-26def9a5a630
 	github.com/markuskont/datamodels v0.1.1
 	github.com/markuskont/go-sigma-rule-engine v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -30,6 +31,7 @@ require (
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.12.0
 	golang.org/x/sync v0.2.0
+	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.56.2
 	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/gorm v1.25.5
@@ -59,7 +61,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/klauspost/reedsolomon v1.12.4 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lxt1045/errors v0.0.0-20260115140637-26def9a5a630 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

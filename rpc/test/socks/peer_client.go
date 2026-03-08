@@ -3,6 +3,7 @@ package socks
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/lxt1045/utils/rpc/socket"
 	"github.com/lxt1045/utils/rpc/test/socks/pb"
 	"github.com/lxt1045/utils/socks"
+	"github.com/lxt1045/utils/socks/http/utils"
 )
 
 type SocksCli struct {
@@ -61,7 +63,7 @@ func (p *SocksCli) Close(ctx context.Context, in *pb.CloseReq) (out *pb.CloseRsp
 }
 
 // Listen on addr and proxy to server to reach target from getAddr.
-func (p *SocksCli) RunLocal(ctx context.Context, socksAddr string) {
+func (p *SocksCli) RunSocks(ctx context.Context, socksAddr string) {
 	l, err := net.Listen("tcp", socksAddr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", socksAddr, err)
@@ -93,11 +95,11 @@ func (p *SocksCli) RunLocal(ctx context.Context, socksAddr string) {
 			continue
 		}
 
-		go p.connect(ctx, c)
+		go p.connectSocks(ctx, c)
 	}
 }
 
-func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
+func (p *SocksCli) connectSocks(ctx context.Context, rc net.Conn) (err error) {
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	tgtAddr, err := socks.Handshake(rc)
 	if err != nil {
@@ -118,6 +120,213 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to get target address: %v", err)
 		return
 	}
+
+	return p.connect(ctx, tgtAddr.String(), rc)
+}
+
+func (p *SocksCli) RunHttpProxy(ctx context.Context, httpAddr string) {
+	l, err := net.Listen("tcp", httpAddr)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", httpAddr, err)
+		return
+	}
+	defer func() {
+		e := recover()
+		if e != nil {
+			log.Ctx(ctx).Error().Caller().Interface("recover", e).Stack().Msg("listener defer")
+		}
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Stack().Msg("listener defer")
+		} else {
+			log.Ctx(ctx).Info().Caller().Err(errors.Errorf("listener")).Stack().Msg("listener defer")
+		}
+		l.Close()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Ctx(ctx).Info().Caller().Str("httpAddr", httpAddr).Msg("Done")
+			return
+		default:
+		}
+		c, err := l.Accept()
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("failed to accept")
+			continue
+		}
+
+		go p.connectHttp(ctx, c)
+	}
+}
+
+func (p *SocksCli) connectHttp(ctx context.Context, inConn net.Conn) (err error) {
+	// rc.(*net.TCPConn).SetKeepAlive(true)
+
+	req, err := utils.NewHTTPRequest(&inConn, 4096, false, nil)
+	if err != nil {
+		if err != io.EOF {
+			err = errors.Errorf("decoder error , form %s, ERR:%s", err, inConn.RemoteAddr())
+			return
+		}
+		utils.CloseConn(&inConn)
+		return
+	}
+	address := req.Host
+
+	log.Ctx(ctx).Info().Str("address", address).Msg("use proxy")
+	//os.Exit(0)
+	err = p.OutToTCPPeer(ctx, address, &inConn, &req)
+	if err != nil {
+		log.Ctx(ctx).Error().Str("address", address).Err(err).Msg("connect fail")
+
+		utils.CloseConn(&inConn)
+	}
+
+	// return p.connect(ctx, tgtAddr.String(), rc)
+	return
+}
+
+func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net.Conn, req *utils.HTTPRequest) (err error) {
+	inAddr := (*inConn).RemoteAddr().String()
+	inLocalAddr := (*inConn).LocalAddr().String()
+	//防止死循环
+	if p.IsDeadLoop(inLocalAddr, req.Host) {
+		utils.CloseConn(inConn)
+		err = fmt.Errorf("dead loop detected , %s", req.Host)
+		return
+	}
+	// var outConn net.Conn
+	// outConn, err = utils.ConnectHost(address, 10*1000)
+
+	peer := p.GetPeer()
+
+	reqPeer := &pb.ConnUpgradeReq{
+		Addr: address,
+		// Body: buf,
+	}
+	if !req.IsHTTPS() {
+		reqPeer.Body = req.HeadBuf
+	}
+
+	resp := &pb.ConnUpgradeRsp{}
+	// stream, err := peer.StreamAsync(ctx, "Conn")
+	upgrade, err := peer.Upgrade(ctx, "ConnUpgrade", reqPeer, resp)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+
+	if err != nil {
+		err = errors.Errorf("connect to %s , err:%s", address, err)
+		utils.CloseConn(inConn)
+		return
+	}
+
+	if req.IsHTTPS() {
+		req.HTTPSReply() // http 回复建立连接
+	}
+	// utils.IoBind((*inConn), upgrade, func(isSrcErr bool, err error) {
+	// 	log.Ctx(ctx).Error().Caller().Err(err).Msgf("conn %s - %s  released [%s]", inAddr, inLocalAddr, req.Host)
+	// 	utils.CloseConn(inConn)
+	// 	upgrade.Close()
+	// }, func(n int, d bool) {}, 0)
+	log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn connected")
+	go func() {
+		defer func() {
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			// cancel()
+			// rc.Close()
+			time.Sleep(time.Second * 3)
+			upgrade.Close()
+		}()
+		Copy(ctx, *inConn, upgrade)
+		// io.Copy(rc, upgrade)
+	}()
+
+	defer func() {
+		// cancel()
+		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		time.Sleep(time.Second * 3)
+		(*inConn).SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		(*inConn).Close()
+		upgrade.Close()
+	}()
+	Copy(ctx, upgrade, *inConn)
+	return
+}
+
+func (p *SocksCli) OutToTCPLocal(ctx context.Context, address string, inConn *net.Conn, req *utils.HTTPRequest) (err error) {
+	inAddr := (*inConn).RemoteAddr().String()
+	inLocalAddr := (*inConn).LocalAddr().String()
+	//防止死循环
+	if p.IsDeadLoop(inLocalAddr, req.Host) {
+		utils.CloseConn(inConn)
+		err = fmt.Errorf("dead loop detected , %s", req.Host)
+		return
+	}
+	var outConn net.Conn
+	outConn, err = utils.ConnectHost(address, 10*1000)
+
+	if err != nil {
+		err = errors.Errorf("connect to %s , err:%s", address, err)
+		utils.CloseConn(inConn)
+		return
+	}
+
+	outAddr := outConn.RemoteAddr().String()
+	outLocalAddr := outConn.LocalAddr().String()
+
+	if req.IsHTTPS() {
+		req.HTTPSReply() // http 回复建立连接
+	} else {
+		outConn.Write(req.HeadBuf)
+	}
+	utils.IoBind((*inConn), outConn, func(isSrcErr bool, err error) {
+		log.Ctx(ctx).Error().Caller().Err(err).Msgf("conn %s - %s - %s -%s released [%s]", inAddr, inLocalAddr, outLocalAddr, outAddr, req.Host)
+		utils.CloseConn(inConn)
+		utils.CloseConn(&outConn)
+	}, func(n int, d bool) {}, 0)
+	log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("outLocalAddr", outLocalAddr).Str("outAddr", outAddr).Str("host", req.Host).Msg("conn connected")
+	return
+}
+
+func (p *SocksCli) IsDeadLoop(inLocalAddr string, host string) bool {
+	inIP, inPort, err := net.SplitHostPort(inLocalAddr)
+	if err != nil {
+		return false
+	}
+	outDomain, outPort, err := net.SplitHostPort(host)
+	if err != nil {
+		return false
+	}
+	if inPort == outPort {
+		var outIPs []net.IP
+		outIPs, err = net.LookupIP(outDomain)
+		if err == nil {
+			for _, ip := range outIPs {
+				if ip.String() == inIP {
+					return true
+				}
+			}
+		}
+		interfaceIPs, err := utils.GetAllInterfaceAddr()
+		if err == nil {
+			for _, localIP := range interfaceIPs {
+				for _, outIP := range outIPs {
+					if localIP.Equal(outIP) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (p *SocksCli) connect(ctx context.Context, tgtAddr string, rc net.Conn) (err error) {
+	rc.(*net.TCPConn).SetKeepAlive(true)
+
 	peer := p.GetPeer()
 
 	// 第一个请求很大概率是HTTP，提前握手可以减少一次RTT
@@ -128,7 +337,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		return
 	}
 	req := &pb.ConnUpgradeReq{
-		Addr: tgtAddr.String(),
+		Addr: tgtAddr,
 		Body: buf[:n],
 	}
 
@@ -159,6 +368,7 @@ func (p *SocksCli) connect(ctx context.Context, rc net.Conn) (err error) {
 		// cancel()
 		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		time.Sleep(time.Second * 3)
+		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		rc.Close()
 		upgrade.Close()
 	}()
