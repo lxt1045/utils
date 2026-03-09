@@ -211,10 +211,10 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 	// go io.Copy(upgrade, rc)
 	go func() {
 		defer func() {
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
 			// cancel()
 			rc.Close()
-			// upgrade.Close()
+			// upgrade.Close() service段不能主动关闭upgrade，避免错误： wsasend: An established connection was aborted by the software in your host machine
 		}()
 		Copy(ctx, upgrade, rc)
 		// io.Copy(upgrade, rc)
@@ -222,10 +222,9 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 
 	go func() {
 		defer func() {
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right			cancel()
+			rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
 			// cancel()
 			rc.Close()
-			time.Sleep(time.Second * 3)
 			// upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)

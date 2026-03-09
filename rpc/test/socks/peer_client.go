@@ -354,10 +354,10 @@ func (p *SocksCli) connect(ctx context.Context, tgtAddr string, rc net.Conn) (er
 	// io.Copy(upgrade, rc)
 	go func() {
 		defer func() {
-			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			// cancel()
-			// rc.Close()
-			time.Sleep(time.Second * 3)
+			// // cancel()
+			// // rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
+			// // rc.Close()
+			// time.Sleep(time.Second * 3)
 			upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
@@ -365,12 +365,11 @@ func (p *SocksCli) connect(ctx context.Context, tgtAddr string, rc net.Conn) (er
 	}()
 
 	defer func() {
-		// cancel()
-		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		time.Sleep(time.Second * 3)
-		rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		rc.Close()
-		upgrade.Close()
+		// // cancel()
+		// time.Sleep(time.Second * 3)
+		// rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
+		// rc.Close()
+		// upgrade.Close()
 	}()
 	Copy(ctx, upgrade, rc)
 	// io.Copy(upgrade, rc)
