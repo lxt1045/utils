@@ -219,8 +219,8 @@ func (c *Codec) Heartbeat() {
 	tickerHeartbeat := time.NewTicker(time.Duration(time.Second * 60)) // 心跳包; client 发送
 	defer func() {
 		tickerHeartbeat.Stop()
-		log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Msg("Heartbeat.defer()")
 		if atomic.LoadUint32(&c.status) == 0 {
+			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Msg("Heartbeat.defer()")
 			err := c.Close()
 			if err != nil && !strings.Contains(err.Error(), "has been closed") {
 				log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat.defer()")
@@ -281,7 +281,7 @@ func (c *Codec) ReadLoop() {
 		}
 		if err != nil {
 			log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("ReadLoop defer")
-		} else {
+		} else if !isUpgrade {
 			log.Ctx(ctx).Debug().Caller().Bool("isUpgrade", isUpgrade).Str("local", c.local).Str("remote", c.remote).Err(err).Msg("ReadLoop defer")
 		}
 

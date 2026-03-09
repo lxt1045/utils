@@ -376,6 +376,7 @@ func (p *SocksCli) connect(ctx context.Context, tgtAddr string, rc net.Conn) (er
 	// io.Copy(upgrade, rc)
 	return
 }
+
 func (p *SocksCli) connect1(ctx context.Context, rc net.Conn) (err error) {
 	rc.(*net.TCPConn).SetKeepAlive(true)
 	tgtAddr, err := socks.Handshake(rc)
@@ -678,7 +679,7 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue
 		}
-		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Msg("DialTLS OK")
 		peer, err1 := rpc.NewPeer(ctx, p, pb.RegisterSocksCliServer, pb.NewSocksSvcClient)
 		if err1 != nil {
 			err = err1

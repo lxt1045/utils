@@ -120,7 +120,7 @@ func main() {
 			// conn.SetReadDeadline(time.Second)
 
 			go func(conn net.Conn) {
-				log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()
+				log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Msg("Accept")
 				svc := &socks.SocksSvc{
 					RemoteAddr: conn.RemoteAddr().String(),
 					LocalAddr:  conn.LocalAddr().String(),
