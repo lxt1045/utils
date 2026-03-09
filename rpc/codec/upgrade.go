@@ -4,6 +4,7 @@ import (
 	"context"
 	stderr "errors"
 	"sync/atomic"
+	"time"
 
 	"github.com/lxt1045/errors"
 )
@@ -41,6 +42,9 @@ func (s *Upgrade) Write(p []byte) (n int, err error) {
 func (s *Upgrade) Close() error {
 	s.bClosed = true
 	if s.codec != nil {
+		if dl, ok := s.codec.rwc.(interface{ SetDeadline(t time.Time) error }); ok && dl != nil {
+			dl.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
+		}
 		s.codec.Close()
 	}
 	return nil

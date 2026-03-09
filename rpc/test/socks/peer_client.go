@@ -234,10 +234,10 @@ func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net
 	log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn connected")
 	go func() {
 		defer func() {
-			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			// cancel()
-			// rc.Close()
-			time.Sleep(time.Second * 3)
+			// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			// // cancel()
+			// // rc.Close()
+			// time.Sleep(time.Second * 3)
 			upgrade.Close()
 		}()
 		Copy(ctx, *inConn, upgrade)
@@ -245,12 +245,12 @@ func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net
 	}()
 
 	defer func() {
-		// cancel()
-		// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		time.Sleep(time.Second * 3)
-		(*inConn).SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		(*inConn).Close()
-		upgrade.Close()
+		// // cancel()
+		// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		// time.Sleep(time.Second * 3)
+		// (*inConn).SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		// (*inConn).Close()
+		// upgrade.Close()
 	}()
 	Copy(ctx, upgrade, *inConn)
 	return
