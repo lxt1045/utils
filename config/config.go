@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"embed"
+	"fmt"
 	"io/fs"
 	"os"
 	"reflect"
@@ -254,6 +255,7 @@ func AssignVarFromEnv(v string) (out string, ok bool) {
 	ok = true
 	v = v[2:i]
 	out, _ = os.LookupEnv(v)
+	fmt.Printf("config from env: %s: %s\n", v, out)
 	return
 }
 
