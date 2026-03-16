@@ -44,6 +44,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// log.Init()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	// 解析配置文件

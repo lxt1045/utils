@@ -2,7 +2,7 @@ module github.com/lxt1045/utils
 
 go 1.24.0
 
-toolchain go1.24.5
+toolchain go1.25.8
 
 require (
 	github.com/allegro/bigcache/v3 v3.1.0

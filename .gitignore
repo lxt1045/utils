@@ -18,3 +18,5 @@ rpc/test/socks/filesystem/static/conf
  __debug_bin*
 rpc/test/socks_stream/service/service
 rpc/test/socks_stream/client/client
+*.exe
+*.log
