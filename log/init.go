@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,16 +17,31 @@ import (
 )
 
 var (
-	output io.Writer = os.Stdout
+	outputL sync.RWMutex
+	output  io.Writer
 
 	_ = func() bool {
-		rszlog.TimeFieldFormat = time.RFC3339Nano
+		rszlog.TimeFieldFormat = time.RFC3339Nano // time 对 RFC3339Nano 类型做了特化处理
 		return true
 	}
 )
 
+func SetOutput(w io.Writer) {
+	outputL.Lock()
+	defer outputL.Unlock()
+	output = w
+	return
+}
 func GetOutput() io.Writer {
-	return output
+	if os.Stdout != nil {
+		return output
+	}
+	outputL.RLock()
+	defer outputL.RUnlock()
+	if output != nil {
+		return output
+	}
+	return os.Stdout
 }
 
 func GetStdOutput(ctx context.Context) io.Writer {
@@ -34,6 +50,13 @@ func GetStdOutput(ctx context.Context) io.Writer {
 }
 
 func Init(ctx context.Context, conf config.Log) (err error) {
+	if conf.LogLevel != "" {
+		err = setGlobalLevel(conf.LogLevel)
+		if err != nil {
+			return
+		}
+	}
+
 	if conf.Filename != "" {
 		fileWriter := &lumberjack.Logger{
 			Filename:   conf.Filename,
@@ -44,16 +67,9 @@ func Init(ctx context.Context, conf config.Log) (err error) {
 			LocalTime:  conf.LocalTime,
 		}
 		if conf.ToConsole {
-			output = rszlog.MultiLevelWriter(os.Stdout, fileWriter)
+			SetOutput(rszlog.MultiLevelWriter(os.Stdout, fileWriter))
 		} else {
-			output = fileWriter
-		}
-	}
-
-	if conf.LogLevel != "" {
-		err = setGlobalLevel(conf.LogLevel)
-		if err != nil {
-			return
+			SetOutput(fileWriter)
 		}
 	}
 
@@ -66,7 +82,7 @@ const ginLogID = "logid"
 const ginLogger = "logger"
 
 func New(writer ...io.Writer) *zerolog.Logger {
-	w := output
+	w := GetOutput()
 	if len(writer) > 0 && writer[0] != nil {
 		w = writer[0]
 	}
@@ -143,7 +159,7 @@ func WithLogid(ctx context.Context, logid int64) (context.Context, *zerolog.Logg
 	}
 	ctx = context.WithValue(ctx, logID{}, logid)
 
-	l := zerolog.New(output)
+	l := zerolog.New(GetOutput())
 	l = l.Hook(logidHook{logid: logid})
 	// l = l.Hook(th) // l = l.With().Timestamp().Logger()
 
