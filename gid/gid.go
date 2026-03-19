@@ -35,10 +35,10 @@ func InitClient(agentid int16, lastid int64) {
 	}
 	for {
 		lastid := atomic.LoadInt64(&lastID)
-		if lastid&0x3fff == agentID {
+		if lastid&0x3fff == atomic.LoadInt64(&agentID) {
 			return
 		}
-		now := (lastid & (^0x3fff)) | agentID
+		now := (lastid & (^0x3fff)) | atomic.LoadInt64(&agentID)
 		swapped := atomic.CompareAndSwapInt64(&lastID, lastid, now)
 		if swapped {
 			return
@@ -48,7 +48,8 @@ func InitClient(agentid int16, lastid int64) {
 
 // tLastUpdated 单位 秒
 func InitService(svcid int16, tLastUpdated int64) {
-	agentID = int64(svcid&0xFFF) | 0x3000
+	// agentID = int64(svcid&0xFFF) | 0x3000
+	atomic.StoreInt64(&agentID, int64(svcid&0xFFF)|0x3000)
 
 	lastid := TsToGID(tLastUpdated + 30) // 为避免重复，往前走30秒；service 每10s刷新一次
 	SetLastGID(lastid)
@@ -60,8 +61,8 @@ func SetLastGID(lastid int64) {
 		if lastid < now {
 			return
 		}
-		if lastid&0x3fff != agentID {
-			lastid = (lastid & (^0x3fff)) | agentID
+		if lastid&0x3fff != atomic.LoadInt64(&agentID) {
+			lastid = (lastid & (^0x3fff)) | atomic.LoadInt64(&agentID)
 		}
 		swapped := atomic.CompareAndSwapInt64(&lastID, now, lastid)
 		if swapped {
@@ -80,7 +81,7 @@ func Parse(id int64) (tsStr string, agentid, sNO int64) {
 
 func TsToGID(ts int64) int64 {
 	tsID0 := (ts & 0x1FFFFFFFF) << 30
-	tsID0 |= agentID
+	tsID0 |= atomic.LoadInt64(&agentID)
 	return tsID0
 }
 
@@ -136,6 +137,10 @@ func GetGID() int64 {
 
 	if gidLock.TryLock() {
 		defer gidLock.Unlock()
+		id := atomic.AddInt64(&lastID, idInterval)
+		if id > tsID0 {
+			return id
+		}
 		atomic.StoreInt64(&lastID, tsID0)
 		return tsID0
 	}
