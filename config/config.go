@@ -58,6 +58,7 @@ type Conn struct {
 	TLS              TLS
 }
 type TLS struct {
+	Host       string
 	CACert     string
 	ServerCert string
 	ServerKey  string
