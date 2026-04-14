@@ -44,6 +44,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// log.Init()
 	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	// 解析配置文件
@@ -79,6 +80,7 @@ func main() {
 	//
 
 	go cli.RunSocks(ctx, flags.Socks)
+	go cli.RunHttpProxy(ctx, ":18081")
 	log.Ctx(ctx).Info().Caller().Str("Socks", flags.Socks).Send()
 
 	//

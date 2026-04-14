@@ -55,25 +55,15 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 		log.Ctx(ctx).Info().Caller().Err(err).Msgf("proxy %s <-> %s", p.RemoteAddr, req.Addr)
 
 		go func() {
-			defer func() {
-				e := recover()
-				if e != nil {
-					err = errors.Errorf("recover : %v", e)
-					log.Ctx(ctx).Error().Caller().Err(err).Send()
-				}
-				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-				stream.Close(ctx)
-				cancel()
-			}()
 			var n int
 			ch := make(chan []byte, 1024)
 			go func() {
 				// TODO: Read 和Send 分两个进程处理
 				defer func() {
-					// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+					rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 					close(ch)
-					stream.Close(ctx)
-					cancel()
+					// stream.Close(ctx)
+					// cancel()
 				}()
 				for {
 					select {
@@ -91,6 +81,16 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 					}
 					req = iface.(*pb.ConnReq)
 				}
+			}()
+			defer func() {
+				e := recover()
+				if e != nil {
+					err = errors.Errorf("recover : %v", e)
+					log.Ctx(ctx).Error().Caller().Err(err).Send()
+				}
+				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+				stream.Close(ctx)
+				cancel()
 			}()
 			for {
 				var bs []byte

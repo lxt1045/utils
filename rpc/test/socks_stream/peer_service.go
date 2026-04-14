@@ -175,3 +175,129 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 	// 在阿里云再试试
 	return
 }
+
+func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (resp *pb.ConnUpgradeRsp, err error) {
+	upgrade := codec.GetUpgrade(ctx)
+	if upgrade == nil {
+		err = errors.New("upgrade is nil")
+		log.Ctx(ctx).Error().Caller().Err(err).Msg("ConnUpgrade")
+		return
+	}
+	// rc, err1 := net.Dial("tcp", req.Addr)
+	d := net.Dialer{
+		Timeout: time.Second * 30,
+	}
+	rc, err1 := d.Dial("tcp", req.Addr)
+	if err1 != nil {
+		err = err1
+		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to connect to target: %v", err)
+		return
+	}
+	rc.(*net.TCPConn).SetKeepAlive(true)
+
+	log.Ctx(ctx).Info().Caller().Err(err).Msgf("proxy %s <-> %s", p.RemoteAddr, req.Addr)
+
+	if len(req.Body) > 0 {
+		n := 0
+		n, err = rc.Write(req.Body)
+		if n < 0 || n < len(req.Body) {
+			err = errors.Errorf("n < 0 || n < l, err: %s", err.Error())
+			return
+		}
+	}
+
+	// ctx, cancel := context.WithCancel(ctx)
+	// go io.Copy(rc, upgrade)
+	// go io.Copy(upgrade, rc)
+	go func() {
+		defer func() {
+			rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
+			// cancel()
+			rc.Close()
+			// upgrade.Close() service段不能主动关闭upgrade，避免错误： wsasend: An established connection was aborted by the software in your host machine
+		}()
+		Copy(ctx, upgrade, rc)
+		// io.Copy(upgrade, rc)
+	}()
+
+	go func() {
+		defer func() {
+			rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
+			// cancel()
+			rc.Close()
+			// upgrade.Close()
+		}()
+		Copy(ctx, rc, upgrade)
+		// io.Copy(rc, upgrade)
+	}()
+
+	return &pb.ConnUpgradeRsp{}, nil
+}
+
+func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written int64, err error) {
+	var n int
+	ch := make(chan []byte, 1024)
+	go func() {
+		var err error
+		// TODO: Read 和Send 分两个进程处理
+		defer func() {
+			e := recover()
+			if e != nil {
+				err = errors.Errorf("recover : %v", e)
+			}
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			close(ch)
+			// src.Close()
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
+			}
+		}()
+		buf := make([]byte, 1024*64)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			n, err := src.Read(buf)
+			if n > 0 {
+				bs := make([]byte, n)
+				copy(bs, buf[:n])
+				ch <- bs
+			}
+			if err != nil {
+				err = errors.Errorf("Read:%s", err.Error())
+				return
+			}
+		}
+	}()
+	defer func() {
+		e := recover()
+		if e != nil {
+			err = errors.Errorf("recover : %v", e)
+		}
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
+			return
+		}
+		// dst.Close()
+		// src.Close()
+	}()
+	for {
+		var bs []byte
+		var ok bool
+		select {
+		case bs, ok = <-ch:
+			if !ok {
+				return
+			}
+			n, err = dst.Write(bs)
+			if n < len(bs) || err != nil {
+				err = errors.Errorf(" n < l, err: %v", err)
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}

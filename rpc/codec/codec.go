@@ -123,7 +123,7 @@ func NewCodec(ctx context.Context, rwc io.ReadWriteCloser, callers []Method, ctx
 		rwc:         rwc,
 		resps:       make(map[uint64]resp),
 		segments:    make(map[uint64][]byte),
-		delay:       delay.New[post](64, int64(time.Second)*10, true),
+		delay:       delay.New[post](64, int64(time.Second)*30, true),
 		streams:     make(map[uint64]*Stream),
 		callers:     callers,
 		cliPassKeys: ctxPassKeys,

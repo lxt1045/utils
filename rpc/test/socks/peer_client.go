@@ -673,7 +673,8 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 		}
 		// conn, err := tls.Dial("tcp", conf.ClientConn.Addr, tlsConfig)
 		// conn, err := socket.DialTLS(ctx, "tcp", addr, tlsConfig)
-		conn, err := socket.DialTLSTimeout(ctx, "tcp", addr, tlsConfig, time.Second*10)
+		// conn, err := socket.DialTLSTimeout(ctx, "tcp", addr, tlsConfig, time.Second*3)
+		conn, err := socket.DialTLSTimeout1(ctx, "tcp", addr, tlsConfig, time.Second*3)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
 			continue

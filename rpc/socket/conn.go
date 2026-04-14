@@ -76,9 +76,11 @@ func DialTLS(ctx context.Context, network, addr string, conf *tls.Config) (conn 
 
 func DialTLSTimeout(ctx context.Context, network, addr string, tlsConfig *tls.Config, timeout time.Duration) (conn *tls.Conn, err error) {
 	dialer := &net.Dialer{
-		Timeout: 3 * time.Second, // 默认 3 minutes.
+		Timeout: timeout, // 默认 3 minutes.
+		// 启用端口重用
+		// Control: control,
 	}
-	conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+	conn, err = tls.DialWithDialer(dialer, network, addr, tlsConfig)
 	if err != nil {
 		err = errors.Errorf(err.Error())
 		return
@@ -86,8 +88,10 @@ func DialTLSTimeout(ctx context.Context, network, addr string, tlsConfig *tls.Co
 	return
 
 }
-func DialTLS1(ctx context.Context, network, addr string, conf *tls.Config) (conn *tls.Conn, err error) {
+func DialTLSTimeout1(ctx context.Context, network, addr string, conf *tls.Config, timeout time.Duration) (conn *tls.Conn, err error) {
 	dialer := net.Dialer{
+		Timeout: timeout, // 默认 3 minutes.
+		// 启用端口重用
 		Control: control,
 	}
 	conn, err = tls.DialWithDialer(&dialer, network, addr, conf)

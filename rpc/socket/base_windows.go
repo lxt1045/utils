@@ -17,3 +17,4 @@ func newHandle(h uintptr) Handle {
 		H: syscall.Handle(h),
 	}
 }
+
