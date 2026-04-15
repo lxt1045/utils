@@ -265,7 +265,7 @@ func (c *Codec) Heartbeat() {
 		// }
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat")
-			continue
+			return
 		}
 	}
 }
