@@ -260,10 +260,10 @@ func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net
 				log.Ctx(ctx).Error().Caller().Interface("recover", e).Msg("OutToTCPPeer in->up")
 			}
 			// 唤醒阻塞在 (*inConn).Read 的协程
-			if c := *inConn; c != nil {
-				_ = c.SetDeadline(time.Now())
-			}
-			upgrade.Close()
+			//if c := *inConn; c != nil {
+			//	_ = c.SetDeadline(time.Now())
+			//}
+			//upgrade.Close()
 		}()
 		Copy(ctx, upgrade, *inConn)
 	}()

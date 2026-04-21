@@ -258,9 +258,9 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 			if e := recover(); e != nil {
 				log.Ctx(ctx).Error().Caller().Interface("recover", e).Msg("ConnUpgrade upgrade->rc")
 			}
-			rc.SetDeadline(time.Now())
-			rc.Close()
-			upgrade.Close()
+			//rc.SetDeadline(time.Now())
+			//rc.Close()
+			//upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
 	}()
@@ -341,6 +341,7 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			n, err = dst.Write(bs)
 			written += int64(n)
 			if err != nil {
+				err = errors.New("err: %v", err)
 				return
 			}
 			if n < len(bs) {
