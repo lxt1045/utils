@@ -18,9 +18,10 @@ import (
 )
 
 type SocksCli struct {
-	Name      string
-	SocksAddr string
-	ChPeer    chan *Peer
+	Name         string
+	SocksAddr    string
+	ChPeer       chan *Peer
+	ChPeerReuser chan *Peer
 
 	TlsConf  *tls.Config
 	PeerAddr string
@@ -34,8 +35,20 @@ type Peer struct {
 }
 
 func (p *SocksCli) GetPeer() (peer *Peer) {
+	select {
+	case peer = <-p.ChPeerReuser:
+	default:
+	}
+	if peer != nil {
+		if !peer.Peer.IsClosed() {
+			log.Ctx(context.TODO()).Debug().Msg("reuser peer----------------------------")
+			return
+		}
+		peer.Close(context.TODO())
+	}
 	peer = <-p.ChPeer
-	for tsLast := time.Now().Unix() - int64(time.Second*30); peer.TsLast < tsLast || peer.Peer.IsClosed(); {
+	// for tsLast := time.Now().Unix() - int64(time.Second*30); peer.TsLast < tsLast || peer.Peer.IsClosed(); {
+	for peer.Peer.IsClosed() {
 		peer.Close(context.TODO())
 		peer = <-p.ChPeer
 	}
@@ -49,6 +62,12 @@ func (p *SocksCli) GetPeer() (peer *Peer) {
 
 func (p *SocksCli) close(ctx context.Context) (err error) {
 	for peer := range p.ChPeer {
+		err1 := peer.Close(ctx)
+		if err1 != nil {
+			err = err1
+		}
+	}
+	for peer := range p.ChPeerReuser {
 		err1 := peer.Close(ctx)
 		if err1 != nil {
 			err = err1
@@ -124,7 +143,7 @@ func (p *SocksCli) connectSocks(ctx context.Context, rc net.Conn) (err error) {
 	return p.connect(ctx, tgtAddr.String(), rc)
 }
 
-func (p *SocksCli) RunHttpProxy(ctx context.Context, httpAddr string) {
+func (p *SocksCli) RunHttpProxy(ctx context.Context, httpAddr string, mode int) {
 	l, err := net.Listen("tcp", httpAddr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", httpAddr, err)
@@ -156,11 +175,11 @@ func (p *SocksCli) RunHttpProxy(ctx context.Context, httpAddr string) {
 			continue
 		}
 
-		go p.connectHttp(ctx, c)
+		go p.connectHttp(ctx, c, mode)
 	}
 }
 
-func (p *SocksCli) connectHttp(ctx context.Context, inConn net.Conn) (err error) {
+func (p *SocksCli) connectHttp(ctx context.Context, inConn net.Conn, mode int) (err error) {
 	// rc.(*net.TCPConn).SetKeepAlive(true)
 
 	req, err := utils.NewHTTPRequest(&inConn, 4096, false, nil)
@@ -176,11 +195,21 @@ func (p *SocksCli) connectHttp(ctx context.Context, inConn net.Conn) (err error)
 
 	log.Ctx(ctx).Info().Str("address", address).Msg("use proxy")
 	//os.Exit(0)
-	err = p.OutToTCPPeer(ctx, address, &inConn, &req)
-	if err != nil {
-		log.Ctx(ctx).Error().Str("address", address).Err(err).Msg("connect fail")
+	switch mode {
+	case 0:
+		err = p.OutToTCPPeer(ctx, address, &inConn, &req)
+		if err != nil {
+			log.Ctx(ctx).Error().Str("address", address).Err(err).Msg("connect fail")
 
-		utils.CloseConn(&inConn)
+			utils.CloseConn(&inConn)
+		}
+	case 1:
+		err = p.OutToTCPPeer1(ctx, address, inConn, &req)
+		if err != nil {
+			log.Ctx(ctx).Error().Str("address", address).Err(err).Msg("connect fail")
+
+			utils.CloseConn(&inConn)
+		}
 	}
 
 	// return p.connect(ctx, tgtAddr.String(), rc)
@@ -213,11 +242,6 @@ func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net
 	// stream, err := peer.StreamAsync(ctx, "Conn")
 	upgrade, err := peer.Upgrade(ctx, "ConnUpgrade", reqPeer, resp)
 	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-
-	if err != nil {
 		err = errors.Errorf("connect to %s , err:%s", address, err)
 		utils.CloseConn(inConn)
 		return
@@ -234,25 +258,162 @@ func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net
 	log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn connected")
 	go func() {
 		defer func() {
-			// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			// // cancel()
-			// // rc.Close()
+			// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			// time.Sleep(time.Second * 3)
-			upgrade.Close()
+			// (*inConn).SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			// (*inConn).Close()
+			// upgrade.Close()
 		}()
-		Copy(ctx, *inConn, upgrade)
-		// io.Copy(rc, upgrade)
+		Copy(ctx, upgrade, *inConn)
+
 	}()
 
 	defer func() {
-		// // cancel()
 		// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		// // cancel()
+		// // rc.Close()
 		// time.Sleep(time.Second * 3)
-		// (*inConn).SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		// (*inConn).Close()
-		// upgrade.Close()
+		upgrade.Close()
+		peer.Close(context.TODO())
+		log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn closed")
 	}()
-	Copy(ctx, upgrade, *inConn)
+	Copy(ctx, *inConn, upgrade)
+	// io.Copy(rc, upgrade)
+	return
+}
+
+func (p *SocksCli) OutToTCPPeer1(ctx context.Context, address string, inConn net.Conn, req *utils.HTTPRequest) (err error) {
+	inAddr := inConn.RemoteAddr().String()
+	inLocalAddr := inConn.LocalAddr().String()
+	//防止死循环
+	if p.IsDeadLoop(inLocalAddr, req.Host) {
+		utils.CloseConn(&inConn)
+		err = fmt.Errorf("dead loop detected , %s", req.Host)
+		return
+	}
+	// var outConn net.Conn
+	// outConn, err = utils.ConnectHost(address, 10*1000)
+
+	peer := p.GetPeer()
+
+	stream, err := peer.StreamAsync(ctx, "Conn")
+	if err != nil {
+		err = errors.Errorf("connect to %s , err:%s", address, err)
+		utils.CloseConn(&inConn)
+		return
+	}
+
+	if req.IsHTTPS() {
+		req.HTTPSReply() // http 回复建立连接
+	}
+	log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn connected")
+
+	go func() {
+		defer func() {
+			e := recover()
+			if e != nil {
+				err = errors.Errorf("recover : %v", e)
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+			}
+			// wg.Wait()
+			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		}()
+
+		ch := make(chan []byte, 1024)
+		go func() {
+			defer close(ch)
+			for {
+				buf := make([]byte, 1024*8)
+				// buf := make([]byte, math.MaxUint16/2)
+				nr, er := inConn.Read(buf)
+				if er != nil {
+					if er != io.EOF {
+						err = er
+						log.Ctx(ctx).Error().Caller().Err(err).Msgf("err : %v", err)
+					}
+					break
+				}
+				if nr <= 0 {
+					continue
+				}
+
+				ch <- buf[:nr]
+			}
+		}()
+		addr := address
+		for bs := range ch {
+			err1 := stream.Send(ctx, &pb.ConnReq{
+				Addr: addr,
+				Body: bs,
+			})
+			if err1 != nil {
+				log.Ctx(ctx).Info().Caller().Err(err1).Msg("err")
+				return
+			}
+			addr = ""
+		}
+	}()
+
+	defer func() {
+		e := recover()
+		if e != nil {
+			err = errors.Errorf("recover : %v", e)
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+		}
+		stream.Close(ctx)
+		if true {
+			peer.TsLast = time.Now().Unix()
+			select {
+			case p.ChPeerReuser <- peer:
+				log.Ctx(ctx).Info().Caller().Int("len(ChPeerReuser)", len(p.ChPeerReuser)).Msg("reuser peer++++++++++++++++++++++++")
+			case <-time.After(time.Second * 15):
+				log.Ctx(ctx).Info().Caller().Msg("close  peer------------------------")
+				peer.Close(ctx)
+			}
+		} else {
+			peer.Close(ctx)
+		}
+	}()
+	var n int
+	ch := make(chan []byte, 1024)
+	go func() {
+		// TODO: Read 和Send 分两个进程处理
+		defer close(ch)
+
+		if !req.IsHTTPS() {
+			ch <- req.HeadBuf
+		}
+		for {
+			iface, err := stream.Recv(ctx)
+			if err != nil {
+				log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
+				return
+			}
+			rsp := iface.(*pb.ConnRsp)
+			if rsp.Err != nil && rsp.Err.Code != 0 {
+				err = errors.NewErr(int(rsp.Err.Code), rsp.Err.Msg)
+				log.Ctx(ctx).Info().Caller().Err(err).Msg("err")
+				return
+			}
+			ch <- rsp.Body
+		}
+	}()
+	for bs := range ch {
+		if l := len(bs); l > 0 {
+			n, err = inConn.Write(bs)
+			if n < 0 || n < l {
+				if err == nil {
+					err = errors.Errorf(" n < 0 || n < l")
+				}
+			}
+			if err != nil {
+				log.Ctx(ctx).Error().Caller().Err(err).Send()
+				return
+			}
+		}
+	}
+
 	return
 }
 
@@ -412,9 +573,6 @@ func (p *SocksCli) connect1(ctx context.Context, rc net.Conn) (err error) {
 				err = errors.Errorf("recover : %v", e)
 				log.Ctx(ctx).Error().Caller().Err(err).Send()
 			}
-			rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			// wg.Done()
-			rc.Close()
 
 			if false {
 				peer.TsLast = time.Now().Unix()
@@ -677,6 +835,7 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 		conn, err := socket.DialTLSTimeout1(ctx, "tcp", addr, tlsConfig, time.Second*3)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			time.Sleep(time.Millisecond * 1000)
 			continue
 		}
 		log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Msg("DialTLS OK")
@@ -684,6 +843,7 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			conn.Close()
 			continue
 		}
 
@@ -693,6 +853,7 @@ func (p *SocksCli) RunConnLoop(ctx context.Context, cancel context.CancelFunc, a
 		err = peer.Conn(ctx, conn)
 		if err != nil {
 			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			conn.Close()
 			continue
 		}
 		p.ChPeer <- &Peer{
@@ -710,6 +871,7 @@ func (p *SocksCli) GetConn(ctx context.Context) (out *Peer, err error) {
 	conn, err := socket.DialTLSTimeout(ctx, "tcp", p.PeerAddr, p.TlsConf, time.Second)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		time.Sleep(time.Millisecond * 1000)
 		return
 	}
 	log.Ctx(ctx).Info().Caller().Str("local", conn.LocalAddr().String()).Str("remote", conn.RemoteAddr().String()).Send()

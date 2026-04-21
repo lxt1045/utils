@@ -65,9 +65,10 @@ func main() {
 	tlsConfig.ServerName = conf.ClientConn.Host
 
 	cli := &socks.SocksCli{
-		Name:      flags.Client,
-		SocksAddr: flags.Socks,
-		ChPeer:    make(chan *socks.Peer, 1),
+		Name:         flags.Client,
+		SocksAddr:    flags.Socks,
+		ChPeer:       make(chan *socks.Peer, 1),
+		ChPeerReuser: make(chan *socks.Peer, 1),
 
 		TlsConf:  tlsConfig,
 		PeerAddr: conf.ClientConn.Addr,

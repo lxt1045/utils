@@ -159,9 +159,17 @@ func (c *Codec) Stream(ctx context.Context, callID uint16, caller Method, sync b
 		connectAt: time.Now().Unix(),
 		caller:    caller,
 	}
+	if c.IsClosed() {
+		err = stderr.New("Codec is closed")
+		return
+	}
 	func() {
 		c.streamsLock.Lock()
 		defer c.streamsLock.Unlock()
+		if c.streams == nil {
+			err = stderr.New("c.streams == nil")
+			return
+		}
 		for {
 			callSN := atomic.AddUint32(&c.tmpCallSN, 1)
 			key := respsKey(callSN)

@@ -38,16 +38,13 @@ func (s *SocksSvc) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp,
 func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp, err error) {
 	// defer p.close(ctx)
 	if stream := codec.GetStream(ctx); stream != nil {
-		ctx, cancel := context.WithCancel(ctx)
-		// rc, err1 := net.Dial("tcp", req.Addr)
 		d := net.Dialer{
-			Timeout: time.Second * 3,
+			Timeout: time.Second * 30,
 		}
 		rc, err1 := d.Dial("tcp", req.Addr)
 		if err1 != nil {
 			err = err1
 			log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to connect to target: %v", err)
-			cancel()
 			return
 		}
 		rc.(*net.TCPConn).SetKeepAlive(true)
@@ -60,7 +57,7 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 			go func() {
 				// TODO: Read 和Send 分两个进程处理
 				defer func() {
-					rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+					// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 					close(ch)
 					// stream.Close(ctx)
 					// cancel()
@@ -88,9 +85,8 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 					err = errors.Errorf("recover : %v", e)
 					log.Ctx(ctx).Error().Caller().Err(err).Send()
 				}
-				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-				stream.Close(ctx)
-				cancel()
+				// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+				// stream.Close(ctx)
 			}()
 			for {
 				var bs []byte
@@ -121,9 +117,8 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 				}
 				// wg.Wait()
 				rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-				stream.Close(ctx)
+				// stream.Close(ctx)
 				// p.close(ctx)
-				cancel()
 			}()
 			// buf := make([]byte, math.MaxUint16/2)
 			// buf := make([]byte, 1<<20)
@@ -132,7 +127,6 @@ func (p *SocksSvc) Conn(ctx context.Context, req *pb.ConnReq) (resp *pb.ConnRsp,
 			go func() {
 				defer func() {
 					close(ch)
-					cancel()
 					// stream.Close(ctx)
 					rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 				}()
@@ -214,7 +208,7 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 			rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
 			// cancel()
 			rc.Close()
-			// upgrade.Close() service段不能主动关闭upgrade，避免错误： wsasend: An established connection was aborted by the software in your host machine
+			upgrade.Close() // service段不能主动关闭upgrade，避免错误： wsasend: An established connection was aborted by the software in your host machine
 		}()
 		Copy(ctx, upgrade, rc)
 		// io.Copy(upgrade, rc)
@@ -222,9 +216,9 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 
 	go func() {
 		defer func() {
-			rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
+			// rc.SetDeadline(time.Now()) // 唤醒因读写conn而阻塞的协程
 			// cancel()
-			rc.Close()
+			// rc.Close()
 			// upgrade.Close()
 		}()
 		Copy(ctx, rc, upgrade)
@@ -237,6 +231,9 @@ func (p *SocksSvc) ConnUpgrade(ctx context.Context, req *pb.ConnUpgradeReq) (res
 func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written int64, err error) {
 	var n int
 	ch := make(chan []byte, 1024)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	go func() {
 		var err error
 		// TODO: Read 和Send 分两个进程处理
@@ -247,6 +244,7 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			}
 			// rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			close(ch)
+			cancel()
 			// src.Close()
 			if err != nil {
 				log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
@@ -263,7 +261,11 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			if n > 0 {
 				bs := make([]byte, n)
 				copy(bs, buf[:n])
-				ch <- bs
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- bs:
+				}
 			}
 			if err != nil {
 				err = errors.Errorf("Read:%s", err.Error())
@@ -282,6 +284,7 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 		}
 		// dst.Close()
 		// src.Close()
+		cancel()
 	}()
 	for {
 		var bs []byte

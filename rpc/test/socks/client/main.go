@@ -44,8 +44,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// log.Init()
-	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	// 解析配置文件
 	conf := &Config{}
@@ -55,6 +53,14 @@ func main() {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
+	// 初始化Log
+	err = log.Init(ctx, conf.Log)
+	if err != nil {
+		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
+		return
+	}
+	// log.Init()
+	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	cmtls := conf.ClientConn.TLS
 	tlsConfig, err := config.LoadTLSConfig(filesystem.Static, cmtls.ClientCert, cmtls.ClientKey, cmtls.CACert)
@@ -65,9 +71,10 @@ func main() {
 	tlsConfig.ServerName = conf.ClientConn.Host
 
 	cli := &socks.SocksCli{
-		Name:      flags.Client,
-		SocksAddr: flags.Socks,
-		ChPeer:    make(chan *socks.Peer, 1),
+		Name:         flags.Client,
+		SocksAddr:    flags.Socks,
+		ChPeer:       make(chan *socks.Peer, 1),
+		ChPeerReuser: make(chan *socks.Peer, 10),
 
 		TlsConf:  tlsConfig,
 		PeerAddr: conf.ClientConn.Addr,
@@ -80,7 +87,9 @@ func main() {
 	//
 
 	go cli.RunSocks(ctx, flags.Socks)
-	go cli.RunHttpProxy(ctx, ":18081")
+	go cli.RunHttpProxy(ctx, ":18082", 1)
+
+	go cli.RunHttpProxy(ctx, ":18081", 0)
 	log.Ctx(ctx).Info().Caller().Str("Socks", flags.Socks).Send()
 
 	//
