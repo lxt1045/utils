@@ -268,7 +268,7 @@ func (s *client) ConnTo(ctx context.Context, in *pb.ConnToReq) (out *pb.ConnToRs
 		runtime.Gosched()
 	}
 
-	conn, err := socket.Dial(ctx, "tcp4", in.Client.Addr)
+	conn, err := socket.Dial(ctx, "tcp4", "", in.Client.Addr)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Msg("Dial failed")
 		return

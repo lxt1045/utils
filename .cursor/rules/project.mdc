@@ -1,0 +1,86 @@
+---
+description: lxt1045/utils 项目的基础约束与工程约定
+alwaysApply: true
+---
+
+# lxt1045/utils —— 项目规则
+
+本仓库是一个基础库（`github.com/lxt1045/utils`），包含：
+- `rpc/`：自研双向 RPC 框架（核心）。
+- `rpc/test/socks/`：基于 rpc 的 HTTP/SOCKS 代理示例。
+- `log/` `config/` `cache/` `delay/` `gid/` 等通用基础组件。
+
+## 通用代码风格
+
+- Go 代码遵循 `gofmt` / `go vet` / `staticcheck` 默认风格。
+- 中文注释可接受，但新增/修改注释应说明"为什么"，不要再复述代码动作（如
+  `// 初始化 cancel`、`// 返回结果` 这类噪声注释）。
+- 不在生产代码中直接使用 `panic` / `os.Exit`，应通过 `errors` 包返回错误，
+  让调用方决定。
+- 错误封装统一用 `github.com/lxt1045/errors`（本仓库依赖），以获得带堆栈的
+  错误链；标准库错误 `errors.Is/As` 也要同步兼容。
+
+## 日志（`log/`）
+
+- 禁止把"对端正常关闭连接"一类 benign-close 错误打 `error` 级别。
+  判定方法见 `rpc/test/socks/peer_service.go:isBenignCloseErr`，新增代理
+  / 网络转发逻辑时应优先调用该函数（或同构实现）来分级。
+- 跨平台需要识别的 benign 错误至少包含：
+  - `io.EOF` / `io.ErrUnexpectedEOF` / `io.ErrClosedPipe`；
+  - `net.ErrClosed`；
+  - Linux: `connection reset by peer`、`broken pipe`；
+  - Windows: `forcibly closed`、`aborted by the software`；
+  - 框架自有：`has been closed`、`Codec is closed`、`upgrade closed`。
+
+## `rpc/` 框架约定
+
+- `Codec` 状态机：`status` 0=normal，1=upgrading，2=upgraded。**进入
+  upgrade 后整条 tcp 连接被接管，不能再复用跑 rpc，只能 Close 整个 peer**。
+- `Stream` 可在同一条 peer 上并发多个，关闭 stream 不会关闭 peer；
+  而 `Upgrade` 是"一 peer 一 upgrade"。
+- 新增 `Codec` 方法时必须 nil-safe：`c.streams`、`c.rwc`、`c.cancel` 等
+  字段在 `Close()` 后会被置 nil，调用前需 `IsClosed()` / nil 判断，否则会
+  panic。
+- `streamsLock` 是 `sync.RWMutex`：读路径请用 `RLock`，写路径用 `Lock`。
+
+## 两路 `io.Copy` / proxy pattern
+
+涉及 "A⇄B 代理转发" 的代码必须满足：
+
+1. 两个方向的拷贝 goroutine 必须**联动收尾**：任一方向结束要能立即唤醒
+   另一方向（通过 `Close()` + `SetDeadline(time.Now())`），避免 goroutine
+   泄漏。
+2. `src.Read` 不响应 `ctx`，因此 writer 主循环检测到 `ctx.Done()` 或
+   err 时要显式调用 `src.SetDeadline(time.Now())` / `Close()` 来唤醒
+   reader。
+3. benign-close 不以 `error` 级别上报，参考 `Copy` 在
+   `rpc/test/socks/peer_service.go` 的实现。
+
+## 测试
+
+- 所有新增/修改的 `*_test.go` 必须能通过 `go vet`。尤其禁止：
+  - 在非 Test goroutine 中调用 `t.Fatal`（应使用 `t.Errorf` + `return`）；
+  - 丢弃 `context.WithCancel` 返回的 `cancel`（要么 `defer cancel()`，
+    要么 `_ = cancel`）。
+- 依赖 `mockey` 的测试必须在命令行加 `-gcflags="all=-N -l"` 才能运行；
+  如果被测函数使用 `//go:linkname` 链接到 `runtime.nanotime` 这类不经过
+  `time.Now` 的路径，则 mockey 无法注入，应 `t.Skip` 并在注释中说明原因。
+- 历史遗留的不可运行测试（使用了已删除的符号等），优先修复；确实无法修
+  复的要显式 `t.Skip` 并写明原因，而不是让它长期 `go vet` 失败。
+
+## 构建 / 交叉编译
+
+- Windows 下 PowerShell 终端可用 `Select-Object -First N` / `-Last N` 替
+  代 `head` / `tail`。
+- 交叉编译 Linux 服务端常用：
+  ```powershell
+  $env:CGO_ENABLED=0; $env:GOOS="linux"; $env:GOARCH="amd64"; go build ./
+  ```
+
+## 修改前后自检
+
+每次改动结束前：
+1. 对涉及目录跑 `go build ./...` 与 `go vet ./...`。
+2. 对涉及测试跑 `go test -count=1 -timeout 60s ./path/...`；涉及 mockey 时
+   加 `-gcflags="all=-N -l"`。
+3. 检查是否需要同步更新 `work.md`、对应目录的 `README.md`。

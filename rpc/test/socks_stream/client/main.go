@@ -81,7 +81,7 @@ func main() {
 	//
 
 	go cli.RunSocks(ctx, flags.Socks)
-	go cli.RunHttpProxy(ctx, ":18081")
+	go cli.RunHttpProxy(ctx, ":18081", 1)
 	log.Ctx(ctx).Info().Caller().Str("Socks", flags.Socks).Send()
 
 	//

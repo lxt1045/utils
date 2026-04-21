@@ -25,7 +25,8 @@ func TestTimeoutConn(t *testing.T) {
 func testService1(ctx context.Context, cancel context.CancelFunc, t *testing.T, addr string, ch chan struct{}) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		t.Fatal(err)
+		t.Errorf("net.Listen: %v", err)
+		return
 	}
 	for {
 		ch <- struct{}{}
@@ -33,13 +34,15 @@ func testService1(ctx context.Context, cancel context.CancelFunc, t *testing.T, 
 		// 接收输入流
 		conn, err := ln.Accept()
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("ln.Accept: %v", err)
+			return
 		}
 		// 处理流程尽量要和Listen流程分开，避免相互影响
 		go func() {
 			s, err := StartService(ctx, conn, &server{Str: "test"}, base.RegisterHelloServer)
 			if err != nil {
-				t.Fatal(err)
+				t.Errorf("StartService: %v", err)
+				return
 			}
 
 			all := s.AllInterfaces()

@@ -38,7 +38,8 @@ func testService(ctx context.Context, t *testing.T, wg *sync.WaitGroup) (addr st
 			// 接收输入流
 			conn, err := ln.Accept()
 			if err != nil {
-				t.Fatal(err)
+				t.Errorf("ln.Accept: %v", err)
+				return
 			}
 			wg.Add(1)
 			// 处理流程尽量要和Listen流程分开，避免相互影响

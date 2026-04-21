@@ -15,8 +15,8 @@ import (
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/rpc"
 	"github.com/lxt1045/utils/rpc/socket"
-	"github.com/lxt1045/utils/rpc/test/socks/filesystem"
-	"github.com/lxt1045/utils/rpc/test/socks/pb"
+	"github.com/lxt1045/utils/rpc/test/socks_nat/filesystem"
+	"github.com/lxt1045/utils/rpc/test/socks_nat/pb"
 	"github.com/lxt1045/utils/socks"
 )
 

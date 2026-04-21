@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"io"
 	"reflect"
 	"strconv"
 	"testing"
@@ -14,7 +15,8 @@ import (
 )
 
 func TestCall(t *testing.T) {
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +46,8 @@ func TestCall(t *testing.T) {
 }
 
 func BenchmarkMethod(b *testing.B) {
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s, err := StartService(ctx, nil, &server{Str: "test"}, base.RegisterHelloServer)
 	if err != nil {
 		b.Fatal(err)
@@ -91,7 +94,8 @@ func TestPipe(t *testing.T) {
 		t.Log("nil")
 	}
 
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s, c := NewFakeConnPipe()
 	svc, err := conn.NewZip(ctx, s)
 	if err != nil {
@@ -137,7 +141,8 @@ func TestPipe(t *testing.T) {
 }
 
 func TestPipeStream(t *testing.T) {
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s, c := NewFakeConnPipe()
 	svc, err := conn.NewZip(ctx, s)
 	if err != nil {
@@ -170,20 +175,29 @@ func TestPipeStream(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Recv 与 Send 次数对齐，避免 stream.Close 之后再 Recv 得到 EOF 被当作错误。
+	const iterations = 5
+	recvDone := make(chan struct{})
 	go func() {
-		for i := 0; i < 10; i++ {
+		defer close(recvDone)
+		for i := 0; i < iterations; i++ {
 			r, err := stream.Recv(ctx)
 			if err != nil {
-				t.Fatal(err)
+				if err == io.EOF {
+					return
+				}
+				t.Errorf("stream.Recv: %v", err)
+				return
 			}
 			resp, ok := r.(*base.HelloRsp)
 			if !ok {
-				t.Fatal("!ok")
+				t.Errorf("unexpected response type: %T", r)
+				return
 			}
 			log.Ctx(ctx).Info().Caller().Msg("client recv: " + resp.Msg)
 		}
 	}()
-	for i := 0; i < 5; i++ {
+	for i := 0; i < iterations; i++ {
 		req := base.HelloReq{
 			Name: "client Send " + strconv.Itoa(i),
 		}
@@ -192,7 +206,8 @@ func TestPipeStream(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(time.Second)
+		time.Sleep(time.Millisecond * 100)
 	}
+	<-recvDone
 	stream.Close(ctx)
 }

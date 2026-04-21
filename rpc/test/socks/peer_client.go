@@ -250,36 +250,36 @@ func (p *SocksCli) OutToTCPPeer(ctx context.Context, address string, inConn *net
 	if req.IsHTTPS() {
 		req.HTTPSReply() // http 回复建立连接
 	}
-	// utils.IoBind((*inConn), upgrade, func(isSrcErr bool, err error) {
-	// 	log.Ctx(ctx).Error().Caller().Err(err).Msgf("conn %s - %s  released [%s]", inAddr, inLocalAddr, req.Host)
-	// 	utils.CloseConn(inConn)
-	// 	upgrade.Close()
-	// }, func(n int, d bool) {}, 0)
 	log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn connected")
+
+	// 两个方向的拷贝：浏览器->upgrade / upgrade->浏览器。
+	// 任一方向结束都应唤醒另一方向，避免 goroutine 泄漏。
 	go func() {
 		defer func() {
-			// // cancel()
-			// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			// time.Sleep(time.Second * 3)
-			// (*inConn).SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-			// (*inConn).Close()
-			// upgrade.Close()
+			if e := recover(); e != nil {
+				log.Ctx(ctx).Error().Caller().Interface("recover", e).Msg("OutToTCPPeer in->up")
+			}
+			// 唤醒阻塞在 (*inConn).Read 的协程
+			if c := *inConn; c != nil {
+				_ = c.SetDeadline(time.Now())
+			}
+			upgrade.Close()
 		}()
 		Copy(ctx, upgrade, *inConn)
-
 	}()
 
 	defer func() {
-		// // rc.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		// // cancel()
-		// // rc.Close()
-		// time.Sleep(time.Second * 3)
+		if e := recover(); e != nil {
+			log.Ctx(ctx).Error().Caller().Interface("recover", e).Msg("OutToTCPPeer up->in")
+		}
 		upgrade.Close()
+		utils.CloseConn(inConn)
+		// upgrade 场景下连接会被 RPC 接管，单个 peer 只能服务一个 upgrade；
+		// 结束后必须关闭 peer，否则复用会失败
 		peer.Close(context.TODO())
 		log.Ctx(ctx).Info().Str("inAddr", inAddr).Str("inLocalAddr", inLocalAddr).Str("host", req.Host).Msg("conn closed")
 	}()
 	Copy(ctx, *inConn, upgrade)
-	// io.Copy(rc, upgrade)
 	return
 }
 
