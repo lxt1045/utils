@@ -267,6 +267,7 @@ func (c *Codec) Heartbeat() {
 			log.Ctx(ctx).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Msg("Heartbeat")
 			return
 		}
+		log.Ctx(ctx).Trace().Caller().Str("local", c.local).Str("remote", c.remote).Msg("Heartbeat")
 	}
 }
 
