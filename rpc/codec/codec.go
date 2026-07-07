@@ -171,13 +171,21 @@ func (c *Codec) Close() (err error) {
 		c.streams = nil
 	}
 
-	c.SendCloseMsg(c.ctx)
-	time.Sleep(time.Millisecond * 10)
+	if atomic.LoadUint32(&c.status) == 0 {
+		c.SendCloseMsg(c.ctx)
+		time.Sleep(time.Millisecond * 10)
+	}
 
 	c.respsLock.Lock()
 	defer c.respsLock.Unlock()
 	if c.rwc != nil {
-		err = c.rwc.Close()
+		if tcpConn, ok := c.rwc.(*net.TCPConn); ok {
+			// 不能直接直接调用 conn.Close()，会发送RST 直接断开tcp 链接
+			tcpConn.CloseWrite()
+			log.Ctx(context.TODO()).Info().Caller().Msg("Codec.Close(), Copy CloseWrite, Send FIN")
+		} else {
+			err = c.rwc.Close()
+		}
 		c.rwc = nil
 	}
 	return
@@ -399,6 +407,7 @@ func (c *Codec) ReadLoop() {
 				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
 			}
 		case VerStreamReq:
+			// log.Ctx(ctx).Info().Caller().Str("local", c.local).Str("remote", c.remote).Msgf("Get VerStreamReq: %s", bsBody)
 			err = c.VerStreamReq(ctxDo, header, bsBody)
 			if err != nil {
 				log.Ctx(ctxDo).Error().Caller().Str("local", c.local).Str("remote", c.remote).Err(err).Send()
@@ -642,7 +651,7 @@ func (c *Codec) Send(ctx context.Context, wbuf []byte, ver, callID, ctxlen uint1
 		}
 		h.FormatCall(wbuf)
 		if c.rwc == nil {
-			err = ErrHasBeenClosed
+			err = ErrHasBeenClosed.Clone()
 			return
 		}
 		if status := atomic.LoadUint32(&c.status); status > 1 ||

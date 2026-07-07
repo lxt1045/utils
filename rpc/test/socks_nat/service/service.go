@@ -25,11 +25,15 @@ func AddSvc(svc *service) {
 	svcs.m[svc.Name] = svc
 }
 
+var _ pb.ServiceServer = &service{}
+
 type service struct {
 	Name       string
 	RemoteAddr string
+	LocalAddr  string
 	Network    pb.Network
 	Peer       rpc.Peer
+	Count      int
 }
 
 func (s *service) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.CloseRsp, err error) {
@@ -40,11 +44,13 @@ func (s *service) Close(ctx context.Context, req *pb.CloseReq) (resp *pb.CloseRs
 }
 
 func (s *service) Auth(ctx context.Context, req *pb.AuthReq) (resp *pb.AuthRsp, err error) {
-	s.Name = req.Name
+	if req.ClientType == pb.AuthReq_Sevice {
+		s.Name = req.Name
+		svcs.Lock()
+		defer svcs.Unlock()
+		svcs.m[s.Name] = s
+	}
 	resp = &pb.AuthRsp{}
-	svcs.Lock()
-	defer svcs.Unlock()
-	svcs.m[s.Name] = s
 	return
 }
 
@@ -83,7 +89,9 @@ func (s *service) ConnPeer(ctx context.Context, req *pb.ConnPeerReq) (resp *pb.C
 	target := func() *service {
 		svcs.Lock()
 		defer svcs.Unlock()
-		return svcs.m[req.Client.Name]
+		svc := svcs.m[req.Client.Name]
+		svc.Count++
+		return svc
 	}()
 	if target == nil {
 		resp = &pb.ConnPeerRsp{
@@ -117,6 +125,7 @@ func (s *service) ConnPeer(ctx context.Context, req *pb.ConnPeerReq) (resp *pb.C
 				Name:    s.Name,
 				Addr:    s.RemoteAddr,
 				Network: s.Network,
+				Count:   int32(s.Count),
 			},
 		}
 		resp := &pb.ConnPeerRsp{}

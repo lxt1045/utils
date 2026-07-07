@@ -28,7 +28,12 @@ message LatencyRsp {
 }
 
 message AuthReq {
+  enum ClientType {
+    Client = 0;
+    Sevice = 1;
+  }
   string name = 1;
+  ClientType client_type = 2;
 }
 
 message AuthRsp {
@@ -48,6 +53,8 @@ message ClientInfo {
   string name = 1;
   string addr = 2;
   Network network = 3;
+  string remote = 4;
+  int32 count = 5;
 }
 
 message ClientsReq {
@@ -80,11 +87,34 @@ message StreamReq {
   string addr = 1;
   Network network = 2;
   bytes body = 3;
+  string local_addr = 4;
 }
 
 message StreamRsp {
   bytes body = 1;
   Err err = 2;
+}
+
+message ConnReq {
+  string addr = 1;
+  Network network = 2;
+  bytes body = 3;
+}
+
+message ConnRsp {
+  bytes body = 1;
+  Err err = 2;
+}
+
+
+message ConnUpgradeReq {
+  string addr = 1;
+  Network network = 2;
+  bytes body = 3;
+}
+
+message ConnUpgradeRsp {
+  Err err = 1;
 }
 
 // 定义服务
@@ -94,6 +124,9 @@ service Service {
   rpc Auth(AuthReq) returns (AuthRsp) {}
   rpc Clients(ClientsReq) returns (ClientsRsp) {}
   rpc ConnPeer(ConnPeerReq) returns (ConnPeerRsp) {}
+  
+  // 双向流模式：双方均可随时发送数据
+  // rpc ConnStream(stream ConnPeerReq) returns (stream ConnPeerReq);
 }
 
 service Client {
@@ -110,4 +143,6 @@ service PeerSvc {
   rpc Close(CloseReq) returns (CloseRsp) {}
   rpc Auth(AuthReq) returns (AuthRsp) {}
   rpc Stream(StreamReq) returns (StreamRsp) {}
+  rpc Conn(ConnReq) returns (ConnRsp) {}
+  rpc ConnUpgrade(ConnUpgradeReq) returns (ConnUpgradeRsp) {}
 }

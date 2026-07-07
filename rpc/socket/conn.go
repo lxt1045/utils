@@ -55,6 +55,24 @@ func Dial(ctx context.Context, network, localAddr, remoteAddr string) (conn net.
 		return
 	}
 	return
+}
+
+func DialWithTimeout(ctx context.Context, network, localAddr, remoteAddr string, timeout time.Duration) (conn net.Conn, err error) {
+	la, err := net.ResolveTCPAddr("tcp4", localAddr)
+	if err != nil {
+		return
+	}
+	cfg := net.Dialer{
+		Timeout:   timeout, // 默认 3 minutes.
+		Control:   control,
+		LocalAddr: la,
+	}
+	conn, err = cfg.DialContext(ctx, network, remoteAddr)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	return
 
 }
 

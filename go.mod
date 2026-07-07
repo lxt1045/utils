@@ -1,14 +1,17 @@
 module github.com/lxt1045/utils
 
-go 1.24.0
-
-toolchain go1.25.8
+go 1.26.0
 
 require (
+	github.com/Codefor/geohash v0.0.0-20140723084247-1b41c28e3a9d
+	github.com/TomiHiltunen/geohash-golang v0.0.0-20150112065804-b3e4e625abfb
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/benbjohnson/clock v1.1.0
+	github.com/broady/gogeohash v0.0.0-20120525094510-7b2c40d64042
 	github.com/bytedance/mockey v1.2.14
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/fanixk/geohash v0.0.0-20150324002647-c1f9b5fa157a
+	github.com/gansidui/geohash v0.0.0-20141019080235-ebe5ba447f34
 	github.com/gin-gonic/gin v1.9.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
@@ -17,10 +20,12 @@ require (
 	github.com/markuskont/datamodels v0.1.1
 	github.com/markuskont/go-sigma-rule-engine v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/mmcloughlin/geohash v0.10.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/paddie/gokmp v0.0.0-20190712102438-5097de8eec69
 	github.com/petermattis/goid v0.0.0-20250904145737-900bdf8bb490
+	github.com/pierrre/geohash v1.1.4
 	github.com/quic-go/quic-go v0.40.1
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil v3.21.11+incompatible

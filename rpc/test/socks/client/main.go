@@ -16,6 +16,10 @@ import (
 	_ "go.uber.org/automaxprocs"
 )
 
+/*
+$env:CGO_ENABLED=0; $env:GOOS="linux"; $env:GOARCH="amd64"; go build ./
+*/
+
 type Config struct {
 	Debug      bool
 	Pprof      bool

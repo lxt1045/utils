@@ -20,3 +20,4 @@ rpc/test/socks_stream/service/service
 rpc/test/socks_stream/client/client
 *.exe
 *.log
+rpc/test/socks/client_http_local/client_http_local

@@ -179,6 +179,42 @@ func (p *SocksCli) RunHttpProxy(ctx context.Context, httpAddr string, mode int) 
 	}
 }
 
+func (p *SocksCli) RunHttpProxyLocal(ctx context.Context, httpAddr string, mode int) {
+	l, err := net.Listen("tcp", httpAddr)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Msgf("failed to listen on %s: %v", httpAddr, err)
+		return
+	}
+	defer func() {
+		e := recover()
+		if e != nil {
+			log.Ctx(ctx).Error().Caller().Interface("recover", e).Stack().Msg("listener defer")
+		}
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Stack().Msg("listener defer")
+		} else {
+			log.Ctx(ctx).Info().Caller().Err(errors.Errorf("listener")).Stack().Msg("listener defer")
+		}
+		l.Close()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Ctx(ctx).Info().Caller().Str("httpAddr", httpAddr).Msg("Done")
+			return
+		default:
+		}
+		c, err := l.Accept()
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("failed to accept")
+			continue
+		}
+
+		go p.connectHttp(ctx, c, mode)
+	}
+}
+
 func (p *SocksCli) connectHttp(ctx context.Context, inConn net.Conn, mode int) (err error) {
 	// rc.(*net.TCPConn).SetKeepAlive(true)
 
@@ -205,6 +241,13 @@ func (p *SocksCli) connectHttp(ctx context.Context, inConn net.Conn, mode int) (
 		}
 	case 1:
 		err = p.OutToTCPPeer1(ctx, address, inConn, &req)
+		if err != nil {
+			log.Ctx(ctx).Error().Str("address", address).Err(err).Msg("connect fail")
+
+			utils.CloseConn(&inConn)
+		}
+	case 2:
+		err = p.OutToTCPLocal(ctx, address, &inConn, &req)
 		if err != nil {
 			log.Ctx(ctx).Error().Str("address", address).Err(err).Msg("connect fail")
 
@@ -503,7 +546,7 @@ func (p *SocksCli) connect(ctx context.Context, tgtAddr string, rc net.Conn) (er
 	}
 
 	resp := &pb.ConnUpgradeRsp{}
-	// stream, err := peer.StreamAsync(ctx, "Conn")
+	// stream, err := peer.StreamAsync(ctx, "Conn") ConnpUgrade
 	upgrade, err := peer.Upgrade(ctx, "ConnUpgrade", req, resp)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()

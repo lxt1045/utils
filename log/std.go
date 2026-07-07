@@ -22,14 +22,15 @@ var (
 	gidLoggersOnce sync.Once
 )
 
-func GetStdLogger(ctx context.Context) *zerolog.Logger {
+func GetStdLogger() (log *zerolog.Logger) {
 	gid := goid.Get()
 	l, _ := gidLoggers.Get(gid)
 	if l != nil {
 		return l
 	}
-
-	return Ctx(ctx)
+	log = Ctx(context.TODO())
+	gidLoggers.Set(gid, log)
+	return
 }
 
 func SetStdLogger(ctx context.Context) {
@@ -45,7 +46,7 @@ type StdWriter struct {
 func (w *StdWriter) Write(p []byte) (n int, err error) {
 	n = len(p)
 	str := unsafe.String(unsafe.SliceData(p), n)
-	GetStdLogger(w.ctx).Info().Caller().Msg(str)
+	GetStdLogger().Info().Caller().Msg(str)
 	return
 
 }

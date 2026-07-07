@@ -317,10 +317,11 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 			err = errors.Errorf("recover : %v", e)
 		}
 		cancel()
-		// 唤醒可能阻塞在 src.Read 的 reader 协程
-		if dl, ok := src.(interface{ SetDeadline(t time.Time) error }); ok {
-			_ = dl.SetDeadline(time.Now())
-		}
+
+		// // 唤醒可能阻塞在 src.Read 的 reader 协程
+		// if dl, ok := src.(interface{ SetDeadline(t time.Time) error }); ok {
+		// 	_ = dl.SetDeadline(time.Now())
+		// }
 		if err != nil && !isBenignCloseErr(err) {
 			log.Ctx(ctx).Error().Caller().Err(err).Msg("Copy defer")
 		} else if err != nil {
@@ -335,6 +336,11 @@ func Copy(ctx context.Context, dst io.WriteCloser, src io.ReadCloser) (written i
 		select {
 		case bs, ok = <-ch:
 			if !ok {
+				if tcpConn, ok := dst.(*net.TCPConn); ok {
+					// 不能直接直接调用 conn.Close()，会发送RST 直接断开tcp 链接
+					tcpConn.CloseWrite()
+					log.Ctx(ctx).Info().Caller().Msg("Copy CloseWrite, Send FIN")
+				}
 				return
 			}
 			var n int

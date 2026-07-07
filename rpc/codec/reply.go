@@ -179,6 +179,7 @@ func (c *Codec) VerCmdReq(ctx context.Context, header Header, bsBody []byte) (er
 			c.streamsLock.Lock()
 			defer c.streamsLock.Unlock()
 			c.streams[key] = stream
+			// log.Ctx(ctx).Error().Caller().Interface("c.streams", c.streams).Uint64("key", key).Msg("CmdReq_Stream")
 		}()
 
 		err = c.SendMsg(ctx, VerCmdResp, header.CallID, header.CallSN, res)

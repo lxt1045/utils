@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/lxt1045/errors"
 	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
@@ -41,14 +42,12 @@ func main() {
 	flag.BoolVar(&flags.Verbose, "verbose", true, "verbose mode")
 	flag.BoolVar(&flags.Proxy, "proxy", false, "verbose mode")
 	flag.StringVar(&flags.Server, "s", "", "server listen address or url")
-	flag.StringVar(&flags.Client, "c", "client-952700", "client connect address or url")
-	// flag.StringVar(&flags.Socks, "socks", ":10086", "(client-only) SOCKS listen address")
-	flag.StringVar(&flags.Socks, "socks", "", "(client-only) SOCKS listen address")
+	flag.StringVar(&flags.Client, "c", "client-952701", "client connect address or url")
+	flag.StringVar(&flags.Socks, "socks", ":20080", "(client-only) SOCKS listen address")
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	// 解析配置文件
 	conf := &Config{}
@@ -58,11 +57,14 @@ func main() {
 		log.Ctx(ctx).Fatal().Caller().Err(err).Send()
 		return
 	}
-
+	// 初始化Log
+	err = log.Init(ctx, conf.Log)
 	if err != nil {
 		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
+	// log.Init()
+	ctx, _ = log.WithLogid(ctx, gid.GetGID())
 
 	cmtls := conf.ClientConn.TLS
 	tlsConfig, err := config.LoadTLSConfig(filesystem.Static, cmtls.ClientCert, cmtls.ClientKey, cmtls.CACert)
@@ -86,6 +88,9 @@ func main() {
 		RemoteAddr: conn.RemoteAddr().String(),
 		bClient:    flags.Socks != "",
 		socksAddr:  flags.Socks,
+		ChPeer:     make(chan *peerCli, 16),
+		ChPeerSvc:  make(chan *peerSvc, 16),
+		ChP2P:      make(chan error, 1),
 	}
 	var _ pb.ClientServer = cli
 	cli.Peer, err = rpc.StartPeer(ctx, conn, cli, pb.RegisterClientServer, pb.NewServiceClient)
@@ -135,27 +140,48 @@ func main() {
 		}(":" + localPort(conn))
 	}
 
-	clients, err := cli.clients(ctx)
-	if err != nil {
-		log.Ctx(ctx).Error().Caller().Err(err).Send()
-		return
-	}
-	if len(clients) == 0 || flags.Socks == "" {
+	if !cli.bClient {
+		cmtls := conf.Conn.TLS
+		cli.TlsConf, err = config.LoadTLSConfig(filesystem.Static, cmtls.ServerCert, cmtls.ServerKey, cmtls.CACert)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Send()
+			return
+		}
 		if flags.Socks == "" {
 			// peer service 方
 			log.Ctx(ctx).Error().Caller().Msg("peer svc is running")
 		} else {
 			log.Ctx(ctx).Error().Caller().Msg("peer client is not exist")
 		}
+		go cli.RunConnLoop(ctx, cancel, conf.ClientConn.Addr, tlsConfig)
+
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
+		return
+	}
+
+	cli.TlsConf = tlsConfig
+	clients, err := cli.clients(ctx)
+	if err != nil {
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
+		return
+	}
+	if len(clients) == 0 {
+		err = errors.New("没有可连的服务端")
+		log.Ctx(ctx).Error().Caller().Err(err).Send()
 		return
 	}
 	log.Ctx(ctx).Info().Caller().Interface("clients", clients).Send()
 
 	// peer client 方
 	target := clients[0]
+	for _, c := range clients {
+		if c.Name == "client-952701" {
+			target = c
+			break
+		}
+	}
 	req := &pb.ConnPeerReq{
 		Client: target,
 	}
@@ -178,6 +204,13 @@ func main() {
 			return
 		}
 		_ = resp
+
+		// 连接没问题后，监听 socks 端口
+		log.Ctx(ctx).Error().Caller().Msgf("SOCKS proxy on %s", cli.socksAddr)
+
+		go cli.RunConnLoop(ctx, cancel, conf.ClientConn.Addr, tlsConfig)
+
+		cli.TCPLocal(ctx, cli.socksAddr) // 开始监听本地
 
 	}()
 
