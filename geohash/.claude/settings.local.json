@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test *)",
+      "Bash(go env *)",
+      "Bash(ls \"$\\(go env GOMODCACHE\\)/github.com/paulmach\")",
+      "Bash(ls \"$\\(go env GOMODCACHE\\)/github.com/tidwall\")",
+      "Bash(go get *)",
+      "Bash(echo \"===EXIT $?===\")",
+      "Bash(go doc *)",
+      "Bash(go mod *)",
+      "WebSearch",
+      "Bash(python -c \"import shapely; print\\('shapely', shapely.__version__\\)\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(go list *)",
+      "Bash(GOFLAGS=-mod=mod go run .)",
+      "Bash(GOFLAGS=-mod=mod go build -o scratch_run.exe .)",
+      "Bash(./scratch_run.exe)",
+      "Bash(go build *)",
+      "Bash(./scratch_win.exe)",
+      "Bash(gh api *)"
+    ]
+  }
+}

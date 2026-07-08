@@ -22,8 +22,8 @@ import (
 //*/
 
 const (
-	earthClat = 40075.2     //地球赤道周长40075.2km
-	earthClng = 40037.0 / 2 //地球经线长度40037.0/2km
+	earthClat = 40075.2       //地球赤道周长40075.2km
+	earthClng = 40007.863 / 2 //地球经线(极周长)40007.863km 的一半(极点到极点,即180°)
 
 	exp32      = 1 << 32                            // 刻度数量(多少个刻度值)
 	deltaAngle = 0.0000000000001                    // 角度偏移,为了计算方便;//不用DELTAANGLE时,在（90/180）会溢出
@@ -274,74 +274,20 @@ func NeighborsInt2(geo uint64, bits uint) []uint64 {
 	lngW := (lng - lngDelta) & lngMask
 	return []uint64{
 		// N
-		// interleave64(lat+latDelta, lng),
 		latN | lng,
 		// NE,
-		// interleave64(lat+latDelta, lng+lngDelta),
 		latN | lngE,
 		// E,
-		// interleave64(lat, lng+lngDelta),
 		lat | lngE,
 		// SE,
-		// interleave64(lat-latDelta, lng+lngDelta),
 		latS | lngE,
 		// S,
-		// interleave64(lat-latDelta, lng),
 		latS | lng,
 		// SW,
-		// interleave64(lat-latDelta, lng-lngDelta),
 		latS | lngW,
 		// W,
-		// interleave64(lat, lng-lngDelta),
 		lat | lngW,
 		// NW
-		// interleave64(lat+latDelta, lng-lngDelta),
 		latN | lngW,
 	}
-}
-
-// Dist 计算两坐标间的距离(distance)
-func Dist(p1, p2 Coords) (l float64) {
-	calculateY := func(p1, p2 Coords) float64 {
-		deltaY := p1.Lat - p2.Lat
-		if deltaY < 0 {
-			deltaY = -deltaY
-		}
-		return deltaY / 180.0 * earthClng //180°时，即经线长度: earthClng
-	}
-	calculateX := func(p1, p2 Coords) float64 {
-		alphaY := p1.Lat
-		deltaX := p1.Lng - p2.Lng
-		if deltaX < 0 {
-			deltaX = -deltaX
-		}
-		cosY := math.Cos(math.Pi * alphaY / 180) //该纬度上的纬线圈对应的角度的cos()
-		C := earthClat * cosY                    //earthClat 是赤道的长度，C是纬线圈的长度(周长和半径成正比)
-		return deltaX / 360.0 * C
-	}
-
-	x := calculateX(p1, p2)
-	y := calculateY(p1, p2)
-
-	return math.Sqrt(x*x + y*y)
-}
-
-// Dist2 计算两坐标间的距离(distance)
-func Dist2(p1, p2 Coords) (l float64) {
-
-	deltaY := p1.Lat - p2.Lat
-	// if deltaY < 0 {
-	// 	deltaY = -deltaY
-	// }
-	y := deltaY / 180.0 * earthClng //180°时，即经线长度: earthClng
-
-	deltaX := p1.Lng - p2.Lng
-	// if deltaX < 0 {
-	// 	deltaX = -deltaX
-	// }
-	cosY := math.Cos(math.Pi * p1.Lat / 180.0) //该纬度上的纬线圈对应的角度的cos()
-	C := earthClat * cosY                      //earthClat 是赤道的长度，C是纬线圈的长度(周长和半径成正比)
-	x := deltaX / 360.0 * C
-
-	return math.Sqrt(x*x + y*y)
 }

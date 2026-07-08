@@ -148,15 +148,6 @@ func BenchmarkGeoMerge(b *testing.B) {
 // BenchmarkDist-4   	50000000	        27.6 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkDist(b *testing.B) {
 	for i := 0; i < b.N; i++ { //use b.N for looping
-		Dist(Coords{116.3906, 39.92324}, Coords{118.3906, 38.92324})
-	}
-}
-
-// */
-// BenchmarkDist2-4   	50000000	        25.5 ns/op	       0 B/op	       0 allocs/op
-func BenchmarkDist2(b *testing.B) {
-	c1, c2 := Coords{116.3906, 39.92324}, Coords{118.3906, 38.92324}
-	for i := 0; i < b.N; i++ { //use b.N for looping
-		Dist2(c1, c2)
+		DistHaversine(Coords{116.3906, 39.92324}, Coords{118.3906, 38.92324})
 	}
 }

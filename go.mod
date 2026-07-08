@@ -24,6 +24,7 @@ require (
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/paddie/gokmp v0.0.0-20190712102438-5097de8eec69
+	github.com/paulmach/orb v0.13.0
 	github.com/petermattis/goid v0.0.0-20250904145737-900bdf8bb490
 	github.com/pierrre/geohash v1.1.4
 	github.com/quic-go/quic-go v0.40.1
@@ -31,11 +32,13 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
+	github.com/tidwall/geodesic v1.52.4
 	github.com/xtaci/kcp-go v5.4.20+incompatible
 	go.uber.org/automaxprocs v1.5.2
 	go.uber.org/zap v1.24.0
 	golang.org/x/net v0.12.0
 	golang.org/x/sync v0.2.0
+	golang.org/x/sys v0.41.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.56.2
 	gopkg.in/yaml.v2 v2.4.0
@@ -93,7 +96,6 @@ require (
 	golang.org/x/crypto v0.11.0 // indirect
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db // indirect
 	golang.org/x/mod v0.11.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.11.0 // indirect
 	golang.org/x/tools v0.9.1 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230711160842-782d3b101e98 // indirect
