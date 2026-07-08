@@ -28,7 +28,8 @@
       "Bash(wsl *)",
       "Bash(MSYS_NO_PATHCONV=1 wsl *)",
       "Bash(rm -rf scratch run_wsl.sh)",
-      "Read(//d/d/project/go/src/github.com/lxt1045/utils/geohash/**)"
+      "Read(//d/d/project/go/src/github.com/lxt1045/utils/geohash/**)",
+      "Bash(go version *)"
     ]
   }
 }
