@@ -204,7 +204,7 @@ func Center(geo uint64, bits uint) (lat, lng float64) {
 	return
 }
 
-func NeighborsInt(geo uint64, bits uint) []uint64 {
+func NeighborsInt2(geo uint64, bits uint) []uint64 {
 	latBits := bits / 2       // lat 误差 bit 位
 	lngBits := bits - latBits // lng 误差 bit 位
 	latDelta := uint32(1 << (32 - latBits))
@@ -240,7 +240,7 @@ func NeighborsInt(geo uint64, bits uint) []uint64 {
 	}
 }
 
-func NeighborsInt2(geo uint64, bits uint) []uint64 {
+func NeighborsInt(geo uint64, bits uint) []uint64 {
 	const latMask, lngMask uint64 = 0x5555555555555555, 0x5555555555555555 << 1
 	const latAdd, lngAdd uint64 = 0x5555555555555555 << 1, 0x5555555555555555
 

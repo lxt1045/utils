@@ -1,5 +1,7 @@
 package geohash
 
+import "math"
+
 // 本文件实现"将多条无序曲线拼接成一条闭合环(多边形边界)"的功能。
 //
 // 场景：一个区域的边界被拆成了若干条曲线(polyline)分别存储，
@@ -140,4 +142,169 @@ func MergeCurvesGeoInt(curves [][]uint64, tolerance float64) []uint64 {
 		out[i] = EncodeInt(c.Lat, c.Lng)
 	}
 	return out
+}
+
+// tolerancePrecisionBits 依 tolerance(米)选一个 geohash 精度 bits(偶数，latBits==lngBits)，
+// 使每个网格 cell 的经、纬向边长都 >= tolerance——从而任意两个距离 <= tolerance 的点
+// 必定落在同一 cell 或其 8 个邻居 cell 内，9 格搜索即完备(不漏点)。
+//
+// 参考纬度取数据中 |lat| 的最大值：纬度越高 cos 越小、经向 cell 越窄，用它最保守。
+func tolerancePrecisionBits(cleaned [][]Coords, tolerance float64) uint {
+	if tolerance <= 0 {
+		return 52 // 退化输入：给一个较高精度即可
+	}
+	maxAbsLat := 0.0
+	for _, c := range cleaned {
+		for _, p := range c {
+			if a := math.Abs(p.Lat); a > maxAbsLat {
+				maxAbsLat = a
+			}
+		}
+	}
+	if maxAbsLat > 89 {
+		maxAbsLat = 89 // 防止 cos 过小导致 bits 过低
+	}
+	cosPhi := math.Cos(maxAbsLat * degToRad)
+
+	const mPerDeg = 111320.0 // 每纬度约 111.32km
+	// 单个 cell(latBits==lngBits==h)的边长(米)：
+	//   纬向 = mPerDeg * 180   / 2^h
+	//   经向 = mPerDeg * cosPhi*360 / 2^h
+	// 取较小者 >= tolerance  =>  2^h <= mPerDeg*min(180, cosPhi*360)/tolerance
+	minSpanDeg := math.Min(180.0, cosPhi*360.0)
+	ratio := mPerDeg * minSpanDeg / tolerance
+
+	h := 0
+	if ratio >= 1 {
+		h = int(math.Floor(math.Log2(ratio)))
+	}
+	if h < 1 {
+		h = 1
+	}
+	if h > 31 {
+		h = 31
+	}
+	return uint(2 * h)
+}
+
+// MergeCurvesIndexed 是 MergeCurves 的加速版本：功能与结果和 MergeCurves 一致
+// (把无序、方向不定、端点近似重合的曲线拼成一条闭合环)，但把原来对每条链端
+// O(曲线数) 的线性扫描，换成基于 geohash 网格索引的近邻查找，整体从约 O(曲线数²)
+// 降到约 O(曲线数)。
+//
+// 算法：
+//  1. 每条曲线先做内部去重(dedupConsecutive)。
+//  2. 只把每条曲线的两个「端点」编码成 geohash 网格 cell 建索引——拼接只发生在
+//     端点处，曲线内部点不可能成为衔接点，无需入索引(这也是相对“索引所有点”
+//     更省的地方)。网格精度由 tolerancePrecisionBits 依 tolerance 选取，保证
+//     cell 边长 >= tolerance。
+//  3. 拼接时，对链的 tail / head 各取「所在 cell + 8 邻居(NeighborsInt)」共 9 个
+//     cell，从索引取候选端点，再用 distMeters 精确校验 <= tolerance 才衔接。
+//  4. 其余逻辑(按需反转、衔接处去重、末尾闭合)与 MergeCurves 相同。
+//
+// 结果与 MergeCurves 表示同一条环(顶点序列可能因遍历顺序不同而整体旋转或反向)。
+func MergeCurvesIndexed(curves [][]Coords, tolerance float64) []Coords {
+	cleaned := make([][]Coords, 0, len(curves))
+	for _, c := range curves {
+		if d := dedupConsecutive(c, tolerance); len(d) > 0 {
+			cleaned = append(cleaned, d)
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil
+	}
+	if len(cleaned) == 1 {
+		chain := append([]Coords(nil), cleaned[0]...)
+		if len(chain) > 1 && distMeters(chain[0], chain[len(chain)-1]) <= tolerance {
+			chain = chain[:len(chain)-1]
+		}
+		return chain
+	}
+
+	bits := tolerancePrecisionBits(cleaned, tolerance)
+	mask := uint64(math.MaxUint64) << (64 - bits)
+	cellOf := func(p Coords) uint64 {
+		return EncodeInt(p.Lat, p.Lng) & mask
+	}
+
+	// 端点索引：cell -> 落在该 cell 的端点引用列表。
+	type endRef struct {
+		curve int  // 曲线下标
+		tail  bool // false=起点 c[0]；true=终点 c[len-1]
+	}
+	index := make(map[uint64][]endRef, len(cleaned)*2)
+	for ci, c := range cleaned {
+		index[cellOf(c[0])] = append(index[cellOf(c[0])], endRef{ci, false})
+		last := len(c) - 1
+		index[cellOf(c[last])] = append(index[cellOf(c[last])], endRef{ci, true})
+	}
+
+	used := make([]bool, len(cleaned))
+
+	// findNear 在 query 点附近的 9 个 cell 中，找一条未使用曲线、且距离 <= tolerance
+	// 的端点。返回曲线下标、该端点是否为终点、是否找到。
+	findNear := func(query Coords) (ci int, tail bool, ok bool) {
+		check := func(cell uint64) (int, bool, bool) {
+			for _, ref := range index[cell] {
+				if used[ref.curve] {
+					continue
+				}
+				c := cleaned[ref.curve]
+				ep := c[0]
+				if ref.tail {
+					ep = c[len(c)-1]
+				}
+				if distMeters(query, ep) <= tolerance {
+					return ref.curve, ref.tail, true
+				}
+			}
+			return 0, false, false
+		}
+
+		base := cellOf(query)
+		if ci, tail, ok = check(base); ok { // 先查自身 cell
+			return
+		}
+		for _, cell := range NeighborsInt(base, bits) { // 再查 8 邻居
+			if ci, tail, ok = check(cell); ok {
+				return
+			}
+		}
+		return 0, false, false
+	}
+
+	chain := append([]Coords(nil), cleaned[0]...)
+	used[0] = true
+
+	for {
+		// 先尝试在尾部衔接。
+		if ci, isTail, ok := findNear(chain[len(chain)-1]); ok {
+			c := cleaned[ci]
+			if !isTail {
+				chain = append(chain, c[1:]...) // tail 接 c 起点：丢弃 c0
+			} else {
+				chain = append(chain, reverseCoords(c)[1:]...) // tail 接 c 终点：反转后丢弃原 cn
+			}
+			used[ci] = true
+			continue
+		}
+		// 再尝试在头部衔接。
+		if ci, isTail, ok := findNear(chain[0]); ok {
+			c := cleaned[ci]
+			if isTail {
+				chain = append(append([]Coords(nil), c[:len(c)-1]...), chain...) // c 终点接 head：丢弃 cn 后前置
+			} else {
+				chain = append(append([]Coords(nil), reverseCoords(c)[:len(c)-1]...), chain...) // c 起点接 head：反转后丢弃原 c0 前置
+			}
+			used[ci] = true
+			continue
+		}
+		break
+	}
+
+	// 闭合：首尾重合则丢弃重复的尾点。
+	if len(chain) > 1 && distMeters(chain[0], chain[len(chain)-1]) <= tolerance {
+		chain = chain[:len(chain)-1]
+	}
+	return chain
 }
