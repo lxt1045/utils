@@ -19,7 +19,16 @@
       "Bash(./scratch_run.exe)",
       "Bash(go build *)",
       "Bash(./scratch_win.exe)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Read(//d/project/go/pkg/mod/github.com/peterstace/**)",
+      "Read(//d/project/go/pkg/mod/github.com/peterstace//**)",
+      "Bash(wsl bash *)",
+      "Bash(wsl.exe bash *)",
+      "Bash(MSYS_NO_PATHCONV=1 wsl.exe *)",
+      "Bash(wsl *)",
+      "Bash(MSYS_NO_PATHCONV=1 wsl *)",
+      "Bash(rm -rf scratch run_wsl.sh)",
+      "Read(//d/d/project/go/src/github.com/lxt1045/utils/geohash/**)"
     ]
   }
 }
