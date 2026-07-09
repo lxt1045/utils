@@ -310,10 +310,7 @@ func (g *snapGrid) segNodesIndexed(a, b Coords, tolerance float64) []int {
 	if ny < 0 {
 		ny = -ny
 	}
-	steps := nx
-	if ny > steps {
-		steps = ny
-	}
+	steps := max(nx, ny)
 	if steps == 0 {
 		addCell(cxa, cya) // 同一 cell
 		return sortSegNodes(cand)
@@ -495,7 +492,7 @@ func MergeCurves2(curves [][]Coords, tolerance float64) []Coords {
 
 	// 从 curve[0] 的某个端点开始，找一个能匹配到其他曲线的粘接点作根。
 	// 优先尝试起点、终点、实在不行再扫中段。
-	rootCurveIdx := 0
+	const rootCurveIdx = 0
 	rootPointIdx := -1
 	currentPoint := CurvePoint{CurveIdx: 0}
 
@@ -545,44 +542,43 @@ func MergeCurves2(curves [][]Coords, tolerance float64) []Coords {
 		curvesScanned[ci] = true
 		currentCurve := curves[ci]
 
-		// 沿当前曲线找下一个粘接点(head、tail、或中段)。
-		var nextPoint CurvePoint
-		var foundNext bool
-
-		// 尝试 head(c[0])。允许跳回根曲线以闭环，其余曲线要求未扫过。
+		// 沿当前曲线找下一个粘接点。优先级: head → tail → 中段(概率递减)。
 		canGo := func(target int) bool { return target == rootCurveIdx || !curvesScanned[target] }
-		if distMeters(currentCurve[0], currentPoint.Coords) > tolerance {
-			if cp, ok := g.findNode(currentCurve[0], tolerance, ci); ok && canGo(cp.CurveIdx) {
-				// 从 currentPoint.PointIdx 逆序走到 head
+		var nextPoint CurvePoint
+		found := false
+
+		// 1. 优先尝试 head (curve[0])
+		head := currentCurve[0]
+		if distMeters(head, currentPoint.Coords) > tolerance {
+			if cp, ok := g.findNode(head, tolerance, ci); ok && canGo(cp.CurveIdx) {
 				for i := currentPoint.PointIdx; i >= 0; i-- {
 					closeCrv = append(closeCrv, currentCurve[i])
 				}
 				nextPoint = cp
-				foundNext = true
+				found = true
 			}
 		}
 
-		if !foundNext {
-			// 尝试 tail(c[len-1])
+		// 2. 再尝试 tail (curve[len-1])
+		if !found {
 			tailIdx := len(currentCurve) - 1
-			if distMeters(currentCurve[tailIdx], currentPoint.Coords) > tolerance {
-				if cp, ok := g.findNode(currentCurve[tailIdx], tolerance, ci); ok && canGo(cp.CurveIdx) {
-					// 从 currentPoint.PointIdx 顺序走到 tail
+			tail := currentCurve[tailIdx]
+			if distMeters(tail, currentPoint.Coords) > tolerance {
+				if cp, ok := g.findNode(tail, tolerance, ci); ok && canGo(cp.CurveIdx) {
 					closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:tailIdx+1]...)
 					nextPoint = cp
-					foundNext = true
+					found = true
 				}
 			}
 		}
 
-		if !foundNext {
-			// 兜底:扫中段(跳过首尾)，找第一个能匹配其他未扫曲线的点
+		// 3. 兜底:扫中段 (curve[1:len-1])
+		if !found {
 			for i := 1; i < len(currentCurve)-1; i++ {
 				if distMeters(currentCurve[i], currentPoint.Coords) <= tolerance {
-					continue // 还在当前粘接点附近，跳过
+					continue
 				}
 				if cp, ok := g.findNode(currentCurve[i], tolerance, ci); ok && canGo(cp.CurveIdx) {
-					// 从 currentPoint.PointIdx 走到 i(方向取决于相对位置)
 					if i < currentPoint.PointIdx {
 						for j := currentPoint.PointIdx; j >= i; j-- {
 							closeCrv = append(closeCrv, currentCurve[j])
@@ -591,14 +587,14 @@ func MergeCurves2(curves [][]Coords, tolerance float64) []Coords {
 						closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:i+1]...)
 					}
 					nextPoint = cp
-					foundNext = true
+					found = true
 					break
 				}
 			}
 		}
 
-		if !foundNext {
-			return nil // 当前曲线走不通
+		if !found {
+			return nil
 		}
 		currentPoint = nextPoint
 	}
