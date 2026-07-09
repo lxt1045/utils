@@ -60,8 +60,8 @@ func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg float64)
 	jitter := func(c Coords, seed int) Coords {
 		// 取一个 [-1,1] 的确定性因子
 		f := math.Sin(float64(seed)*12.9898) * 43758.5453
-		f = f - math.Floor(f)  // 小数部分 [0,1)
-		f = f*2 - 1            // [-1,1)
+		f = f - math.Floor(f) // 小数部分 [0,1)
+		f = f*2 - 1           // [-1,1)
 		return Coords{Lat: c.Lat + f*jitterDeg, Lng: c.Lng + f*jitterDeg}
 	}
 	for si := range segments {
@@ -146,6 +146,56 @@ func TestMergeCurves_CompareAreaWithLibraries(t *testing.T) {
 
 			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg)
 			merged := MergeCurves(curves, tolerance)
+
+			// 顶点数应还原为原环顶点数(拓扑一致)。
+			if len(merged) != len(tc.ring) {
+				t.Fatalf("重建环顶点数=%d, 期望=%d, 拼接拓扑不一致: %+v",
+					len(merged), len(tc.ring), merged)
+			}
+
+			// 三种面积:本包 / orb / 椭球真值,均基于重建环。
+			mineMerged := AreaCoords(merged)
+			orbMerged := orbArea(merged)
+			geoMerged := geodesicArea(merged)
+
+			// 参照:直接用"真实边界"算的面积(同样三种库)。
+			mineTruth := AreaCoords(tc.ring)
+			geoTruth := geodesicArea(tc.ring)
+
+			// (1) 拼接前后本包面积应几乎相等(仅关节抖动带来的极小差异)。
+			relMerge := math.Abs(mineMerged-mineTruth) / mineTruth
+			// (2) 重建环相对椭球真值(用真实边界算)的误差。
+			relGeo := math.Abs(mineMerged-geoTruth) / geoTruth
+			// (3) 重建环上 本包 vs orb 的差异(应恒约 0.224%,球半径差异)。
+			relOrb := math.Abs(mineMerged-orbMerged) / geoMerged
+
+			t.Logf("重建环: AreaCoords=%.3f  orb=%.3f  geodesic=%.3f", mineMerged, orbMerged, geoMerged)
+			t.Logf("真实边界: AreaCoords=%.3f  geodesic=%.3f", mineTruth, geoTruth)
+			t.Logf("拼接引入误差(本包 前后)=%.6f%%  重建→椭球真值=%.4f%%  重建 本包→orb=%.4f%%",
+				relMerge*100, relGeo*100, relOrb*100)
+
+			// 拼接本身不应引入可观误差:关节抖动 ~0.5m 对城市街区/公里级多边形
+			// 面积的相对影响应远小于 0.1%。
+			if relMerge > 1e-3 {
+				t.Errorf("拼接前后面积差异过大, 说明重建引入了额外误差: relErr=%.6f", relMerge)
+			}
+			// 重建环相对椭球真值的误差,应与 area_compare_test 同量级(< 0.6%)。
+			if relGeo > 6e-3 {
+				t.Errorf("重建环相对椭球真值误差过大: relErr=%.6f", relGeo)
+			}
+			// 重建环上 本包 vs orb 的差异仍是球半径之差,应 < 0.3%。
+			if relOrb > 3e-3 {
+				t.Errorf("重建环 本包 vs orb 差异过大: relErr=%.6f", relOrb)
+			}
+		})
+
+		t.Run(tc.name+"-MergeCurves2", func(t *testing.T) {
+			// 关节抖动约 0.5m(≈ 4.5e-6 度),容差取 5m 以覆盖抖动。
+			const jitterDeg = 4.5e-6
+			const tolerance = 5.0
+
+			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg)
+			merged := MergeCurves2(curves, tolerance)
 
 			// 顶点数应还原为原环顶点数(拓扑一致)。
 			if len(merged) != len(tc.ring) {

@@ -46,7 +46,7 @@ func reverseCoords(c []Coords) []Coords {
 // 最保守(最窄)的 cell 边长即可，省去逐点求实际最大纬度。70° 覆盖了绝大多数陆地
 // 数据；即便数据在更高纬，网格只是偏细一点，不影响 9 邻域搜索的完备性(只会更保守)。
 var precisionCellSpanM = func() (t [32]float64) {
-	const mPerDeg = 111320.0 // 每纬度约 111.32km
+	const mPerDeg = 111320.0  // 每纬度约 111.32km
 	const cos70 = 0.342020143 // cos(70°)
 	// 较短轴(经向，cos70*360 < 180)在整幅网格上的跨度(米)。
 	full := mPerDeg * math.Min(180.0, cos70*360.0)
@@ -97,6 +97,19 @@ func projPointSeg(a, b, p Coords) (t, dist float64) {
 	return t, math.Hypot(dx, dy)
 }
 
+// Coords  坐标
+type CurvePoint struct {
+	Coords
+	CurveIdx int
+	PointIdx int
+}
+
+// snapGrid 保存 snap-rounding 用的节点集合与网格索引。
+type CurvePointIdx struct {
+	shift     uint                    // 32-h：由 32bit 全精度坐标右移得到 cell 下标
+	cellIndex map[uint64][]CurvePoint // cell key -> 落在该 cell 的节点 id 列表
+}
+
 // snapGrid 保存 snap-rounding 用的节点集合与网格索引。
 type snapGrid struct {
 	nodes     []Coords         // 每个节点的代表坐标(该簇首个顶点)
@@ -119,6 +132,32 @@ func (g *snapGrid) cellXY(p Coords) (cx, cy uint32) {
 	return x >> g.shift, y >> g.shift
 }
 
+// cellXY 返回坐标所在的 cell 下标 (cx,cy)。
+func (g *CurvePointIdx) cellXY(p Coords) (cx, cy uint32) {
+	x, y := EncodeCoords(p.Lat, p.Lng)
+	return x >> g.shift, y >> g.shift
+}
+
+// findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance 的已有节点。
+func (g *CurvePointIdx) findNode(p Coords, tolerance float64) (point CurvePoint, ok bool) {
+	cx, cy := g.cellXY(p)
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			ncx, ncy := int(cx)+dx, int(cy)+dy
+			if ncx < 0 || ncy < 0 {
+				continue
+			}
+			for _, point = range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
+				if distMeters(p, point.Coords) <= tolerance {
+					ok = true
+					return
+				}
+			}
+		}
+	}
+	return
+}
+
 // findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance 的已有节点。
 func (g *snapGrid) findNode(p Coords, tolerance float64) (id int, ok bool) {
 	cx, cy := g.cellXY(p)
@@ -138,8 +177,38 @@ func (g *snapGrid) findNode(p Coords, tolerance float64) (id int, ok bool) {
 	return 0, false
 }
 
-// buildSnapGrid 把所有(已内部去重的)曲线顶点聚类成节点：距离 <= tolerance 的
+// buildSnapGrid 把所有(已内部去重的)曲线顶点聚类成节点：距离 <= tolerance/2 的
 // 顶点归并为同一节点。返回节点集合与网格索引。baseline / indexed 共用同一套
+// 聚类，保证两者节点一致，结果可逐点比对。
+func buildCurvePointIdx(curves [][]Coords, tolerance float64, bits uint) *CurvePointIdx {
+	g := &CurvePointIdx{
+		shift:     32 - bits/2,
+		cellIndex: make(map[uint64][]CurvePoint),
+	}
+	tolerance = tolerance / 2
+	for id, c := range curves {
+		lastCoords := c[0]
+		for i, p := range c {
+			if i == 0 || distMeters(lastCoords, p) < tolerance {
+				continue
+			}
+			// 存入上一个点， 如果当前曲线只有一个距离大于 tolerance / 2 的点，则不存
+			cx, cy := g.cellXY(lastCoords)
+			key := cellXYKey(cx, cy)
+			g.cellIndex[key] = append(g.cellIndex[key], CurvePoint{Coords: p, CurveIdx: id, PointIdx: i - 1})
+			if i == len(c)-1 {
+				cx, cy := g.cellXY(p)
+				key := cellXYKey(cx, cy)
+				g.cellIndex[key] = append(g.cellIndex[key], CurvePoint{Coords: p, CurveIdx: id, PointIdx: i})
+			}
+			lastCoords = p
+		}
+	}
+	return g
+}
+
+// buildSnapGrid 把所有(已内部去重的)曲线顶点聚类成节点：距离 <= tolerance/2 的
+// 顶点归并为同一节点(保证曲线点间的距离<tolerance误差不放大,也保证索引中的点减少)。返回节点集合与网格索引。baseline / indexed 共用同一套
 // 聚类，保证两者节点一致，结果可逐点比对。
 func buildSnapGrid(cleaned [][]Coords, tolerance float64, bits uint) *snapGrid {
 	g := &snapGrid{
@@ -383,6 +452,98 @@ func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
 		}
 	}
 	return ringFromNodeSeqs(seqs, g.nodes, tolerance)
+}
+
+func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
+	if len(curves) == 0 {
+		return nil
+	}
+
+	bits := tolerancePrecisionBits(tolerance) // 通过查表获取geohash索引的精度
+	g := buildCurvePointIdx(curves, tolerance, bits)
+	if len(g.cellIndex) <= 2 {
+		return nil
+	}
+
+	curvesScanned := make([]bool, len(curves)) // 标志已扫描过的曲线, 避免循环重复扫描造成无法退出
+	rootPointIdx := 0
+	currentCurbePoint, ok := g.findNode(curves[0][rootPointIdx], tolerance) // 从头开始找
+	if !ok {
+		c := curves[0]
+		rootPointIdx = len(c) - 1
+		currentCurbePoint, ok = g.findNode(c[rootPointIdx], tolerance) // 从头开始找
+		if !ok {
+			for i, p := range c[1 : len(c)-1] {
+				currentCurbePoint, ok = g.findNode(p, tolerance)
+				if ok {
+					rootPointIdx = i + 1
+					break
+				}
+			}
+			if !ok {
+				return nil
+			}
+		}
+	}
+
+OUT:
+	for {
+		// 回头了，圆满一圈
+		if currentCurbePoint.CurveIdx == 0 {
+			if rootPointIdx < currentCurbePoint.PointIdx {
+				for i := currentCurbePoint.PointIdx - 1; i >= rootPointIdx; i-- {
+					closeCrv = append(closeCrv, curves[0][i])
+				}
+			} else {
+				closeCrv = append(closeCrv, curves[0][currentCurbePoint.PointIdx+1:rootPointIdx+1]...)
+			}
+			break
+		}
+		curvesScanned[currentCurbePoint.CurveIdx] = true
+		currentCurve := curves[currentCurbePoint.CurveIdx]
+
+		head := currentCurve[0]
+		if distMeters(head, currentCurbePoint.Coords) > tolerance {
+			nextCurbePoint, ok := g.findNode(head, tolerance)
+			if ok && !curvesScanned[nextCurbePoint.CurveIdx] {
+				for i := currentCurbePoint.PointIdx - 1; i >= 0; i-- {
+					closeCrv = append(closeCrv, currentCurve[i])
+				}
+				currentCurbePoint = nextCurbePoint
+				continue
+			}
+		}
+		tail := currentCurve[len(currentCurve)-1]
+		if distMeters(tail, currentCurbePoint.Coords) > tolerance {
+			nextCurbePoint, ok := g.findNode(tail, tolerance)
+			if ok && !curvesScanned[nextCurbePoint.CurveIdx] {
+				closeCrv = append(closeCrv, currentCurve[currentCurbePoint.PointIdx+1:]...)
+				continue
+			}
+			currentCurbePoint = nextCurbePoint
+		}
+
+		// 兜底: 分两头，从头还是从尾开始？
+		for j, p := range currentCurve[1 : len(currentCurve)-1] {
+			if distMeters(p, currentCurbePoint.Coords) > tolerance {
+				nextCurbePoint, ok := g.findNode(p, tolerance)
+				if ok && !curvesScanned[nextCurbePoint.CurveIdx] {
+					j++
+					if j < currentCurbePoint.PointIdx {
+						for i := currentCurbePoint.PointIdx - 1; i >= j; i-- {
+							closeCrv = append(closeCrv, currentCurve[i])
+						}
+					} else {
+						closeCrv = append(closeCrv, currentCurve[currentCurbePoint.PointIdx+1:j+1]...)
+					}
+					currentCurbePoint = nextCurbePoint
+					continue OUT
+				}
+			}
+		}
+		return nil
+	}
+	return
 }
 
 // MergeCurvesGeoInt 是 MergeCurves 的 geohash 版本。
