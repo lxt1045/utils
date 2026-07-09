@@ -31,6 +31,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/sirupsen/logrus v1.9.3
+	github.com/snail007/goproxy v0.0.0-20250609063252-e6d6a821db80
 	github.com/stretchr/testify v1.9.0
 	github.com/tidwall/geodesic v1.52.4
 	github.com/xtaci/kcp-go v5.4.20+incompatible

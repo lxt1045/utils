@@ -1,14 +1,29 @@
 package geohash
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 // 本文件实现"将多条无序曲线拼接成一条闭合环(多边形边界)"的功能。
 //
 // 场景：一个区域的边界被拆成了若干条曲线(polyline)分别存储，
-// 这些曲线之间没有先后顺序，方向(正向/反向)也不确定，相邻曲线
-// 在衔接处往往共享同一个端点(甚至因精度问题略有偏差)。
-// 需要把它们首尾相接地拼回一条闭合环，并在衔接处去重。
-
+// 这些曲线之间没有先后顺序，方向(正向/反向)也不确定。相邻曲线在衔接处
+// 往往共享同一个端点(因精度问题略有偏差)；更棘手的是——同一段边界可能被
+// 「数字化了两次」：两条曲线在中段近似重合(横向 < tolerance)，但顶点是
+// 任意重采样(顶点数/位置都不同)。需要把它们拼回一条闭合环，并消除重叠。
+//
+// 算法：容差 snap-rounding + 边去重 + 环游走(等价 JTS SnapRoundingNoder +
+// LineDissolver + ring walk)：
+//  1. 顶点聚类：把彼此距离 <= tolerance 的顶点并成同一个「节点(node)」。
+//     这样"关节抖动"和"重复端点"都归并到同一节点。
+//  2. 逐曲线 noding：把每条线段在「附近节点」处打断(按投影参数 t 排序)，
+//     得到该曲线的节点序列。任意重采样的两份数字化会经过相同的共享节点，
+//     从而产生相同的节点边序列。
+//  3. 边去重：相邻节点间的无向边放进集合自动去重——重复数字化的重叠段
+//     产生相同的边，塌成一条(消除重叠)。
+//  4. 环游走：沿邻接边走一圈得到单环顶点(方向不保证)。
+//
 // distMeters 返回两坐标点的距离(米)。
 // 用 Haversine(球面大圆)，全球范围稳定，避免等距圆柱近似在高纬度的偏差。
 func distMeters(a, b Coords) float64 {
@@ -24,96 +39,350 @@ func reverseCoords(c []Coords) []Coords {
 	return out
 }
 
-// dedupConsecutive 折叠"相邻且距离 <= tolerance"的重复点，返回新切片。
-// 用于清理单条曲线内部由采样/量化产生的冗余点。
-func dedupConsecutive(pts []Coords, tolerance float64) []Coords {
-	if len(pts) == 0 {
-		return nil
+// precisionCellSpanM[h] 是「纬度 70° 处、每轴 h bit 的 geohash 网格」单个 cell 的
+// 较短边长(米)，h 从 0 到 31 预先算好，供 tolerancePrecisionBits 查表。
+//
+// 为什么固定 70°：纬度越高 cos 越小、经向 cell 越窄，用一个足够高的参考纬度取
+// 最保守(最窄)的 cell 边长即可，省去逐点求实际最大纬度。70° 覆盖了绝大多数陆地
+// 数据；即便数据在更高纬，网格只是偏细一点，不影响 9 邻域搜索的完备性(只会更保守)。
+var precisionCellSpanM = func() (t [32]float64) {
+	const mPerDeg = 111320.0 // 每纬度约 111.32km
+	const cos70 = 0.342020143 // cos(70°)
+	// 较短轴(经向，cos70*360 < 180)在整幅网格上的跨度(米)。
+	full := mPerDeg * math.Min(180.0, cos70*360.0)
+	for h := range t {
+		t[h] = full / float64(uint64(1)<<uint(h))
 	}
-	out := make([]Coords, 0, len(pts))
-	out = append(out, pts[0])
-	for i := 1; i < len(pts); i++ {
-		if distMeters(out[len(out)-1], pts[i]) > tolerance {
-			out = append(out, pts[i])
+	return
+}()
+
+// tolerancePrecisionBits 选一个 geohash 精度 bits(每轴 h bit，总 bits=2h)，使网格
+// cell 的较短边 >= tolerance——从而任意两个距离 <= tolerance 的点必落在同一 cell 或
+// 其 8 邻居内，9 格搜索即完备(不漏点)。
+//
+// 直接查预先算好的 precisionCellSpanM 表：取满足 span[h] >= tolerance 的最大 h
+// (h 越大 cell 越小)，clamp 到 [1,31]。
+func tolerancePrecisionBits(tolerance float64) uint {
+	if tolerance <= 0 {
+		return 62 // 退化输入：最高精度
+	}
+	h := 1
+	for h < 31 && precisionCellSpanM[h+1] >= tolerance {
+		h++
+	}
+	return uint(2 * h)
+}
+
+// projPointSeg 在局部等距圆柱近似下，求点 p 到线段 [a,b] 的最近距离(米)与
+// 投影参数 t(夹在 [0,1]，用于沿线段排序)。tolerance 量级(米)下该近似足够精确。
+func projPointSeg(a, b, p Coords) (t, dist float64) {
+	const mPerDeg = 111320.0
+	kx := mPerDeg * math.Cos(a.Lat*degToRad) // 每度经度的米数(按 a 的纬度)
+	bx := (b.Lng - a.Lng) * kx
+	by := (b.Lat - a.Lat) * mPerDeg
+	px := (p.Lng - a.Lng) * kx
+	py := (p.Lat - a.Lat) * mPerDeg
+	len2 := bx*bx + by*by
+	if len2 == 0 {
+		return 0, math.Hypot(px, py)
+	}
+	t = (px*bx + py*by) / len2
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
+	}
+	dx := px - t*bx
+	dy := py - t*by
+	return t, math.Hypot(dx, dy)
+}
+
+// snapGrid 保存 snap-rounding 用的节点集合与网格索引。
+type snapGrid struct {
+	nodes     []Coords         // 每个节点的代表坐标(该簇首个顶点)
+	shift     uint             // 32-h：由 32bit 全精度坐标右移得到 cell 下标
+	cellIndex map[uint64][]int // cell key -> 落在该 cell 的节点 id 列表
+
+	// indexed noding 用的复用暂存：seenGen[id]==curGen 表示该节点已在当前
+	// 线段的近邻扫描里测过，避免重复 projPointSeg。用「代次戳」而非 map，
+	// 每条线段只需 curGen++ 即完成 O(1) 重置，跨线段复用同一块内存(零分配)。
+	seenGen []int32
+	curGen  int32
+}
+
+// cellXYKey 把 (cx,cy) cell 下标打包成 uint64 键。
+func cellXYKey(cx, cy uint32) uint64 { return uint64(cx)<<32 | uint64(cy) }
+
+// cellXY 返回坐标所在的 cell 下标 (cx,cy)。
+func (g *snapGrid) cellXY(p Coords) (cx, cy uint32) {
+	x, y := EncodeCoords(p.Lat, p.Lng)
+	return x >> g.shift, y >> g.shift
+}
+
+// findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance 的已有节点。
+func (g *snapGrid) findNode(p Coords, tolerance float64) (id int, ok bool) {
+	cx, cy := g.cellXY(p)
+	for dx := -1; dx <= 1; dx++ {
+		for dy := -1; dy <= 1; dy++ {
+			ncx, ncy := int(cx)+dx, int(cy)+dy
+			if ncx < 0 || ncy < 0 {
+				continue
+			}
+			for _, id := range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
+				if distMeters(p, g.nodes[id]) <= tolerance {
+					return id, true
+				}
+			}
 		}
+	}
+	return 0, false
+}
+
+// buildSnapGrid 把所有(已内部去重的)曲线顶点聚类成节点：距离 <= tolerance 的
+// 顶点归并为同一节点。返回节点集合与网格索引。baseline / indexed 共用同一套
+// 聚类，保证两者节点一致，结果可逐点比对。
+func buildSnapGrid(cleaned [][]Coords, tolerance float64, bits uint) *snapGrid {
+	g := &snapGrid{
+		shift:     32 - bits/2,
+		cellIndex: make(map[uint64][]int),
+	}
+	for _, c := range cleaned {
+		for _, p := range c {
+			if _, ok := g.findNode(p, tolerance); ok {
+				continue // 已属于某个既有节点
+			}
+			id := len(g.nodes)
+			g.nodes = append(g.nodes, p)
+			cx, cy := g.cellXY(p)
+			key := cellXYKey(cx, cy)
+			g.cellIndex[key] = append(g.cellIndex[key], id)
+		}
+	}
+	g.seenGen = make([]int32, len(g.nodes))
+	return g
+}
+
+// nodeOnSeg 是排序用的中间结构：线段上的一个节点及其投影参数 t。
+type nodeOnSeg struct {
+	id int
+	t  float64
+}
+
+// sortSegNodes 把候选节点按投影 t 排序并抽取 id。
+func sortSegNodes(cand []nodeOnSeg) []int {
+	sort.Slice(cand, func(i, j int) bool { return cand[i].t < cand[j].t })
+	out := make([]int, len(cand))
+	for i := range cand {
+		out[i] = cand[i].id
 	}
 	return out
 }
 
-// MergeCurves 将多条无序曲线拼接成一条闭合环，返回环上的有序顶点。
+// segNodesIndexed 沿线段 [a,b] 逐个整数 cell 步进，只在扫过的 cell 及其 8 邻居里
+// 取候选节点，再用 dist <= tolerance 过滤、按 t 排序。cell 边长 >= tolerance，故
+// 任意与线段距离 <= tolerance 的节点必落在扫过 cell 的 3x3 邻域内(不漏点)；
+// 复杂度约 O(线段跨越的 cell 数) => 整体近 O(顶点数)。
 //
-// curves    : 每条曲线是一串有序坐标点(WGS84，度)；曲线之间无先后顺序，
-//             方向也不确定(函数会按需反转)。
-// tolerance : 可接受误差(米)。用于两处判定：
-//             1) 单条曲线内相邻重复点的折叠；
-//             2) 曲线端点之间是否"重合"从而可以衔接/去重。
-//
-// 返回：拼接后的闭合环顶点列表(不重复首尾点，最后一点到第一点为隐含闭合边)。
-// 该结果可直接传入 AreaCoords 求面积。
-//
-// 算法(贪心链式拼接，类似 JTS LineMerger)：
-//  1. 先对每条曲线做内部去重；
-//  2. 取一条曲线作为初始链，记录链的首端 head 与尾端 tail；
-//  3. 反复在剩余曲线中寻找某个端点与 head 或 tail 距离 <= tolerance 的曲线，
-//     必要时反转后接到链的对应端，并丢弃重合的那个衔接点(去重)；
-//  4. 直到没有曲线可再衔接；
-//  5. 若首尾两端也在 tolerance 内，则丢弃重复的尾点，得到闭合环。
-//
-// 注意：若输入曲线并不能全部连成单一环(存在断裂或多个独立环)，
-// 本函数只返回从初始曲线出发能连通的那一条链。
-func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
-	cleaned := make([][]Coords, 0, len(curves))
-	for _, c := range curves {
-		if d := dedupConsecutive(c, tolerance); len(d) > 0 {
-			cleaned = append(cleaned, d)
+// 实现要点(相对朴素 DDA 的两处零分配优化)：
+//   - 整数 cell 步进(沿主轴逐格)，不做浮点过采样，步数 = 主轴 cell 跨度 + 1；
+//   - 用 g.seenGen 代次戳去重节点，避免 per-segment 分配 map；每条线段 curGen++
+//     即完成 O(1) 重置。同一 cell 被邻域重复覆盖时，节点靠 seenGen 跳过，不重复投影。
+func (g *snapGrid) segNodesIndexed(a, b Coords, tolerance float64) []int {
+	xa, ya := EncodeCoords(a.Lat, a.Lng)
+	xb, yb := EncodeCoords(b.Lat, b.Lng)
+	cxa, cya := int(xa>>g.shift), int(ya>>g.shift)
+	cxb, cyb := int(xb>>g.shift), int(yb>>g.shift)
+
+	g.curGen++
+	gen := g.curGen
+	cand := make([]nodeOnSeg, 0, 8)
+
+	addCell := func(cx, cy int) {
+		for dx := -1; dx <= 1; dx++ {
+			for dy := -1; dy <= 1; dy++ {
+				ncx, ncy := cx+dx, cy+dy
+				if ncx < 0 || ncy < 0 {
+					continue
+				}
+				for _, id := range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
+					if g.seenGen[id] == gen {
+						continue // 本线段已测过该节点
+					}
+					g.seenGen[id] = gen
+					t, d := projPointSeg(a, b, g.nodes[id])
+					if d <= tolerance {
+						cand = append(cand, nodeOnSeg{id, t})
+					}
+				}
+			}
 		}
 	}
-	if len(cleaned) == 0 {
+
+	// 沿主轴(cell 跨度更大的那条轴)整数步进，minor 轴按比例取整。
+	dcx, dcy := cxb-cxa, cyb-cya
+	nx, ny := dcx, dcy
+	if nx < 0 {
+		nx = -nx
+	}
+	if ny < 0 {
+		ny = -ny
+	}
+	steps := nx
+	if ny > steps {
+		steps = ny
+	}
+	if steps == 0 {
+		addCell(cxa, cya) // 同一 cell
+		return sortSegNodes(cand)
+	}
+	for s := 0; s <= steps; s++ {
+		f := float64(s) / float64(steps)
+		cx := cxa + int(math.Round(float64(dcx)*f))
+		cy := cya + int(math.Round(float64(dcy)*f))
+		addCell(cx, cy)
+	}
+	return sortSegNodes(cand)
+}
+
+// curveNodeSeq 把一条曲线映射成节点序列：逐线段取附近节点(indexed noding)按 t
+// 排序,顺次拼接并折叠相邻相同节点。
+func curveNodeSeq(curve []Coords, g *snapGrid, tolerance float64) []int {
+	if len(curve) == 1 {
+		return nil // 单点曲线:退化处理
+	}
+	seq := make([]int, 0, len(curve))
+	for i := 0; i+1 < len(curve); i++ {
+		ids := g.segNodesIndexed(curve[i], curve[i+1], tolerance)
+		for _, id := range ids {
+			if len(seq) == 0 || seq[len(seq)-1] != id {
+				seq = append(seq, id)
+			}
+		}
+	}
+	return seq
+}
+
+// ringFromNodeSeqs 由各曲线的节点序列构建无向边集(自动去重叠)，再游走成单环。
+// 返回环上节点的代表坐标(不含重复首尾)。
+func ringFromNodeSeqs(seqs [][]int, nodes []Coords, tolerance float64) []Coords {
+	type edge struct{ a, b int }
+	edgeSet := make(map[edge]struct{})
+	adj := make(map[int][]int)
+	addEdge := func(u, v int) {
+		if u == v {
+			return
+		}
+		if u > v {
+			u, v = v, u
+		}
+		e := edge{u, v}
+		if _, ok := edgeSet[e]; ok {
+			return // 重复边(重叠段)只保留一条
+		}
+		edgeSet[e] = struct{}{}
+		adj[u] = append(adj[u], v)
+		adj[v] = append(adj[v], u)
+	}
+	for _, seq := range seqs {
+		for i := 0; i+1 < len(seq); i++ {
+			addEdge(seq[i], seq[i+1])
+		}
+	}
+	if len(edgeSet) == 0 {
+		// 没有任何边：可能是单点/单节点输入。
+		if len(nodes) > 0 {
+			return []Coords{nodes[0]}
+		}
 		return nil
 	}
 
-	used := make([]bool, len(cleaned))
-	chain := append([]Coords(nil), cleaned[0]...)
-	used[0] = true
+	// 选起点：优先度为 1 的节点(开放链)，否则任取一条边的端点。
+	start := -1
+	for n, nb := range adj {
+		if len(nb) == 1 {
+			if start == -1 || n < start {
+				start = n
+			}
+		}
+	}
+	if start == -1 {
+		for e := range edgeSet {
+			start = e.a
+			break
+		}
+	}
 
+	usedEdge := make(map[edge]bool)
+	takeEdge := func(u, v int) bool {
+		if u > v {
+			u, v = v, u
+		}
+		e := edge{u, v}
+		if usedEdge[e] {
+			return false
+		}
+		usedEdge[e] = true
+		return true
+	}
+
+	ring := make([]Coords, 0, len(nodes))
+	cur := start
+	ring = append(ring, nodes[cur])
 	for {
-		head, tail := chain[0], chain[len(chain)-1]
-		found := false
-		for i, c := range cleaned {
-			if used[i] {
-				continue
+		next := -1
+		for _, nb := range adj[cur] {
+			if takeEdge(cur, nb) {
+				next = nb
+				break
 			}
-			c0, cn := c[0], c[len(c)-1]
-			switch {
-			case distMeters(tail, c0) <= tolerance:
-				// tail 接 c 的起点：丢弃 c0(与 tail 重合)后追加到尾部
-				chain = append(chain, c[1:]...)
-			case distMeters(tail, cn) <= tolerance:
-				// tail 接 c 的终点：反转 c，丢弃其首点(原 cn)后追加
-				chain = append(chain, reverseCoords(c)[1:]...)
-			case distMeters(head, cn) <= tolerance:
-				// c 的终点接 head：丢弃 cn 后整体前置
-				chain = append(append([]Coords(nil), c[:len(c)-1]...), chain...)
-			case distMeters(head, c0) <= tolerance:
-				// c 的起点接 head：反转 c，丢弃其尾点(原 c0)后前置
-				chain = append(append([]Coords(nil), reverseCoords(c)[:len(c)-1]...), chain...)
-			default:
-				continue
-			}
-			used[i] = true
-			found = true
-			break
 		}
-		if !found {
-			break
+		if next == -1 {
+			break // 无未用边可走
 		}
+		cur = next
+		if cur == start {
+			break // 回到起点，闭环完成(不重复追加首点)
+		}
+		ring = append(ring, nodes[cur])
 	}
 
-	// 闭合：首尾重合则丢弃重复的尾点，返回不含重复首尾的环。
-	if len(chain) > 1 && distMeters(chain[0], chain[len(chain)-1]) <= tolerance {
-		chain = chain[:len(chain)-1]
+	// 闭合去重约定：首尾在 tolerance 内则丢弃重复尾点。
+	if len(ring) > 1 && distMeters(ring[0], ring[len(ring)-1]) <= tolerance {
+		ring = ring[:len(ring)-1]
 	}
-	return chain
+	return ring
+}
+
+// MergeCurves 将多条无序曲线拼接成一条闭合环，返回环上的有序顶点(方向不保证，
+// 不含重复首尾点)。结果可直接传入 AreaCoords 求面积。
+//
+// curves    : 每条曲线是一串有序坐标点(WGS84，度)；曲线间无先后顺序、方向不定。
+// tolerance : 可接受误差(米)。用于顶点聚类成节点、线段 noding 两处判定。
+//
+// 本函数用容差 snap-rounding(见文件头算法说明)，能正确处理三种情形：
+// 关节抖动、端点近似重合、以及「同一段边界被任意重采样地数字化两次」的中段重叠
+// (重叠段会被边去重消除，不会重复计入面积)。noding 的近邻查找用 geohash 网格索引，
+// 复杂度约 O(顶点数)。
+//
+// 注意：若输入曲线不能连成单一环(断裂或多个独立环)，只返回从起点能连通的那条链。
+func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
+	if len(curves) == 0 {
+		return nil
+	}
+
+	bits := tolerancePrecisionBits(tolerance)
+	g := buildSnapGrid(curves, tolerance, bits)
+	if len(g.nodes) == 0 {
+		return nil
+	}
+
+	seqs := make([][]int, 0, len(curves))
+	for _, c := range curves {
+		if seq := curveNodeSeq(c, g, tolerance); len(seq) > 0 {
+			seqs = append(seqs, seq)
+		}
+	}
+	return ringFromNodeSeqs(seqs, g.nodes, tolerance)
 }
 
 // MergeCurvesGeoInt 是 MergeCurves 的 geohash 版本。
@@ -142,169 +411,4 @@ func MergeCurvesGeoInt(curves [][]uint64, tolerance float64) []uint64 {
 		out[i] = EncodeInt(c.Lat, c.Lng)
 	}
 	return out
-}
-
-// tolerancePrecisionBits 依 tolerance(米)选一个 geohash 精度 bits(偶数，latBits==lngBits)，
-// 使每个网格 cell 的经、纬向边长都 >= tolerance——从而任意两个距离 <= tolerance 的点
-// 必定落在同一 cell 或其 8 个邻居 cell 内，9 格搜索即完备(不漏点)。
-//
-// 参考纬度取数据中 |lat| 的最大值：纬度越高 cos 越小、经向 cell 越窄，用它最保守。
-func tolerancePrecisionBits(cleaned [][]Coords, tolerance float64) uint {
-	if tolerance <= 0 {
-		return 52 // 退化输入：给一个较高精度即可
-	}
-	maxAbsLat := 0.0
-	for _, c := range cleaned {
-		for _, p := range c {
-			if a := math.Abs(p.Lat); a > maxAbsLat {
-				maxAbsLat = a
-			}
-		}
-	}
-	if maxAbsLat > 89 {
-		maxAbsLat = 89 // 防止 cos 过小导致 bits 过低
-	}
-	cosPhi := math.Cos(maxAbsLat * degToRad)
-
-	const mPerDeg = 111320.0 // 每纬度约 111.32km
-	// 单个 cell(latBits==lngBits==h)的边长(米)：
-	//   纬向 = mPerDeg * 180   / 2^h
-	//   经向 = mPerDeg * cosPhi*360 / 2^h
-	// 取较小者 >= tolerance  =>  2^h <= mPerDeg*min(180, cosPhi*360)/tolerance
-	minSpanDeg := math.Min(180.0, cosPhi*360.0)
-	ratio := mPerDeg * minSpanDeg / tolerance
-
-	h := 0
-	if ratio >= 1 {
-		h = int(math.Floor(math.Log2(ratio)))
-	}
-	if h < 1 {
-		h = 1
-	}
-	if h > 31 {
-		h = 31
-	}
-	return uint(2 * h)
-}
-
-// MergeCurvesIndexed 是 MergeCurves 的加速版本：功能与结果和 MergeCurves 一致
-// (把无序、方向不定、端点近似重合的曲线拼成一条闭合环)，但把原来对每条链端
-// O(曲线数) 的线性扫描，换成基于 geohash 网格索引的近邻查找，整体从约 O(曲线数²)
-// 降到约 O(曲线数)。
-//
-// 算法：
-//  1. 每条曲线先做内部去重(dedupConsecutive)。
-//  2. 只把每条曲线的两个「端点」编码成 geohash 网格 cell 建索引——拼接只发生在
-//     端点处，曲线内部点不可能成为衔接点，无需入索引(这也是相对“索引所有点”
-//     更省的地方)。网格精度由 tolerancePrecisionBits 依 tolerance 选取，保证
-//     cell 边长 >= tolerance。
-//  3. 拼接时，对链的 tail / head 各取「所在 cell + 8 邻居(NeighborsInt)」共 9 个
-//     cell，从索引取候选端点，再用 distMeters 精确校验 <= tolerance 才衔接。
-//  4. 其余逻辑(按需反转、衔接处去重、末尾闭合)与 MergeCurves 相同。
-//
-// 结果与 MergeCurves 表示同一条环(顶点序列可能因遍历顺序不同而整体旋转或反向)。
-func MergeCurvesIndexed(curves [][]Coords, tolerance float64) []Coords {
-	cleaned := make([][]Coords, 0, len(curves))
-	for _, c := range curves {
-		if d := dedupConsecutive(c, tolerance); len(d) > 0 {
-			cleaned = append(cleaned, d)
-		}
-	}
-	if len(cleaned) == 0 {
-		return nil
-	}
-	if len(cleaned) == 1 {
-		chain := append([]Coords(nil), cleaned[0]...)
-		if len(chain) > 1 && distMeters(chain[0], chain[len(chain)-1]) <= tolerance {
-			chain = chain[:len(chain)-1]
-		}
-		return chain
-	}
-
-	bits := tolerancePrecisionBits(cleaned, tolerance)
-	mask := uint64(math.MaxUint64) << (64 - bits)
-	cellOf := func(p Coords) uint64 {
-		return EncodeInt(p.Lat, p.Lng) & mask
-	}
-
-	// 端点索引：cell -> 落在该 cell 的端点引用列表。
-	type endRef struct {
-		curve int  // 曲线下标
-		tail  bool // false=起点 c[0]；true=终点 c[len-1]
-	}
-	index := make(map[uint64][]endRef, len(cleaned)*2)
-	for ci, c := range cleaned {
-		index[cellOf(c[0])] = append(index[cellOf(c[0])], endRef{ci, false})
-		last := len(c) - 1
-		index[cellOf(c[last])] = append(index[cellOf(c[last])], endRef{ci, true})
-	}
-
-	used := make([]bool, len(cleaned))
-
-	// findNear 在 query 点附近的 9 个 cell 中，找一条未使用曲线、且距离 <= tolerance
-	// 的端点。返回曲线下标、该端点是否为终点、是否找到。
-	findNear := func(query Coords) (ci int, tail bool, ok bool) {
-		check := func(cell uint64) (int, bool, bool) {
-			for _, ref := range index[cell] {
-				if used[ref.curve] {
-					continue
-				}
-				c := cleaned[ref.curve]
-				ep := c[0]
-				if ref.tail {
-					ep = c[len(c)-1]
-				}
-				if distMeters(query, ep) <= tolerance {
-					return ref.curve, ref.tail, true
-				}
-			}
-			return 0, false, false
-		}
-
-		base := cellOf(query)
-		if ci, tail, ok = check(base); ok { // 先查自身 cell
-			return
-		}
-		for _, cell := range NeighborsInt(base, bits) { // 再查 8 邻居
-			if ci, tail, ok = check(cell); ok {
-				return
-			}
-		}
-		return 0, false, false
-	}
-
-	chain := append([]Coords(nil), cleaned[0]...)
-	used[0] = true
-
-	for {
-		// 先尝试在尾部衔接。
-		if ci, isTail, ok := findNear(chain[len(chain)-1]); ok {
-			c := cleaned[ci]
-			if !isTail {
-				chain = append(chain, c[1:]...) // tail 接 c 起点：丢弃 c0
-			} else {
-				chain = append(chain, reverseCoords(c)[1:]...) // tail 接 c 终点：反转后丢弃原 cn
-			}
-			used[ci] = true
-			continue
-		}
-		// 再尝试在头部衔接。
-		if ci, isTail, ok := findNear(chain[0]); ok {
-			c := cleaned[ci]
-			if isTail {
-				chain = append(append([]Coords(nil), c[:len(c)-1]...), chain...) // c 终点接 head：丢弃 cn 后前置
-			} else {
-				chain = append(append([]Coords(nil), reverseCoords(c)[:len(c)-1]...), chain...) // c 起点接 head：反转后丢弃原 c0 前置
-			}
-			used[ci] = true
-			continue
-		}
-		break
-	}
-
-	// 闭合：首尾重合则丢弃重复的尾点。
-	if len(chain) > 1 && distMeters(chain[0], chain[len(chain)-1]) <= tolerance {
-		chain = chain[:len(chain)-1]
-	}
-	return chain
 }
