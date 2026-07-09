@@ -103,3 +103,41 @@ func BenchmarkMergeCurves(b *testing.B) {
 		_ = MergeCurves(curves, tolerance)
 	}
 }
+
+// BenchmarkMergeCurvesVs2 对比两种实现在「相邻曲线共享端点(带亚容差抖动)」这类
+// 干净数据上的耗时：
+//   - MergeCurves  : snap-rounding(顶点聚类 + 逐段 DDA noding + 边去重 + 环游走)
+//   - MergeCurves2 : 端点链式拼接(只索引端点、双向延伸)
+//
+// 两者在这类数据上结果一致(都还原同一环)，但 MergeCurves2 不做逐点 noding，
+// 预期明显更快。曲线数取 50/100/200/500 档，每条 1024 点。
+func BenchmarkMergeCurvesVs2(b *testing.B) {
+	const (
+		ptsPerCurve = 1024
+		tolerance   = 1.0
+		radiusDeg   = 1.0
+		jitterDeg   = 1.5e-6
+	)
+	for _, nCurves := range []int{50, 100, 200, 500} {
+		curves := buildScrambledRingCurves(nCurves, ptsPerCurve, radiusDeg, jitterDeg, 42)
+
+		// 一致性校验(计时外)：两者顶点数应相同。
+		r1 := MergeCurves(curves, tolerance)
+		r2 := MergeCurves2(curves, tolerance)
+		b.Logf("[%d 条 ×%d 点] 环顶点: MergeCurves=%d MergeCurves2=%d",
+			nCurves, ptsPerCurve, len(r1), len(r2))
+
+		b.Run("MergeCurves/"+itoa(nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = MergeCurves(curves, tolerance)
+			}
+		})
+		b.Run("MergeCurves2/"+itoa(nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = MergeCurves2(curves, tolerance)
+			}
+		})
+	}
+}

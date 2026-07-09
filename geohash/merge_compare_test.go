@@ -27,8 +27,11 @@ import (
 // nCurves 段曲线,并故意:打乱段的顺序、随机反转部分段的方向、在关节处注入一个
 // 小于 jitterDeg 的微小偏移(模拟真实数据里各图幅端点因精度不完全重合的情况)。
 //
-// 返回的曲线集合恰好覆盖整条边界且相邻段共享端点,适合喂给 MergeCurves。
-func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg float64) [][]Coords {
+// 每条边会被密集重采样，使相邻点间距 < tolerance/2——满足 MergeCurves2 的「密集点
+// 曲线」前提(粘接点靠点距离在网格里反查)。denseStepM 是重采样步长(米)。
+//
+// 返回的曲线集合恰好覆盖整条边界且相邻段共享端点,适合喂给 MergeCurves / MergeCurves2。
+func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg, denseStepM float64) [][]Coords {
 	n := len(ring)
 	// 闭合边界的有向顶点序列(把首点再接到末尾,形成 n 条边、n+1 个点)。
 	closed := make([]Coords, 0, n+1)
@@ -40,6 +43,18 @@ func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg float64)
 	base := edges / nCurves
 	rem := edges % nCurves
 
+	// densifyEdge 在 [u,v] 上按 denseStepM 步长插值(含 u，不含 v)，保证相邻点间距 < step。
+	densifyEdge := func(u, v Coords) []Coords {
+		d := distMeters(u, v)
+		steps := int(d/denseStepM) + 1
+		out := make([]Coords, 0, steps)
+		for k := 0; k < steps; k++ {
+			f := float64(k) / float64(steps)
+			out = append(out, Coords{Lat: u.Lat + (v.Lat-u.Lat)*f, Lng: u.Lng + (v.Lng-u.Lng)*f})
+		}
+		return out
+	}
+
 	segments := make([][]Coords, 0, nCurves)
 	idx := 0
 	for s := range nCurves {
@@ -47,10 +62,12 @@ func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg float64)
 		if s < rem {
 			cnt++ // 前 rem 段各多分一条边
 		}
-		seg := make([]Coords, 0, cnt+1)
-		for k := 0; k <= cnt; k++ {
-			seg = append(seg, closed[idx+k])
+		// 密集重采样该段包含的 cnt 条边，最后补上段终点。
+		seg := make([]Coords, 0, cnt*8+1)
+		for k := 0; k < cnt; k++ {
+			seg = append(seg, densifyEdge(closed[idx+k], closed[idx+k+1])...)
 		}
+		seg = append(seg, closed[idx+cnt]) // 段终点
 		idx += cnt
 		segments = append(segments, seg)
 	}
@@ -143,13 +160,15 @@ func TestMergeCurves_CompareAreaWithLibraries(t *testing.T) {
 			// 关节抖动约 0.5m(≈ 4.5e-6 度),容差取 5m 以覆盖抖动。
 			const jitterDeg = 4.5e-6
 			const tolerance = 5.0
+			const denseStepM = 2.0 // < tolerance/2,满足 MergeCurves2 密集点前提
 
-			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg)
+			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg, denseStepM)
 			merged := MergeCurves(curves, tolerance)
 
-			// 顶点数应还原为原环顶点数(拓扑一致)。
-			if len(merged) != len(tc.ring) {
-				t.Fatalf("重建环顶点数=%d, 期望=%d, 拼接拓扑不一致: %+v",
+			// MergeCurves 用 snap-rounding 聚类密集点,合并后顶点数会明显少于密集
+			// 输入(tolerance 内的点塌成单节点)。跳过顶点数检查,只校验面积拓扑。
+			if len(merged) < len(tc.ring) {
+				t.Fatalf("重建环顶点数=%d < 原环=%d, 拼接拓扑断裂: %+v",
 					len(merged), len(tc.ring), merged)
 			}
 
@@ -193,14 +212,14 @@ func TestMergeCurves_CompareAreaWithLibraries(t *testing.T) {
 			// 关节抖动约 0.5m(≈ 4.5e-6 度),容差取 5m 以覆盖抖动。
 			const jitterDeg = 4.5e-6
 			const tolerance = 5.0
+			const denseStepM = 2.0 // < tolerance/2，满足 MergeCurves2 的密集点前提
 
-			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg)
+			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg, denseStepM)
 			merged := MergeCurves2(curves, tolerance)
 
-			// 顶点数应还原为原环顶点数(拓扑一致)。
-			if len(merged) != len(tc.ring) {
-				t.Fatalf("重建环顶点数=%d, 期望=%d, 拼接拓扑不一致: %+v",
-					len(merged), len(tc.ring), merged)
+			// 密集重采样后重建环含大量顶点，不再等于原环顶点数；用面积校验拓扑正确性。
+			if len(merged) < len(tc.ring) {
+				t.Fatalf("重建环顶点数=%d, 过少(至少应有原环 %d 个拐点)", len(merged), len(tc.ring))
 			}
 
 			// 三种面积:本包 / orb / 椭球真值,均基于重建环。

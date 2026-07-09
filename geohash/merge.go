@@ -138,8 +138,10 @@ func (g *CurvePointIdx) cellXY(p Coords) (cx, cy uint32) {
 	return x >> g.shift, y >> g.shift
 }
 
-// findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance 的已有节点。
-func (g *CurvePointIdx) findNode(p Coords, tolerance float64) (point CurvePoint, ok bool) {
+// findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance、且不属于
+// excludeCurve 的已索引点。excludeCurve 用于排除「p 自己所在的那条曲线」——否则
+// 查询会先命中自身曲线的点，找不到真正的跨曲线粘接点。传 -1 表示不排除任何曲线。
+func (g *CurvePointIdx) findNode(p Coords, tolerance float64, excludeCurve int) (point CurvePoint, ok bool) {
 	cx, cy := g.cellXY(p)
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
@@ -147,10 +149,12 @@ func (g *CurvePointIdx) findNode(p Coords, tolerance float64) (point CurvePoint,
 			if ncx < 0 || ncy < 0 {
 				continue
 			}
-			for _, point = range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
-				if distMeters(p, point.Coords) <= tolerance {
-					ok = true
-					return
+			for _, q := range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
+				if q.CurveIdx == excludeCurve {
+					continue
+				}
+				if distMeters(p, q.Coords) <= tolerance {
+					return q, true
 				}
 			}
 		}
@@ -177,31 +181,41 @@ func (g *snapGrid) findNode(p Coords, tolerance float64) (id int, ok bool) {
 	return 0, false
 }
 
-// buildSnapGrid 把所有(已内部去重的)曲线顶点聚类成节点：距离 <= tolerance/2 的
-// 顶点归并为同一节点。返回节点集合与网格索引。baseline / indexed 共用同一套
-// 聚类，保证两者节点一致，结果可逐点比对。
+// buildCurvePointIdx 把曲线上的点(按 tolerance/2 步长稀化后)建入 geohash 网格索引。
+//
+// 前提:输入曲线是「密集点曲线」，相邻点间距 < tolerance/2。粘接点可能出现在曲线
+// 中段任意位置(不限于端点)，所以要索引整条曲线的点(而非只端点)，供 findNode 反查。
+//
+// 稀化规则:沿曲线遍历，只在「当前点与上一个已索引点距离 >= tolerance/2」时存入。
+// 用 tolerance/2(而非 tolerance)作步长，保证索引点沿曲线间距 < tolerance——这样另一条
+// 曲线上任意与本曲线重合(< tolerance)的查询点，都能在 tolerance 内命中本曲线的某个
+// 索引点(步长放大到 tolerance 则可能漏检)。每个点存它自己的坐标/cell/下标。
 func buildCurvePointIdx(curves [][]Coords, tolerance float64, bits uint) *CurvePointIdx {
 	g := &CurvePointIdx{
 		shift:     32 - bits/2,
 		cellIndex: make(map[uint64][]CurvePoint),
 	}
-	tolerance = tolerance / 2
+	step := tolerance / 2
+	add := func(p Coords, curveIdx, pointIdx int) {
+		cx, cy := g.cellXY(p)
+		key := cellXYKey(cx, cy)
+		g.cellIndex[key] = append(g.cellIndex[key], CurvePoint{Coords: p, CurveIdx: curveIdx, PointIdx: pointIdx})
+	}
 	for id, c := range curves {
-		lastCoords := c[0]
-		for i, p := range c {
-			if i == 0 || distMeters(lastCoords, p) < tolerance {
-				continue
+		if len(c) == 0 {
+			continue
+		}
+		add(c[0], id, 0) // 首点必存
+		lastStored := c[0]
+		for i := 1; i < len(c); i++ {
+			if distMeters(lastStored, c[i]) >= step {
+				add(c[i], id, i)
+				lastStored = c[i]
 			}
-			// 存入上一个点， 如果当前曲线只有一个距离大于 tolerance / 2 的点，则不存
-			cx, cy := g.cellXY(lastCoords)
-			key := cellXYKey(cx, cy)
-			g.cellIndex[key] = append(g.cellIndex[key], CurvePoint{Coords: p, CurveIdx: id, PointIdx: i - 1})
-			if i == len(c)-1 {
-				cx, cy := g.cellXY(p)
-				key := cellXYKey(cx, cy)
-				g.cellIndex[key] = append(g.cellIndex[key], CurvePoint{Coords: p, CurveIdx: id, PointIdx: i})
-			}
-			lastCoords = p
+		}
+		// 末点必存(端点是最常见的粘接点，且末点可能因步长被跳过)。
+		if last := len(c) - 1; last > 0 && lastStored != c[last] {
+			add(c[last], id, last)
 		}
 	}
 	return g
@@ -454,96 +468,153 @@ func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
 	return ringFromNodeSeqs(seqs, g.nodes, tolerance)
 }
 
-func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
+// MergeCurves2 将多条无序曲线拼接成一条闭合环，返回环上有序顶点(不含重复首尾点)。
+//
+// 前提:输入是「密集点曲线」(相邻点间距 < tolerance/2)，曲线间通过粘接点连接，粘接点
+// 可能出现在曲线的端点或中段任意位置。本函数沿曲线逐点查找与其他曲线重合(< tolerance)
+// 的粘接点，在粘接点处切开当前曲线、接上另一条曲线，直到回到起点形成闭合环。
+//
+// 与 MergeCurves(snap-rounding)的区别:MergeCurves 对所有顶点做 noding(沿线段 DDA)，
+// 能处理任意重采样的中段重叠。本函数只查索引点(稀化到 ~tolerance/2 间距)，更快但只能
+// 处理「粘接点对齐」的干净数据(不处理任意重采样的重叠段)。
+//
+// 若输入曲线不能全部连成单一闭合环(有曲线用不上、或首尾不闭合)，返回 nil。
+func MergeCurves2(curves [][]Coords, tolerance float64) []Coords {
 	if len(curves) == 0 {
 		return nil
 	}
 
-	bits := tolerancePrecisionBits(tolerance) // 通过查表获取geohash索引的精度
+	bits := tolerancePrecisionBits(tolerance)
 	g := buildCurvePointIdx(curves, tolerance, bits)
-	if len(g.cellIndex) <= 2 {
+	if len(g.cellIndex) == 0 {
 		return nil
 	}
 
-	curvesScanned := make([]bool, len(curves)) // 标志已扫描过的曲线, 避免循环重复扫描造成无法退出
-	rootPointIdx := 0
-	currentCurbePoint, ok := g.findNode(curves[0][rootPointIdx], tolerance) // 从头开始找
-	if !ok {
-		c := curves[0]
-		rootPointIdx = len(c) - 1
-		currentCurbePoint, ok = g.findNode(c[rootPointIdx], tolerance) // 从头开始找
-		if !ok {
-			for i, p := range c[1 : len(c)-1] {
-				currentCurbePoint, ok = g.findNode(p, tolerance)
-				if ok {
-					rootPointIdx = i + 1
-					break
-				}
-			}
-			if !ok {
-				return nil
-			}
+	curvesScanned := make([]bool, len(curves))
+	var closeCrv []Coords
+
+	// 从 curve[0] 的某个端点开始，找一个能匹配到其他曲线的粘接点作根。
+	// 优先尝试起点、终点、实在不行再扫中段。
+	rootCurveIdx := 0
+	rootPointIdx := -1
+	currentPoint := CurvePoint{CurveIdx: 0}
+
+	for _, idx := range []int{0, len(curves[0]) - 1} {
+		if cp, ok := g.findNode(curves[0][idx], tolerance, 0); ok {
+			rootPointIdx = idx
+			currentPoint = cp
+			break
 		}
 	}
+	if rootPointIdx < 0 {
+		// 端点都未匹配，扫中段(跳过首尾)
+		for i := 1; i < len(curves[0])-1; i++ {
+			if cp, ok := g.findNode(curves[0][i], tolerance, 0); ok {
+				rootPointIdx = i
+				currentPoint = cp
+				break
+			}
+		}
+		if rootPointIdx < 0 {
+			return nil // curve[0] 完全孤立
+		}
+	}
+	curvesScanned[0] = true // curve[0] 作为根已被用上
 
-OUT:
+	// 主循环:沿当前曲线走到粘接点，切换到连接的曲线，直到回到 curve[0]。
 	for {
-		// 回头了，圆满一圈
-		if currentCurbePoint.CurveIdx == 0 {
-			if rootPointIdx < currentCurbePoint.PointIdx {
-				for i := currentCurbePoint.PointIdx - 1; i >= rootPointIdx; i-- {
-					closeCrv = append(closeCrv, curves[0][i])
+		ci := currentPoint.CurveIdx
+		if ci == rootCurveIdx && len(closeCrv) > 0 {
+			// 回到起点曲线，闭环。把起点曲线剩余段接上。
+			c0 := curves[rootCurveIdx]
+			if rootPointIdx < currentPoint.PointIdx {
+				// 剩余段:[rootPointIdx, currentPoint.PointIdx] 逆序
+				for i := currentPoint.PointIdx; i >= rootPointIdx; i-- {
+					closeCrv = append(closeCrv, c0[i])
 				}
 			} else {
-				closeCrv = append(closeCrv, curves[0][currentCurbePoint.PointIdx+1:rootPointIdx+1]...)
+				// 剩余段:[currentPoint.PointIdx, rootPointIdx] 顺序
+				closeCrv = append(closeCrv, c0[currentPoint.PointIdx:rootPointIdx+1]...)
 			}
 			break
 		}
-		curvesScanned[currentCurbePoint.CurveIdx] = true
-		currentCurve := curves[currentCurbePoint.CurveIdx]
 
-		head := currentCurve[0]
-		if distMeters(head, currentCurbePoint.Coords) > tolerance {
-			nextCurbePoint, ok := g.findNode(head, tolerance)
-			if ok && !curvesScanned[nextCurbePoint.CurveIdx] {
-				for i := currentCurbePoint.PointIdx - 1; i >= 0; i-- {
+		if curvesScanned[ci] {
+			return nil // 曲线已扫过，说明死循环或拓扑断裂
+		}
+		curvesScanned[ci] = true
+		currentCurve := curves[ci]
+
+		// 沿当前曲线找下一个粘接点(head、tail、或中段)。
+		var nextPoint CurvePoint
+		var foundNext bool
+
+		// 尝试 head(c[0])。允许跳回根曲线以闭环，其余曲线要求未扫过。
+		canGo := func(target int) bool { return target == rootCurveIdx || !curvesScanned[target] }
+		if distMeters(currentCurve[0], currentPoint.Coords) > tolerance {
+			if cp, ok := g.findNode(currentCurve[0], tolerance, ci); ok && canGo(cp.CurveIdx) {
+				// 从 currentPoint.PointIdx 逆序走到 head
+				for i := currentPoint.PointIdx; i >= 0; i-- {
 					closeCrv = append(closeCrv, currentCurve[i])
 				}
-				currentCurbePoint = nextCurbePoint
-				continue
+				nextPoint = cp
+				foundNext = true
 			}
-		}
-		tail := currentCurve[len(currentCurve)-1]
-		if distMeters(tail, currentCurbePoint.Coords) > tolerance {
-			nextCurbePoint, ok := g.findNode(tail, tolerance)
-			if ok && !curvesScanned[nextCurbePoint.CurveIdx] {
-				closeCrv = append(closeCrv, currentCurve[currentCurbePoint.PointIdx+1:]...)
-				continue
-			}
-			currentCurbePoint = nextCurbePoint
 		}
 
-		// 兜底: 分两头，从头还是从尾开始？
-		for j, p := range currentCurve[1 : len(currentCurve)-1] {
-			if distMeters(p, currentCurbePoint.Coords) > tolerance {
-				nextCurbePoint, ok := g.findNode(p, tolerance)
-				if ok && !curvesScanned[nextCurbePoint.CurveIdx] {
-					j++
-					if j < currentCurbePoint.PointIdx {
-						for i := currentCurbePoint.PointIdx - 1; i >= j; i-- {
-							closeCrv = append(closeCrv, currentCurve[i])
-						}
-					} else {
-						closeCrv = append(closeCrv, currentCurve[currentCurbePoint.PointIdx+1:j+1]...)
-					}
-					currentCurbePoint = nextCurbePoint
-					continue OUT
+		if !foundNext {
+			// 尝试 tail(c[len-1])
+			tailIdx := len(currentCurve) - 1
+			if distMeters(currentCurve[tailIdx], currentPoint.Coords) > tolerance {
+				if cp, ok := g.findNode(currentCurve[tailIdx], tolerance, ci); ok && canGo(cp.CurveIdx) {
+					// 从 currentPoint.PointIdx 顺序走到 tail
+					closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:tailIdx+1]...)
+					nextPoint = cp
+					foundNext = true
 				}
 			}
 		}
+
+		if !foundNext {
+			// 兜底:扫中段(跳过首尾)，找第一个能匹配其他未扫曲线的点
+			for i := 1; i < len(currentCurve)-1; i++ {
+				if distMeters(currentCurve[i], currentPoint.Coords) <= tolerance {
+					continue // 还在当前粘接点附近，跳过
+				}
+				if cp, ok := g.findNode(currentCurve[i], tolerance, ci); ok && canGo(cp.CurveIdx) {
+					// 从 currentPoint.PointIdx 走到 i(方向取决于相对位置)
+					if i < currentPoint.PointIdx {
+						for j := currentPoint.PointIdx; j >= i; j-- {
+							closeCrv = append(closeCrv, currentCurve[j])
+						}
+					} else {
+						closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:i+1]...)
+					}
+					nextPoint = cp
+					foundNext = true
+					break
+				}
+			}
+		}
+
+		if !foundNext {
+			return nil // 当前曲线走不通
+		}
+		currentPoint = nextPoint
+	}
+
+	// 所有曲线都必须被用上
+	for _, scanned := range curvesScanned {
+		if !scanned {
+			return nil
+		}
+	}
+
+	// 首尾必须闭合
+	if len(closeCrv) < 4 || distMeters(closeCrv[0], closeCrv[len(closeCrv)-1]) > tolerance {
 		return nil
 	}
-	return
+	return closeCrv[:len(closeCrv)-1] // 丢弃与首点重合的尾点
 }
 
 // MergeCurvesGeoInt 是 MergeCurves 的 geohash 版本。

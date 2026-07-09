@@ -35,7 +35,9 @@
       "Bash(rm -f geos/run_bench.sh geos/run_build.sh geos/run_test.sh run_wsl.sh)",
       "Bash(ls geos/*.sh)",
       "Bash(git mv *)",
-      "Bash(go vet *)"
+      "Bash(go vet *)",
+      "Bash(echo \"---exit:$?---\")",
+      "Bash(echo \"build exit:$?\")"
     ]
   }
 }

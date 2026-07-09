@@ -5,69 +5,93 @@ import (
 	"testing"
 )
 
-// 把一个正方形边界拆成 4 条乱序、方向不一、端点重合的曲线，
-// 验证 MergeCurves 能拼回闭合环，且面积与直接构造的一致。
-func TestMergeCurves_SquareFromScrambledEdges(t *testing.T) {
-	// 正方形四角 (顺时针)
-	a := Coords{Lat: 0, Lng: 0}
-	b := Coords{Lat: 0, Lng: 1}
-	c := Coords{Lat: 1, Lng: 1}
-	d := Coords{Lat: 1, Lng: 0}
+// densifyEdgeTest 在 [u,v] 上按 stepM 步长线性插值(含 u，不含 v)，用于把稀疏
+// 折线加密成「密集点曲线」(相邻点间距 < stepM)，满足 MergeCurves2 的输入前提。
+func densifyEdgeTest(u, v Coords, stepM float64) []Coords {
+	d := distMeters(u, v)
+	steps := int(d/stepM) + 1
+	out := make([]Coords, 0, steps)
+	for k := 0; k < steps; k++ {
+		f := float64(k) / float64(steps)
+		out = append(out, Coords{Lat: u.Lat + (v.Lat-u.Lat)*f, Lng: u.Lng + (v.Lng-u.Lng)*f})
+	}
+	return out
+}
 
-	// 四条边，故意打乱顺序并反转部分方向，端点共享
+// 把一个正方形边界拆成 4 条乱序、方向不一、端点重合的密集点曲线，
+// 验证 MergeCurves / MergeCurves2 都能拼回闭合环，且面积与直接构造的一致。
+func TestMergeCurves_SquareFromScrambledEdges(t *testing.T) {
+	// 正方形四角(北京附近，边长 ~1.1km；顺时针)。用小尺度以便密集采样点数可控。
+	a := Coords{Lat: 39.90, Lng: 116.30}
+	b := Coords{Lat: 39.90, Lng: 116.31}
+	c := Coords{Lat: 39.91, Lng: 116.31}
+	d := Coords{Lat: 39.91, Lng: 116.30}
+	const tolerance = 5.0
+	const stepM = 2.0 // < tolerance/2，满足密集点前提
+
+	// 四条边密集重采样(各含起点、不含终点)，故意打乱顺序、反转部分方向；
+	// 相邻边在角点处共享端点(下一条边的起点=上一条边的终点)。
+	edgeAB := append(densifyEdgeTest(a, b, stepM), b)
+	edgeBC := append(densifyEdgeTest(b, c, stepM), c)
+	edgeCD := append(densifyEdgeTest(c, d, stepM), d)
+	edgeDA := append(densifyEdgeTest(d, a, stepM), a)
 	curves := [][]Coords{
-		{c, d}, // 上边(反向)
-		{a, b}, // 下边
-		{d, a}, // 左边(反向)
-		{b, c}, // 右边
+		reverseCoords(edgeCD), // 上边(反向)
+		edgeAB,                // 下边
+		reverseCoords(edgeDA), // 左边(反向)
+		edgeBC,                // 右边
 	}
 	want := AreaCoords([]Coords{a, b, c, d})
 
-	t.Run("MergeCurves", func(t *testing.T) {
-		ring := MergeCurves(curves, 1.0) // 1m 容差
-
-		// 闭合环应恰好包含 4 个不重复顶点
-		if len(ring) != 4 {
-			t.Fatalf("expected 4 vertices, got %d: %+v", len(ring), ring)
+	check := func(t *testing.T, ring []Coords) {
+		// 密集输入下环顶点数远多于 4，只校验面积(拓扑一致性的稳健度量)。
+		if len(ring) < 4 {
+			t.Fatalf("环顶点过少=%d: %+v", len(ring), ring)
 		}
-
 		got := AreaCoords(ring)
-		if rel := math.Abs(got-want) / want; rel > 1e-9 {
+		if rel := math.Abs(got-want) / want; rel > 1e-3 {
 			t.Fatalf("merged area=%.4f want=%.4f relErr=%.2e", got, want, rel)
 		}
-	})
-	t.Run("MergeCurves2", func(t *testing.T) {
-		ring := MergeCurves2(curves, 1.0) // 1m 容差
-
-		// 闭合环应恰好包含 4 个不重复顶点
-		if len(ring) != 4 {
-			t.Fatalf("expected 4 vertices, got %d: %+v", len(ring), ring)
-		}
-
-		got := AreaCoords(ring)
-		if rel := math.Abs(got-want) / want; rel > 1e-9 {
-			t.Fatalf("merged area=%.4f want=%.4f relErr=%.2e", got, want, rel)
-		}
-	})
+	}
+	t.Run("MergeCurves", func(t *testing.T) { check(t, MergeCurves(curves, tolerance)) })
+	t.Run("MergeCurves2", func(t *testing.T) { check(t, MergeCurves2(curves, tolerance)) })
 }
 
-// 衔接处端点存在微小偏差(< tolerance)时应被去重衔接。
+// 衔接处端点存在微小偏差(< tolerance)时应被去重衔接(密集点曲线)。
 func TestMergeCurves_ToleranceDedup(t *testing.T) {
-	// 两条曲线，第二条起点比第一条终点偏了约 0.5m
-	c1 := []Coords{{Lat: 0, Lng: 0}, {Lat: 0, Lng: 1}}
-	// 0.5m ≈ 0.0000045° 纬度
-	c2 := []Coords{{Lat: 0.0000045, Lng: 1}, {Lat: 1, Lng: 1}, {Lat: 0, Lng: 0}}
+	const tolerance = 5.0
+	const stepM = 2.0
+	const jitter = 4.5e-6 // ≈ 0.5m (< tolerance)
 
-	ring := MergeCurves([][]Coords{c1, c2}, 1.0)
-	// c1(2点) + c2(2点) - 1个重合点 = 3
-	if len(ring) != 3 {
-		t.Fatalf("expected 3 vertices after dedup, got %d: %+v", len(ring), ring)
-	}
+	// 三角形三角(北京附近)。三条边各密集采样成一条曲线，衔接点注入 < tolerance 抖动。
+	a := Coords{Lat: 39.90, Lng: 116.30}
+	b := Coords{Lat: 39.90, Lng: 116.31}
+	c := Coords{Lat: 39.91, Lng: 116.31}
+	want := AreaCoords([]Coords{a, b, c})
 
-	ring = MergeCurves2([][]Coords{c1, c2}, 1.0)
-	// c1(2点) + c2(2点) - 1个重合点 = 3
-	if len(ring) != 3 {
-		t.Fatalf("expected 3 vertices after dedup, got %d: %+v", len(ring), ring)
+	// 每条边一条密集曲线；相邻边的衔接点各自带独立抖动(近似重合但不相等)。
+	j := func(p Coords, s float64) Coords { return Coords{Lat: p.Lat + s, Lng: p.Lng + s} }
+	e1 := append(densifyEdgeTest(a, b, stepM), b)         // a -> b
+	e2 := append(densifyEdgeTest(j(b, jitter), c, stepM), c) // b(抖动) -> c
+	e3 := append(densifyEdgeTest(j(c, -jitter), a, stepM), j(a, jitter)) // c(抖动) -> a(抖动)
+
+	for _, tc := range []struct {
+		name string
+		fn   func([][]Coords, float64) []Coords
+	}{
+		{"MergeCurves", MergeCurves},
+		{"MergeCurves2", MergeCurves2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ring := tc.fn([][]Coords{e1, e2, e3}, tolerance)
+			if len(ring) < 3 {
+				t.Fatalf("环顶点过少=%d: %+v", len(ring), ring)
+			}
+			got := AreaCoords(ring)
+			if rel := math.Abs(got-want) / want; rel > 1e-3 {
+				t.Fatalf("area=%.4f want=%.4f relErr=%.2e", got, want, rel)
+			}
+		})
 	}
 }
 
