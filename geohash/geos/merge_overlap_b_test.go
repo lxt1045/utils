@@ -86,8 +86,10 @@ func geosMergeRing(curves [][]geohash.Coords, tolerance float64) (ring []geohash
 // 50/100/200/500 四档，即总点数约 5万/10万/20万/51万。两种实现都应把重叠段塌成
 // 一条、还原出同一条环，面积与「无重叠原始边界」一致。
 //
-// 两方：
+// 三方：
 //   - MergeCurves               : 本包实现(geohash 网格 snap-rounding noding，近 O(V))
+//   - MergeCurves2              : 本包快速实现(仅适用密集点+粘接点对齐；本数据集超出其
+//                                 适用范围，一并测以观察其在不适配场景下的表现)
 //   - GEOS UnaryUnion+LineMerge : C 库 noding 参照(计时含 WKT 往返)
 //
 // 每档公共部分(计时外)：构造数据、跑一遍各实现求面积、算相对误差并打印。
@@ -96,7 +98,7 @@ func BenchmarkMergeOverlap(b *testing.B) {
 		ptsPerCurve = 1024
 		nOverlap    = 200 // 固定 200 个重合点
 		tolerance   = 1.0
-		radiusDeg   = 1.0
+		radiusDeg   = 0.01 // 半径 ~1.11km、周长 ~7km；相邻点间距随曲线数在 ~0.14m(50 条)到 ~0.014m(500 条)间，全档 < tolerance/2 = 0.5m，满足 MergeCurves2 密集点前提
 	)
 
 	for _, nCurves := range []int{50, 100, 200, 500} {
@@ -118,15 +120,28 @@ func BenchmarkMergeOverlap(b *testing.B) {
 		areaMine := geohash.AreaCoords(ringMine)
 		areaGEOS := geohash.AreaCoords(ringGEOS)
 
+		// MergeCurves2 前提是「密集点曲线 + 粘接点对齐」。本数据集已调密集(相邻点
+		// ~0.14~0.014m < tolerance/2)，满足密集前提；但仍含中段重叠(addOverlapPath 追加的
+		// 精确复制曲线)，多出的重叠曲线无法纳入单环游走——预期仍还原不出正确环。
+		// 一并计入对比，如实反映其在「密集但含重叠」场景下的边界行为。
+		ringMine2 := geohash.MergeCurves2(overlap, tolerance)
+		areaMine2 := geohash.AreaCoords(ringMine2)
+
 		relErr := func(a float64) float64 { return math.Abs(a-wantArea) / wantArea }
-		b.Logf("[%d 条 ×%d 点 +%d 重合] 环顶点: 真值=%d MergeCurves=%d GEOS=%d(%s); 面积误差: MergeCurves=%.3e GEOS=%.3e",
-			nCurves, ptsPerCurve, nOverlap, len(baseRing), len(ringMine), len(ringGEOS), geosType,
-			relErr(areaMine), relErr(areaGEOS))
+		b.Logf("[%d 条 ×%d 点 +%d 重合] 环顶点: 真值=%d MergeCurves=%d MergeCurves2=%d GEOS=%d(%s); 面积误差: MergeCurves=%.3e MergeCurves2=%.3e GEOS=%.3e",
+			nCurves, ptsPerCurve, nOverlap, len(baseRing), len(ringMine), len(ringMine2), len(ringGEOS), geosType,
+			relErr(areaMine), relErr(areaMine2), relErr(areaGEOS))
 
 		b.Run(fmt.Sprintf("MergeCurves/%d", nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				_ = geohash.MergeCurves(overlap, tolerance)
+			}
+		})
+		b.Run(fmt.Sprintf("MergeCurves2/%d", nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = geohash.MergeCurves2(overlap, tolerance)
 			}
 		})
 		b.Run(fmt.Sprintf("GEOS/%d", nCurves), func(b *testing.B) {

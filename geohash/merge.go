@@ -138,10 +138,14 @@ func (g *CurvePointIdx) cellXY(p Coords) (cx, cy uint32) {
 	return x >> g.shift, y >> g.shift
 }
 
-// findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance、且不属于
-// excludeCurve 的已索引点。excludeCurve 用于排除「p 自己所在的那条曲线」——否则
-// 查询会先命中自身曲线的点，找不到真正的跨曲线粘接点。传 -1 表示不排除任何曲线。
-func (g *CurvePointIdx) findNode(p Coords, tolerance float64, excludeCurve int) (point CurvePoint, ok bool) {
+// findNode 在 p 所在 cell 及其 8 邻居中，找一个距离 <= tolerance、且所属曲线
+// 尚未被使用(curvesScanned[CurveIdx]==false)的已索引点。
+//
+// 用 curvesScanned 而非单个 excludeCurve：不仅排除「p 自己所在的曲线」，还排除
+// 所有已消费的曲线。这样能正确处理「同一段边界被数字化两次」的重叠——一条曲线被
+// 走过后即标记 scanned，其重复副本(或已用过的邻接曲线)的点会被跳过，findNode 会
+// 在同一 cell 里继续扫描，返回真正未用的粘接曲线，而不是停在一个已用曲线的点上。
+func (g *CurvePointIdx) findNode(p Coords, tolerance float64, curvesScanned []bool) (point CurvePoint, ok bool) {
 	cx, cy := g.cellXY(p)
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
@@ -150,7 +154,7 @@ func (g *CurvePointIdx) findNode(p Coords, tolerance float64, excludeCurve int) 
 				continue
 			}
 			for _, q := range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
-				if q.CurveIdx == excludeCurve {
+				if curvesScanned[q.CurveIdx] {
 					continue
 				}
 				if distMeters(p, q.Coords) <= tolerance {
@@ -494,6 +498,9 @@ func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
 		currentPoint  CurvePoint
 	)
 
+	// 根查找期间临时标记 root 已扫，避免 findNode 命中 curve[0] 自己的点；查完复位，
+	// 让主循环闭环时能重新匹配回 root。
+	curvesScanned[rootCurveIdx] = true
 	// 扫顺序：优先尝试终点、起点、实在不行再扫中段。; 简洁: 把复杂扫顺序写道一个循环里
 	for i, l := -1, len(curves[rootCurveIdx]); i < l-1; i++ {
 		// idx := (i + l - 1) % l
@@ -503,16 +510,16 @@ func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
 		} else if i == 0 {
 			idx = l - 1
 		}
-		if cp, ok := g.findNode(curves[rootCurveIdx][idx], tolerance, rootCurveIdx); ok {
+		if cp, ok := g.findNode(curves[rootCurveIdx][idx], tolerance, curvesScanned); ok {
 			rootPointIdx = idx
 			currentPoint = cp
 			break
 		}
 	}
+	curvesScanned[rootCurveIdx] = false // 复位：root 尚未真正走完，闭环时要能匹配回它
 	if rootPointIdx < 0 {
 		return nil // curve[0] 完全孤立
 	}
-
 	// 主循环:沿当前曲线走到粘接点，切换到连接的曲线，直到回到 curve[0]。
 	for {
 		ci := currentPoint.CurveIdx
@@ -528,7 +535,7 @@ func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
 				// 剩余段:[currentPoint.PointIdx, rootPointIdx] 顺序(含 rootPointIdx)
 				closeCrv = append(closeCrv, c0[currentPoint.PointIdx:rootPointIdx+1]...)
 			}
-			curvesScanned[rootCurveIdx] = true // curve[0] 作为根已被用上
+			curvesScanned[rootCurveIdx] = true // 闭环成功，root 也算用上，供末尾"全部用上"检查
 			break
 		}
 
@@ -553,7 +560,7 @@ func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
 			if distMeters(currentCurve[idx], currentPoint.Coords) <= tolerance {
 				continue
 			}
-			if cp, ok := g.findNode(currentCurve[idx], tolerance, ci); ok && !curvesScanned[cp.CurveIdx] {
+			if cp, ok := g.findNode(currentCurve[idx], tolerance, curvesScanned); ok {
 				// 含粘接点端点(idx)：下一条曲线会从其匹配点 cp 再走一遍，故每个关节
 				// 产生一对 near-重合点(<tolerance)。它们对 shoelace 面积贡献 ~0，却能把
 				// 真实拐点表示精确(与 GEOS 逐点一致)。最后统一丢弃一个闭合尾点。
