@@ -166,6 +166,26 @@ func TestDistShort_ErrorBudget(t *testing.T) {
 	}
 }
 
+// DistShort 超界饱和：明显 >100m 的两点应直接返回 100.0，不做精确计算。
+func TestDistShort_Saturate(t *testing.T) {
+	base := Coords{Lat: 39.90, Lng: 116.30}
+	// 纯纬度差 ~1km、纯经度差 ~1km、以及斜向 ~1km，均应饱和到 100.0。
+	for _, far := range []Coords{
+		{Lat: 39.91, Lng: 116.30},   // 北 ~1.1km
+		{Lat: 39.90, Lng: 116.312},  // 东 ~1km
+		{Lat: 39.906, Lng: 116.307}, // 斜向 ~0.8km
+	} {
+		if got := DistShort(base, far); got != distShortMaxM {
+			t.Errorf("%+v→%+v: got=%.4f, 期望饱和返回 %.1f", base, far, got, distShortMaxM)
+		}
+	}
+	// 边界内(~50m)不应饱和：返回值需 < 100 且贴近精确值。
+	near := Coords{Lat: 39.90045, Lng: 116.30}
+	if got := DistShort(base, near); got >= distShortMaxM {
+		t.Errorf("~50m 两点被误判饱和: got=%.4f", got)
+	}
+}
+
 // BenchmarkDistHaversine 对比精确版、快速近似版与近距离版的耗时。
 func BenchmarkDistHaversine(b *testing.B) {
 	p1 := Coords{Lat: 39.9042, Lng: 116.4074}

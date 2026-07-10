@@ -77,6 +77,12 @@ func DistHaversineFast(p1, p2 Coords) float64 {
 // piSq = π²，Bhaskara 余弦近似用的常量。
 const piSq = math.Pi * math.Pi
 
+// distShortMaxM 是 DistShort 的适用距离上限(米)；超过即视为「远」并饱和返回该值。
+const distShortMaxM = 100.0
+
+// distShortMaxAngle 是 100m 对应的球面角(弧度)。距离 = R·角，故角差超过它必 >100m。
+const distShortMaxAngle = distShortMaxM / earthRadiusM
+
 // DistShort 为 100m 以内的近距离两点专门优化：在 DistHaversineFast 的等距圆柱投影
 // 基础上，把唯一的 math.Cos 调用换成 Bhaskara I 余弦有理近似，去掉了 libm 调用，
 // 只剩几次乘加 + 1 次除 + 1 次 Sqrt，比 DistHaversineFast 更快。
@@ -86,7 +92,10 @@ const piSq = math.Pi * math.Pi
 // 该近似在整个纬度区间(含两极)相对误差 < 0.2%，且 100m 尺度下投影展平误差可忽略，
 // 故总误差远小于 10%。φ 由 lat·degToRad 得到，天然落在 [-π/2, π/2]，无需 clamp。
 //
-// 仅适合近距离(约 ≤100m)；更远距离请用 DistHaversineFast 或精确的 DistHaversine。
+// 超界饱和：本函数只对 ≤100m 有意义，故先用角差快速判界——一旦两点距离必然 >100m，
+// 立即返回 distShortMaxM(100.0) 作为「远」哨兵值，省掉 Sqrt。调用方若只需判断
+// 「是否在 100m 内」，可直接比较返回值是否 < 100。更远的精确距离请用
+// DistHaversineFast 或 DistHaversine。
 func DistShort(p1, p2 Coords) float64 {
 	dLat := (p2.Lat - p1.Lat) * degToRad
 	dLng := (p2.Lng - p1.Lng) * degToRad
@@ -96,9 +105,18 @@ func DistShort(p1, p2 Coords) float64 {
 	} else if dLng < -math.Pi {
 		dLng += 2 * math.Pi
 	}
+	// 南北向角差已给出距离下界(R·|dLat|)：仅凭它超界就能廉价判「远」，跳过 cos 近似。
+	if dLat > distShortMaxAngle || dLat < -distShortMaxAngle {
+		return distShortMaxM
+	}
 	phi := (p1.Lat + p2.Lat) * 0.5 * degToRad
 	phiSq := phi * phi
 	cosLat := (piSq - 4*phiSq) / (piSq + phiSq) // Bhaskara I 余弦近似
 	x := dLng * cosLat
-	return earthRadiusM * math.Sqrt(x*x+dLat*dLat)
+	// 合成角差平方超过阈值即 >100m，饱和返回，省掉 Sqrt。
+	d2 := x*x + dLat*dLat
+	if d2 > distShortMaxAngle*distShortMaxAngle {
+		return distShortMaxM
+	}
+	return earthRadiusM * math.Sqrt(d2)
 }

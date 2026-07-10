@@ -223,7 +223,7 @@ func buildCurvePointIdx(curves [][]Coords, tolerance float64, bits uint) *CurveP
 		add(c[0], id, 0) // 首点必存
 		lastStored := c[0]
 		for i := 1; i < len(c); i++ {
-			if distMeters(lastStored, c[i]) >= step {
+			if DistShort(lastStored, c[i]) >= step {
 				add(c[i], id, i)
 				lastStored = c[i]
 			}
