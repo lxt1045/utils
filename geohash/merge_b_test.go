@@ -124,8 +124,9 @@ func BenchmarkMergeCurvesVs2(b *testing.B) {
 		// 一致性校验(计时外)：两者顶点数应相同。
 		r1 := MergeCurves(curves, tolerance)
 		r2 := MergeCurves2(curves, tolerance)
-		b.Logf("[%d 条 ×%d 点] 环顶点: MergeCurves=%d MergeCurves2=%d",
-			nCurves, ptsPerCurve, len(r1), len(r2))
+		r3 := MergeCurves3(curves, tolerance)
+		b.Logf("[%d 条 ×%d 点] 环顶点: MergeCurves=%d MergeCurves2=%d MergeCurves3=%d",
+			nCurves, ptsPerCurve, len(r1), len(r2), len(r3[0].Coords))
 
 		b.Run("MergeCurves/"+itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
@@ -137,6 +138,12 @@ func BenchmarkMergeCurvesVs2(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				_ = MergeCurves2(curves, tolerance)
+			}
+		})
+		b.Run("MergeCurves3/"+itoa(nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = MergeCurves3(curves, tolerance)
 			}
 		})
 	}

@@ -51,7 +51,8 @@ type Coords struct {
 
 // Area 一个闭合区域：收尾相接
 type Area struct {
-	area []Coords
+	area     []Coords
+	IsClosed bool // 表示是否闭合曲线
 }
 
 // Encode 坐标直接转成geohash的显示格式

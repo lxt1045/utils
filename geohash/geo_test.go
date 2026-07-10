@@ -184,31 +184,31 @@ func TestAll(t *testing.T) {
 func TestEncode2(t *testing.T) {
 	x, y := 39.92324, 116.3906
 	xx := mmcloughlin_geohash.EncodeInt(x, y)
-	t.Errorf("%b", EncodeInt(x, y))
-	t.Errorf("%b", xx)
-	t.Error(Encode(x, y))
-	t.Errorf("%b", Str2Geo(Encode(x, y)))
+	t.Logf("%b", EncodeInt(x, y))
+	t.Logf("%b", xx)
+	t.Log(Encode(x, y))
+	t.Logf("%b", Str2Geo(Encode(x, y)))
 	x1, y1 := Decode(Encode(x, y))
-	t.Errorf("%f, %f", x1, y1)
-	t.Error(Encode(90, 180))
+	t.Logf("%f, %f", x1, y1)
+	t.Log(Encode(90, 180))
 	// t.Error(Decode(Encode(90, 180)))
-	t.Error(Geo2Str(xx, 12))
-	t.Error(mmcloughlin_geohash.Encode(x, y))
-	t.Error(mmcloughlin_geohash.Encode(90, 180))
-	t.Error(gansidui_geohash.Encode(x, y, 12))
-	t.Error(pierrre_geohash.Encode(x, y, 12))
-	t.Error(codefor_geohash.Encode(x, y))
-	t.Error(tomi_hiltunen_geohash.EncodeWithPrecision(x, y, 12))
-	t.Error(broadygeohash.Encode(x, y))
-	t.Error(fanixk_geohash.PrecisionEncode(x, y, 12))
-	t.Error(fanixk_geohash.PrecisionEncode(90, 180, 12))
+	t.Log(Geo2Str(xx, 12))
+	t.Log(mmcloughlin_geohash.Encode(x, y))
+	t.Log(mmcloughlin_geohash.Encode(90, 180))
+	t.Log(gansidui_geohash.Encode(x, y, 12))
+	t.Log(pierrre_geohash.Encode(x, y, 12))
+	t.Log(codefor_geohash.Encode(x, y))
+	t.Log(tomi_hiltunen_geohash.EncodeWithPrecision(x, y, 12))
+	t.Log(broadygeohash.Encode(x, y))
+	t.Log(fanixk_geohash.PrecisionEncode(x, y, 12))
+	t.Log(fanixk_geohash.PrecisionEncode(90, 180, 12))
 }
 
 func TestEncode3(t *testing.T) {
 	x, y := 39.92324, 116.3906
-	t.Errorf("%b", EncodeInt(x, y))
-	t.Errorf("%b", mmcloughlin_geohash.EncodeInt(x, y))
-	t.Errorf("%b", mmcloughlin_geohash.EncodeIntx(x, y))
+	t.Logf("%b", EncodeInt(x, y))
+	t.Logf("%b", mmcloughlin_geohash.EncodeInt(x, y))
+	t.Logf("%b", mmcloughlin_geohash.EncodeIntx(x, y))
 }
 
 func TestEncode5(t *testing.T) {
@@ -227,8 +227,8 @@ func TestEncode5(t *testing.T) {
 
 func TestEncode4(t *testing.T) {
 	var exp232 = math.Exp2(32)
-	t.Errorf("exp232:%f", exp232)
-	t.Errorf(" exp32:%d", exp32)
+	t.Logf("exp232:%f", exp232)
+	t.Logf(" exp32:%d", exp32)
 
 	encodeRange := func(x, r float64) uint32 {
 		p := (x + r) / (2 * r)
@@ -267,20 +267,20 @@ func TestEncode4(t *testing.T) {
 	x, y := 39.92324, 116.3906
 	a, b := EncodeCoords(x, y)
 	x1, y1 := DecodeCoords(a, b)
-	t.Errorf("%b", encodeRange(x, 90))
-	t.Errorf("%b", a)
-	t.Errorf("%f", decodeRange(encodeRange(x, 90), 90))
-	t.Errorf("%f,%f", x1, y1)
-	t.Errorf("%b", encodeRange(y, 180))
-	t.Errorf("%b", b)
+	t.Logf("%b", encodeRange(x, 90))
+	t.Logf("%b", a)
+	t.Logf("%f", decodeRange(encodeRange(x, 90), 90))
+	t.Logf("%f,%f", x1, y1)
+	t.Logf("%b", encodeRange(y, 180))
+	t.Logf("%b", b)
 }
 
 func TestEncode6(t *testing.T) {
 	x, y := 39.92324, 116.3906
 	a := EncodeInt(x, y)
 	b := EncodeInt2(x, y)
-	t.Errorf("%b", a)
-	t.Errorf("%b", b)
+	t.Logf("%b", a)
+	t.Logf("%b", b)
 }
 
 var X [][2]float64
@@ -306,8 +306,8 @@ func init() {
 func TestCoords2Geox(t *testing.T) {
 	x, y := 39.92324, 116.3906
 	a := EncodeInt(x, y)
-	b := mmcloughlin_geohash.EncodeInt(y, x)
-	c := mmcloughlin_geohash.EncodeIntx(y, x)
+	b := mmcloughlin_geohash.EncodeInt(x, y)
+	c := mmcloughlin_geohash.EncodeIntx(x, y)
 
 	if a != b {
 		t.Errorf("\na:%b,\nb:%b\nc:%b", a, b, c)
@@ -315,22 +315,22 @@ func TestCoords2Geox(t *testing.T) {
 		// b:1000001110100100011110000001101010110000101001111010001101100110
 		// c:1000011010110001011010000100101011100000101101101010011100110010
 	}
-	t.Error(Encode(x, y))
-	t.Error(mmcloughlin_geohash.Encode(y, x))
+	t.Log(Encode(x, y))
+	t.Log(mmcloughlin_geohash.Encode(x, y))
 }
 
 func TestCoords2Geo111(t *testing.T) {
-	x1 := Encode(116.3906, 39.92324)
+	x1 := Encode(39.92324, 116.3906)
 	x, _ := encode(39.92324, 116.3906, 12)
 	if x1 != x {
 		t.Errorf("my:%s <--> his:%s", x1, x)
 	}
-	t.Error(x) // wx4g0ec19x3du
+	t.Log(x) // wx4g0ec19x3du
 }
 
 // 输入坐标：(39.92324, 116.3906, 0)； 预计返回 ： wx4g0ec19x3d
 func TestCoords2Geo1(t *testing.T) {
-	x1 := Encode(116.3906, 39.92324)
+	x1 := Encode(39.92324, 116.3906)
 	x, _ := encode(39.92324, 116.3906, 12)
 	if x1 != x {
 		t.Errorf("my:%s <--> his:%s", x1, x)
@@ -339,8 +339,9 @@ func TestCoords2Geo1(t *testing.T) {
 func TestCoords2Geo(t *testing.T) {
 	//getArray()
 	for _, val := range X {
-		x1 := Encode(val[1], val[0])
+		x1 := Encode(val[0], val[1])
 		x, _ := encode(val[0], val[1], 12)
+		// x := mmcloughlin_geohash.Encode(val[0], val[1])
 		if x1 != x {
 			t.Errorf("my:%s <--> his:%s", x1, x)
 		}
