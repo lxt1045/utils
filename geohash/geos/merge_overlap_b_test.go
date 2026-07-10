@@ -93,6 +93,7 @@ func geosMergeRing(curves [][]geohash.Coords, tolerance float64) (ring []geohash
 //   - GEOS UnaryUnion+LineMerge : C 库 noding 参照(计时含 WKT 往返)
 //
 // 每档公共部分(计时外)：构造数据、跑一遍各实现求面积、算相对误差并打印。
+// go test -test.fullpath=true -benchmem -run=^$ -bench ^BenchmarkMergeOverlap$ geos -count=1 -v
 func BenchmarkMergeOverlap(b *testing.B) {
 	const (
 		ptsPerCurve = 1024 * 8

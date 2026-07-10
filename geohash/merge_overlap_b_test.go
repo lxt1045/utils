@@ -164,9 +164,22 @@ func BenchmarkMergeOverlap(b *testing.B) {
 			}
 		}
 
+		// MergeCurves4 与 MergeCurves3 算法相同，仅在环游走阶段用复用 scratch 缓冲 +
+		// 精确大小拷贝替代逐环 append 增长，减少内存分配。结果应与 MergeCurves3 一致。
+		rings4 := geohash.MergeCurves4(overlap, tolerance)
+		areaMine4 := 0.0
+		for _, r := range rings4 {
+			if !r.IsClosed {
+				continue
+			}
+			if a := geohash.AreaCoords(r.Coords); a > areaMine4 {
+				areaMine4 = a
+			}
+		}
+
 		relErr := func(a float64) float64 { return math.Abs(a-wantArea) / wantArea }
-		b.Logf("[%d 条 ×%d 点 +%d 重合] 环顶点: 真值=%d MergeCurves=%d MergeCurves2=%d MergeCurves3(主环)=%d(闭合环%d/共%d链); 面积误差: MergeCurves=%.3e MergeCurves2=%.3e MergeCurves3=%.3e",
-			nCurves, ptsPerCurve, nOverlap, len(baseRing), len(ringMine), len(ringMine2), mainVerts, closedCnt, len(rings3), relErr(areaMine), relErr(areaMine2), relErr(areaMine3))
+		b.Logf("[%d 条 ×%d 点 +%d 重合] 环顶点: 真值=%d MergeCurves=%d MergeCurves2=%d MergeCurves3(主环)=%d(闭合环%d/共%d链); 面积误差: MergeCurves=%.3e MergeCurves2=%.3e MergeCurves3=%.3e MergeCurves4=%.3e",
+			nCurves, ptsPerCurve, nOverlap, len(baseRing), len(ringMine), len(ringMine2), mainVerts, closedCnt, len(rings3), relErr(areaMine), relErr(areaMine2), relErr(areaMine3), relErr(areaMine4))
 
 		b.Run(fmt.Sprintf("MergeCurves/%d", nCurves), func(b *testing.B) {
 			b.ReportAllocs()
@@ -184,6 +197,12 @@ func BenchmarkMergeOverlap(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				_ = geohash.MergeCurves3(overlap, tolerance)
+			}
+		})
+		b.Run(fmt.Sprintf("MergeCurves4/%d", nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = geohash.MergeCurves4(overlap, tolerance)
 			}
 		})
 	}

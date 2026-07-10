@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(go test *)",
-      "Bash(tee /tmp/before.txt)"
+      "Bash(tee /tmp/before.txt)",
+      "Bash(go env *)",
+      "Bash(wsl *)"
     ]
   }
 }

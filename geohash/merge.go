@@ -106,8 +106,9 @@ type CurvePoint struct {
 
 // snapGrid 保存 snap-rounding 用的节点集合与网格索引。
 type CurvePointIdx struct {
-	shift     uint                    // 32-h：由 32bit 全精度坐标右移得到 cell 下标
-	cellIndex map[uint64][]CurvePoint // cell key -> 落在该 cell 的节点 id 列表
+	shift         uint                    // 32-h：由 32bit 全精度坐标右移得到 cell 下标
+	cellIndex     map[uint64][]CurvePoint // cell key -> 落在该 cell 的节点 id 列表
+	countAllPoint int
 }
 
 // snapGrid 保存 snap-rounding 用的节点集合与网格索引。
@@ -217,6 +218,7 @@ func buildCurvePointIdx(curves [][]Coords, tolerance float64, bits uint) *CurveP
 		g.cellIndex[key] = append(g.cellIndex[key], CurvePoint{Coords: p, CurveIdx: curveIdx, PointIdx: pointIdx})
 	}
 	for id, c := range curves {
+		g.countAllPoint += len(c)
 		if len(c) == 0 {
 			continue
 		}
@@ -826,13 +828,15 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	}
 
 	var rings []Ring
+	var ring []Coords = make([]Coords, g.countAllPoint)
 	for id := range edges {
 		if used[id] {
 			continue
 		}
 		start := edges[id].u
 		cur := start
-		var ring []Coords
+		// var ring []Coords
+		ring = ring[:0]
 		first, closed := true, false
 		for {
 			to, eid, ok := step(cur)
@@ -851,7 +855,9 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 		if closed && len(ring) > 1 && distMeters(ring[0], ring[len(ring)-1]) <= tolerance {
 			ring = ring[:len(ring)-1] // 丢弃与首点重合的尾点
 		}
-		rings = append(rings, Ring{Coords: ring, IsClosed: closed})
+
+		// rings = append(rings, Ring{Coords: ring, IsClosed: closed})
+		rings = append(rings, Ring{Coords: append(ring[:0:0], ring...), IsClosed: closed})
 	}
 	return rings
 }
@@ -980,13 +986,15 @@ func MergeCurves4(curves [][]Coords, tolerance float64) []Ring {
 	}
 
 	var rings []Ring
+	var ring []Coords = make([]Coords, g.countAllPoint)
 	for id := range edges {
 		if used[id] {
 			continue
 		}
 		start := edges[id].u
 		cur := start
-		var ring []Coords
+		// var ring []Coords
+		ring = ring[:0]
 		first, closed := true, false
 		for {
 			to, eid, ok := step(cur)
@@ -1005,7 +1013,9 @@ func MergeCurves4(curves [][]Coords, tolerance float64) []Ring {
 		if closed && len(ring) > 1 && distMeters(ring[0], ring[len(ring)-1]) <= tolerance {
 			ring = ring[:len(ring)-1] // 丢弃与首点重合的尾点
 		}
-		rings = append(rings, Ring{Coords: ring, IsClosed: closed})
+
+		// rings = append(rings, Ring{Coords: ring, IsClosed: closed})
+		rings = append(rings, Ring{Coords: append(ring[:0:0], ring...), IsClosed: closed})
 	}
 	return rings
 }

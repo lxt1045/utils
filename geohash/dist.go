@@ -83,6 +83,14 @@ const distShortMaxM = 100.0
 // distShortMaxAngle 是 100m 对应的球面角(弧度)。距离 = R·角，故角差超过它必 >100m。
 const distShortMaxAngle = distShortMaxM / earthRadiusM
 
+// cosLat70 = cos(70°)。math.Cos 非常量函数，此处写成字面量。70° 是 DistShort 东西向
+// 提前判界取的「最小适用纬度余弦」：|lat|≤70° 时 cos(lat) ≥ cosLat70。
+const cosLat70 = 0.3420201433256687
+
+// distShortMaxAngleLng 是东西向提前判界的经度角差阈值。东西向距离 = R·|dLng|·cos(lat)，
+// 在 |lat|≤70° 下 ≥ R·|dLng|·cosLat70，故 |dLng| 超过它时东西向距离必 >100m。
+const distShortMaxAngleLng = distShortMaxAngle / cosLat70
+
 // DistShort 为 100m 以内的近距离两点专门优化：在 DistHaversineFast 的等距圆柱投影
 // 基础上，把唯一的 math.Cos 调用换成 Bhaskara I 余弦有理近似，去掉了 libm 调用，
 // 只剩几次乘加 + 1 次除 + 1 次 Sqrt，比 DistHaversineFast 更快。
@@ -107,6 +115,10 @@ func DistShort(p1, p2 Coords) float64 {
 	}
 	// 南北向角差已给出距离下界(R·|dLat|)：仅凭它超界就能廉价判「远」，跳过 cos 近似。
 	if dLat > distShortMaxAngle || dLat < -distShortMaxAngle {
+		return distShortMaxM
+	}
+	// 东西向同理：|lat|≤70° 时东西向距离 ≥ R·|dLng|·cos(70°)，|dLng| 超阈值必 >100m。
+	if dLng > distShortMaxAngleLng || dLng < -distShortMaxAngleLng {
 		return distShortMaxM
 	}
 	phi := (p1.Lat + p2.Lat) * 0.5 * degToRad
