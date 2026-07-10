@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+func Benchmark_distMeters(b *testing.B) {
+	x := Coords{Lat: 39.90, Lng: 116.30}
+	y := Coords{Lat: 39.90, Lng: 116.31}
+
+	b.Run("distMeters", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			distMeters(x, y)
+		}
+	})
+}
+
 // densifyEdgeTest 在 [u,v] 上按 stepM 步长线性插值(含 u，不含 v)，用于把稀疏
 // 折线加密成「密集点曲线」(相邻点间距 < stepM)，满足 MergeCurves2 的输入前提。
 func densifyEdgeTest(u, v Coords, stepM float64) []Coords {
@@ -71,8 +83,8 @@ func TestMergeCurves_ToleranceDedup(t *testing.T) {
 
 	// 每条边一条密集曲线；相邻边的衔接点各自带独立抖动(近似重合但不相等)。
 	j := func(p Coords, s float64) Coords { return Coords{Lat: p.Lat + s, Lng: p.Lng + s} }
-	e1 := append(densifyEdgeTest(a, b, stepM), b)         // a -> b
-	e2 := append(densifyEdgeTest(j(b, jitter), c, stepM), c) // b(抖动) -> c
+	e1 := append(densifyEdgeTest(a, b, stepM), b)                        // a -> b
+	e2 := append(densifyEdgeTest(j(b, jitter), c, stepM), c)             // b(抖动) -> c
 	e3 := append(densifyEdgeTest(j(c, -jitter), a, stepM), j(a, jitter)) // c(抖动) -> a(抖动)
 
 	for _, tc := range []struct {

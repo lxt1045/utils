@@ -76,6 +76,12 @@ func BenchmarkMergeCurvesScaling(b *testing.B) {
 				_ = MergeCurves(curves, tolerance)
 			}
 		})
+		b.Run(itoa(nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = MergeCurves3(curves, tolerance)
+			}
+		})
 	}
 }
 

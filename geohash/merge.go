@@ -210,6 +210,7 @@ func buildCurvePointIdx(curves [][]Coords, tolerance float64, bits uint) *CurveP
 		cellIndex: make(map[uint64][]CurvePoint),
 	}
 	step := tolerance / 2
+	_ = step
 	add := func(p Coords, curveIdx, pointIdx int) {
 		cx, cy := g.cellXY(p)
 		key := cellXYKey(cx, cy)
@@ -702,6 +703,160 @@ func (u *unionFind) union(a, b int) {
 //
 // 前提与 MergeCurves2 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
 func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
+	if len(curves) == 0 {
+		return nil
+	}
+
+	bits := tolerancePrecisionBits(tolerance)
+	g := buildCurvePointIdx(curves, tolerance, bits)
+	if len(g.cellIndex) == 0 {
+		return nil
+	}
+
+	// 1) 收集所有已索引的稀化点，给每个点一个全局 id。
+	keyOf := func(cp CurvePoint) uint64 {
+		return uint64(uint32(cp.CurveIdx))<<32 | uint64(uint32(cp.PointIdx))
+	}
+	ptID := make(map[uint64]int) // 每个线的点顶一个唯一id?
+	var pts []CurvePoint
+	for _, list := range g.cellIndex {
+		for _, cp := range list {
+			k := keyOf(cp)
+			if _, ok := ptID[k]; !ok {
+				ptID[k] = len(pts)
+				pts = append(pts, cp)
+			}
+		}
+	}
+
+	// 2) 对每个点 findNode(onlyOne=false) 找出 tolerance 内其他曲线的点，用并查集把
+	//    这些跨曲线重合的点并成同一个 junction 簇。查询时临时排除自身曲线。
+	uf := newUnionFind(len(pts))
+	isJunction := make([]bool, len(pts))
+	scanned := make([]bool, len(curves))
+	for gi, cp := range pts {
+		scanned[cp.CurveIdx] = true
+		matches := g.findNode(cp.Coords, tolerance, scanned, false)
+		scanned[cp.CurveIdx] = false
+		for _, m := range matches {
+			mi := ptID[keyOf(m)]
+			uf.union(gi, mi)
+			isJunction[gi] = true
+			isJunction[mi] = true
+		}
+	}
+
+	// 3) 每条曲线按 pointIdx 顺序收集它的 junction 点(簇根作节点 id)。
+	type cj struct{ pointIdx, node int }
+	perCurve := make([][]cj, len(curves))
+	for gi, cp := range pts {
+		if !isJunction[gi] {
+			continue
+		}
+		perCurve[cp.CurveIdx] = append(perCurve[cp.CurveIdx], cj{cp.PointIdx, uf.find(gi)})
+	}
+	for i := range perCurve {
+		sort.Slice(perCurve[i], func(a, b int) bool {
+			return perCurve[i][a].pointIdx < perCurve[i][b].pointIdx
+		})
+	}
+
+	// 4) 相邻 junction 之间的曲线子路径构成一条无向边(携带原始密集坐标)。相同节点对
+	//    的边只保留一条——重复数字化的重叠段就此塌成一条被消除。
+	type edge struct {
+		u, v   int
+		coords []Coords // 从 u 到 v 的坐标(含两端)
+	}
+	var edges []edge
+	edgeKey := make(map[uint64]bool)
+	for i, cjs := range perCurve {
+		for j := 0; j+1 < len(cjs); j++ {
+			a, b := cjs[j], cjs[j+1]
+			if a.node == b.node {
+				continue // 同簇自环
+			}
+			ku, kv := a.node, b.node
+			if ku > kv {
+				ku, kv = kv, ku
+			}
+			ek := uint64(uint32(ku))<<32 | uint64(uint32(kv))
+			if edgeKey[ek] {
+				continue // 重叠段：相同节点对只保留一条
+			}
+			edgeKey[ek] = true
+			coords := append([]Coords(nil), curves[i][a.pointIdx:b.pointIdx+1]...)
+			edges = append(edges, edge{u: a.node, v: b.node, coords: coords})
+		}
+	}
+	if len(edges) == 0 {
+		return nil
+	}
+
+	// 5) 邻接表 + 走链：每次从一条未用边出发，沿未用边走到回起点(闭合环)或断头(开放链)。
+	type half struct{ to, edgeID int }
+	adj := make(map[int][]half)
+	for id, e := range edges {
+		adj[e.u] = append(adj[e.u], half{e.v, id})
+		adj[e.v] = append(adj[e.v], half{e.u, id})
+	}
+	used := make([]bool, len(edges))
+	step := func(cur int) (to, edgeID int, ok bool) {
+		for _, h := range adj[cur] {
+			if !used[h.edgeID] {
+				return h.to, h.edgeID, true
+			}
+		}
+		return 0, 0, false
+	}
+	// 把 edge 坐标按 from->to 方向追加(skipFirst 避免与上一段尾点重复)。
+	appendEdge := func(ring []Coords, e edge, from int, skipFirst bool) []Coords {
+		if e.u == from {
+			if skipFirst {
+				return append(ring, e.coords[1:]...)
+			}
+			return append(ring, e.coords...)
+		}
+		for k := len(e.coords) - 1; k >= 0; k-- {
+			if skipFirst && k == len(e.coords)-1 {
+				continue
+			}
+			ring = append(ring, e.coords[k])
+		}
+		return ring
+	}
+
+	var rings []Ring
+	for id := range edges {
+		if used[id] {
+			continue
+		}
+		start := edges[id].u
+		cur := start
+		var ring []Coords
+		first, closed := true, false
+		for {
+			to, eid, ok := step(cur)
+			if !ok {
+				break // 断头：开放链
+			}
+			used[eid] = true
+			ring = appendEdge(ring, edges[eid], cur, !first)
+			first = false
+			cur = to
+			if cur == start {
+				closed = true
+				break
+			}
+		}
+		if closed && len(ring) > 1 && distMeters(ring[0], ring[len(ring)-1]) <= tolerance {
+			ring = ring[:len(ring)-1] // 丢弃与首点重合的尾点
+		}
+		rings = append(rings, Ring{Coords: ring, IsClosed: closed})
+	}
+	return rings
+}
+
+func MergeCurves4(curves [][]Coords, tolerance float64) []Ring {
 	if len(curves) == 0 {
 		return nil
 	}
