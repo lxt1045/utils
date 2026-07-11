@@ -4,7 +4,9 @@
       "Bash(go test *)",
       "Bash(tee /tmp/before.txt)",
       "Bash(go env *)",
-      "Bash(wsl *)"
+      "Bash(wsl *)",
+      "Bash(go build *)",
+      "Bash(go vet *)"
     ]
   }
 }

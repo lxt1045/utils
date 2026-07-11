@@ -5,6 +5,36 @@ import (
 	"testing"
 )
 
+func Test_unionFind(t *testing.T) {
+	t.Run("1-0", func(t *testing.T) {
+		uf := newUnionFind(5)
+		uf.union(2, 1)
+		uf.union(1, 3)
+		uf.union(2, 4)
+		for i, v := range uf.matchPoints {
+			t.Logf("%d:%d", i, v)
+		}
+	})
+	t.Run("1", func(t *testing.T) {
+		uf := newUnionFind(5)
+		uf.union(1, 2)
+		uf.union(1, 3)
+		uf.union(2, 4)
+		for i, v := range uf.matchPoints {
+			t.Logf("%d:%d", i, v)
+		}
+	})
+	t.Run("2", func(t *testing.T) {
+		uf := newUnionFind2(5)
+		uf.union(1, 2)
+		uf.union(1, 3)
+		uf.union(2, 4)
+		for i, v := range uf.matchPoints {
+			t.Logf("%d:%+v", i, v)
+		}
+	})
+}
+
 func Benchmark_distMeters(b *testing.B) {
 	x := Coords{Lat: 39.90, Lng: 116.30}
 	y := Coords{Lat: 39.90, Lng: 116.31}
