@@ -611,53 +611,59 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 		return nil
 	}
 
-	// 1) 把散落在各 cell 里的稀化点摊平成一个全局数组 pts，并给每个点分配一个连续的
-	//    全局下标(gid)，后续并查集、junction 标记都用这个 gid 寻址。
-	PointIDs := make(map[uint64]int) // 点唯一键 -> 该点在 pts 中的全局下标(gid)
-	var PointsIdx []CurvePoint       // 全部稀化点(去重后)，下标即 gid; 所有点拍平放在这里
+	// 1) 把各 cell 里的稀化点摊平成全局数组 PointsIdx(下标即 gid)。buildCurvePointIdx
+	//    对每个物理点只 add 一次，故无需再按 key 去重。
+	var PointsIdx []CurvePoint
 	for _, list := range g.cellIndex {
-		for _, cp := range list {
-			k := cp.key()
-			if _, ok := PointIDs[k]; !ok {
-				PointIDs[k] = len(PointsIdx)
-				PointsIdx = append(PointsIdx, cp)
-			}
-		}
+		PointsIdx = append(PointsIdx, list...)
 	}
 
-	// 2) 识别「junction(粘接点)」并把跨曲线重合的点并成同一簇。
-	//    对每个点调用 findNode(onlyOne=false) 找出 tolerance 内、属于*其他*曲线的点：
-	//    命中即说明这里是两条曲线的粘接处。用并查集(junctions)把这些重合点并成一个簇，簇根
-	//    充当该 junction 的节点 id；isJunction 标记哪些点是粘接点(非粘接点是曲线内部点，不参与建图)。
-	//    scannedCurves: 查询前把自身曲线临时置 true，让 findNode 只返回*别的*曲线的点，
-	//    避免把「同一条曲线里彼此靠近的点」误判为粘接；查完立即复位，零分配复用。
-	junctions := newUnionFind(len(PointsIdx))  // junction(粘接点) 集合
-	isJunction := make([]bool, len(PointsIdx)) // 是否是 junction(粘接点)
-	for idx, ponit := range PointsIdx {
-		matches := g.findNode(ponit.Coords, tolerance, ponit.CurveIdx, false)
-		for _, m := range matches {
-			matcheIdx := PointIDs[m.key()]  // 命中点的 gid
-			junctions.union(idx, matcheIdx) // 两个粘接点并入同一 junction 簇
-			isJunction[idx] = true
-			isJunction[matcheIdx] = true
+	// 2) 纯 cell 吸附：node = 掩码后的 geohash cell(确定性吸附，落进同一 cell 即同一 node)。
+	//    相比旧版「findNode 邻域扫描 + 并查集两两聚类」，这里不做邻域搜索、不建并查集：
+	//    两份「独立重采样的重叠曲线」只要落进同一串 cell 就得到*相同的 node 序列*，第 4 步
+	//    的 edgeKey 去重才能把重叠段真正塌成一条边——避免旧版因两两聚类的簇边界不对称而
+	//    残留大量平行小边、把主环顶点数撑到虚高。
+	//    代价：恰好处于 cell 边界两侧、相距 <tolerance 的点可能被分到相邻 node(tolerance 级
+	//    残留)，符合容差语义；cell 边长 >= tolerance，精确重合/近似重合的点绝大多数落同一 cell。
+	//    junction：被 >=2 条*不同*曲线触及的 cell 即粘接/交叉处；仅 junction 参与建图，
+	//    曲线内部点(只被本曲线触及)不入图。
+	cellNode := make(map[uint64]int) // cellKey -> node id
+	var nodeCurve []int              // node -> 首个触及它的曲线(-1 表示尚未登记)
+	var nodeIsJunc []bool            // node 是否 junction
+	pointNode := make([]int, len(PointsIdx))
+	for idx, p := range PointsIdx {
+		cx, cy := g.cellXY(p.Coords)
+		ck := cellXYKey(cx, cy)
+		nd, ok := cellNode[ck]
+		if !ok {
+			nd = len(nodeCurve)
+			cellNode[ck] = nd
+			nodeCurve = append(nodeCurve, -1)
+			nodeIsJunc = append(nodeIsJunc, false)
+		}
+		pointNode[idx] = nd
+		switch {
+		case nodeCurve[nd] == -1:
+			nodeCurve[nd] = p.CurveIdx // 首次触及：记下曲线
+		case nodeCurve[nd] != p.CurveIdx:
+			nodeIsJunc[nd] = true // 被第二条不同曲线触及：确认是 junction
 		}
 	}
 
 	// 3) 按曲线归拢 junction 点(接合点、交叉点)，并沿曲线走向(pointIdx 升序)排好序。
-	//    CurveJunctionNode: 曲线上一个 junction 的 {沿线位置 pointIdx, 所属 junction 节点 id(=簇根)}。
 	//    perCurve[i]：第 i 条曲线上所有 junction 点，排序后相邻两个之间正好夹着一段
 	//    「不含其它 junction 的子路径」——这就是下一步要抽出的图的边。
 	type CurveJunctionNode struct {
-		pointIdx, node int //  曲线上一个 junction 的 {沿线位置 pointIdx, 所属 junction 节点 id(=簇根)}。
+		pointIdx, node int // 曲线上一个 junction 的 {沿线位置 pointIdx, 所属 node id(=cell)}。
 	}
 	curveJunctionNodes := make([][]CurveJunctionNode, len(curves)) // 每条曲线上所有的 junction 点(接合点、交叉点)
 	for idx, ponit := range PointsIdx {
-		if !isJunction[idx] {
+		if !nodeIsJunc[pointNode[idx]] {
 			continue // 曲线内部点不入图
 		}
 		curveJunctionNodes[ponit.CurveIdx] = append(curveJunctionNodes[ponit.CurveIdx], CurveJunctionNode{
 			pointIdx: ponit.PointIdx,
-			node:     junctions.find(idx),
+			node:     pointNode[idx],
 		})
 	}
 	for i := range curveJunctionNodes {
