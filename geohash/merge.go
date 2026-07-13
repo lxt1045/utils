@@ -1,8 +1,11 @@
 package geohash
 
 import (
+	"context"
 	"math"
 	"sort"
+
+	"github.com/lxt1045/utils/log"
 )
 
 // 本文件实现"将多条无序曲线拼接成一条闭合环(多边形边界)"的功能。
@@ -104,11 +107,20 @@ type CurvePoint struct {
 	PointIdx int
 }
 
+// key：把 (CurveIdx, PointIdx) 打包成 uint64 唯一键，用于跨 cell 去重同一个点
+// (一个点可能因边界原因被登记多次，需保证每个物理点只进 pts 一次)。
+func (cp CurvePoint) key() uint64 {
+	return uint64(uint32(cp.CurveIdx))<<32 | uint64(uint32(cp.PointIdx))
+}
+
 // snapGrid 保存 snap-rounding 用的节点集合与网格索引。
 type CurvePointIdx struct {
 	shift         uint                    // 32-h：由 32bit 全精度坐标右移得到 cell 下标
 	cellIndex     map[uint64][]CurvePoint // cell key -> 落在该 cell 的节点 id 列表
 	countAllPoint int
+	countCurve    int
+
+	junctionsUsed map[uint64]bool
 }
 
 // snapGrid 保存 snap-rounding 用的节点集合与网格索引。
@@ -149,10 +161,10 @@ func (g *CurvePointIdx) cellXY(p Coords) (cx, cy uint32) {
 // 所有已消费的曲线。这样能正确处理「同一段边界被数字化两次」的重叠——一条曲线被
 // 走过后即标记 scanned，其重复副本(或已用过的邻接曲线)的点会被跳过，findNode 会
 // 在同一 cell 里继续扫描，返回真正未用的粘接曲线，而不是停在一个已用曲线的点上。
-func (g *CurvePointIdx) findNode(p Coords, tolerance float64, curvesScanned []bool, onlyOne bool) []CurvePoint {
+func (g *CurvePointIdx) findNode(p Coords, tolerance float64, id int, onlyOne bool) (result []CurvePoint) {
 	cx, cy := g.cellXY(p)
-	var result []CurvePoint
-	seenCurves := make(map[int]bool) // 每条曲线只保留第一个匹配点
+	seenCurves := make([]bool, g.countCurve)
+	seenCurves[id] = true
 
 	for dx := -1; dx <= 1; dx++ {
 		for dy := -1; dy <= 1; dy++ {
@@ -161,10 +173,10 @@ func (g *CurvePointIdx) findNode(p Coords, tolerance float64, curvesScanned []bo
 				continue
 			}
 			for _, q := range g.cellIndex[cellXYKey(uint32(ncx), uint32(ncy))] {
-				if curvesScanned[q.CurveIdx] || seenCurves[q.CurveIdx] {
+				if seenCurves[q.CurveIdx] {
 					continue
 				}
-				if distMeters(p, q.Coords) <= tolerance {
+				if DistShort(p, q.Coords) <= tolerance {
 					result = append(result, q)
 					seenCurves[q.CurveIdx] = true
 					if onlyOne {
@@ -207,8 +219,10 @@ func (g *snapGrid) findNode(p Coords, tolerance float64) (id int, ok bool) {
 // 索引点(步长放大到 tolerance 则可能漏检)。每个点存它自己的坐标/cell/下标。
 func buildCurvePointIdx(curves [][]Coords, tolerance float64, bits uint) *CurvePointIdx {
 	g := &CurvePointIdx{
-		shift:     32 - bits/2,
-		cellIndex: make(map[uint64][]CurvePoint),
+		shift:         32 - bits/2,
+		cellIndex:     make(map[uint64][]CurvePoint),
+		junctionsUsed: make(map[uint64]bool),
+		countCurve:    len(curves),
 	}
 	step := tolerance / 2
 	_ = step
@@ -482,182 +496,6 @@ func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
 	return ringFromNodeSeqs(seqs, g.nodes, tolerance)
 }
 
-// MergeCurves2 将多条无序曲线拼接成一条闭合环，返回环上有序顶点(不含重复首尾点)。
-//
-// 前提:输入是「密集点曲线」(相邻点间距 < tolerance/2)，曲线间通过粘接点连接，粘接点
-// 可能出现在曲线的端点或中段任意位置。本函数沿曲线逐点查找与其他曲线重合(< tolerance)
-// 的粘接点，在粘接点处切开当前曲线、接上另一条曲线，直到回到起点形成闭合环。
-//
-// 与 MergeCurves(snap-rounding)的区别:MergeCurves 对所有顶点做 noding(沿线段 DDA)，
-// 能处理任意重采样的中段重叠。本函数只查索引点(稀化到 ~tolerance/2 间距)，更快但只能
-// 处理「粘接点对齐」的干净数据(不处理任意重采样的重叠段)。
-//
-// 若输入曲线不能全部连成单一闭合环(有曲线用不上、或首尾不闭合)，返回 nil。
-func MergeCurves2(curves [][]Coords, tolerance float64) (closeCrv []Coords) {
-	if len(curves) == 0 {
-		return nil
-	}
-
-	bits := tolerancePrecisionBits(tolerance)
-	g := buildCurvePointIdx(curves, tolerance, bits)
-	if len(g.cellIndex) == 0 {
-		return nil
-	}
-
-	const rootCurveIdx = 0 // 从 curve[0] 的某个端点开始，找一个能匹配到其他曲线的粘接点作根。
-	var (
-		curvesScanned = make([]bool, len(curves))
-		rootPointIdx  = -1
-		currentPoint  CurvePoint
-	)
-
-	// 根查找期间临时标记 root 已扫，避免 findNode 命中 curve[0] 自己的点；查完复位，
-	// 让主循环闭环时能重新匹配回 root。
-	curvesScanned[rootCurveIdx] = true
-	// 扫顺序：优先尝试终点、起点、实在不行再扫中段。; 简洁: 把复杂扫顺序写道一个循环里
-	for i, l := -1, len(curves[rootCurveIdx]); i < l-1; i++ {
-		// idx := (i + l - 1) % l
-		idx := i
-		if i < 0 {
-			idx = 0
-		} else if i == 0 {
-			idx = l - 1
-		}
-		if matches := g.findNode(curves[rootCurveIdx][idx], tolerance, curvesScanned, true); len(matches) > 0 {
-			rootPointIdx = idx
-			currentPoint = matches[0]
-			break
-		}
-	}
-	curvesScanned[rootCurveIdx] = false // 复位：root 尚未真正走完，闭环时要能匹配回它
-	if rootPointIdx < 0 {
-		return nil // curve[0] 完全孤立
-	}
-	// 主循环:沿当前曲线走到粘接点，切换到连接的曲线，直到回到 curve[0]。
-	for {
-		ci := currentPoint.CurveIdx
-		if ci == rootCurveIdx && len(closeCrv) > 0 {
-			// 回到起点曲线，闭环。把起点曲线剩余段接上。
-			c0 := curves[rootCurveIdx]
-			if rootPointIdx < currentPoint.PointIdx {
-				// 剩余段:[rootPointIdx, currentPoint.PointIdx] 逆序(含 rootPointIdx)
-				for i := currentPoint.PointIdx; i >= rootPointIdx; i-- {
-					closeCrv = append(closeCrv, c0[i])
-				}
-			} else {
-				// 剩余段:[currentPoint.PointIdx, rootPointIdx] 顺序(含 rootPointIdx)
-				closeCrv = append(closeCrv, c0[currentPoint.PointIdx:rootPointIdx+1]...)
-			}
-			curvesScanned[rootCurveIdx] = true // 闭环成功，root 也算用上，供末尾"全部用上"检查
-			break
-		}
-
-		if curvesScanned[ci] {
-			return nil // 曲线已扫过，说明死循环或拓扑断裂
-		}
-		curvesScanned[ci] = true
-		currentCurve := curves[ci]
-
-		var nextPoint CurvePoint
-		found := false
-
-		// 扫顺序：优先尝试终点、起点、实在不行再扫中段。; 简洁: 把复杂扫顺序写道一个循环里
-		for i, l := -1, len(currentCurve); i < l-1; i++ {
-			// idx := (i + l - 1) % l
-			idx := i
-			if i < 0 {
-				idx = 0
-			} else if i == 0 {
-				idx = l - 1
-			}
-			if distMeters(currentCurve[idx], currentPoint.Coords) <= tolerance {
-				continue
-			}
-			if matches := g.findNode(currentCurve[idx], tolerance, curvesScanned, true); len(matches) > 0 {
-				cp := matches[0]
-				// 含粘接点端点(idx)：下一条曲线会从其匹配点 cp 再走一遍，故每个关节
-				// 产生一对 near-重合点(<tolerance)。它们对 shoelace 面积贡献 ~0，却能把
-				// 真实拐点表示精确(与 GEOS 逐点一致)。最后统一丢弃一个闭合尾点。
-				if idx < currentPoint.PointIdx {
-					for j := currentPoint.PointIdx; j >= idx; j-- {
-						closeCrv = append(closeCrv, currentCurve[j])
-					}
-				} else {
-					closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:idx+1]...)
-				}
-				nextPoint = cp
-				found = true
-				break
-			}
-
-			/*
-					// 1. 优先尝试 head (curve[0])
-					head := currentCurve[0]
-					if distMeters(head, currentPoint.Coords) > tolerance {
-						if cp, ok := g.findNode(head, tolerance, ci); ok && !curvesScanned[cp.CurveIdx]{
-							for i := currentPoint.PointIdx; i >= 0; i-- {
-								closeCrv = append(closeCrv, currentCurve[i])
-							}
-							nextPoint = cp
-							found = true
-						}
-					}
-
-					// 2. 再尝试 tail (curve[len-1])
-					if !found {
-						tailIdx := len(currentCurve) - 1
-						tail := currentCurve[tailIdx]
-						if distMeters(tail, currentPoint.Coords) > tolerance {
-							if cp, ok := g.findNode(tail, tolerance, ci); ok && !curvesScanned[cp.CurveIdx] {
-								closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:tailIdx+1]...)
-								nextPoint = cp
-								found = true
-							}
-						}
-					}
-
-					// 3. 兜底:扫中段 (curve[1:len-1])
-					if !found {
-						for i := 1; i < len(currentCurve)-1; i++ {
-							if distMeters(currentCurve[i], currentPoint.Coords) <= tolerance {
-								continue
-							}
-							if cp, ok := g.findNode(currentCurve[i], tolerance, ci); ok && !curvesScanned[cp.CurveIdx] {
-								if i < currentPoint.PointIdx {
-									for j := currentPoint.PointIdx; j >= i; j-- {
-										closeCrv = append(closeCrv, currentCurve[j])
-									}
-								} else {
-									closeCrv = append(closeCrv, currentCurve[currentPoint.PointIdx:i+1]...)
-								}
-								nextPoint = cp
-								found = true
-								break
-							}
-						}
-					}
-			//*/
-		}
-		if !found {
-			return nil
-		}
-		currentPoint = nextPoint
-	}
-
-	// 所有曲线都必须被用上
-	for _, scanned := range curvesScanned {
-		if !scanned {
-			return nil
-		}
-	}
-
-	// 首尾必须闭合(每个接缝有重复点,故末点与首点 near-重合是正常的)
-	if len(closeCrv) < 4 || distMeters(closeCrv[0], closeCrv[len(closeCrv)-1]) > tolerance {
-		return nil
-	}
-	return closeCrv[:len(closeCrv)-1] // 丢弃与首点重合的尾点
-}
-
 // Ring 表示 MergeCurves3 找到的一条拼接链：顶点序列与是否闭合。
 // IsClosed=true 时首尾在 tolerance 内相接(可求面积)；false 时是断裂的开放链
 // (重复数字化的重叠曲线、或拓扑断裂的残段)，调用方通常跳过不计面积。
@@ -766,16 +604,11 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 
 	// 1) 把散落在各 cell 里的稀化点摊平成一个全局数组 pts，并给每个点分配一个连续的
 	//    全局下标(gid)，后续并查集、junction 标记都用这个 gid 寻址。
-	//    keyOf：把 (CurveIdx, PointIdx) 打包成 uint64 唯一键，用于跨 cell 去重同一个点
-	//    (一个点可能因边界原因被登记多次，需保证每个物理点只进 pts 一次)。
-	keyOf := func(cp CurvePoint) uint64 {
-		return uint64(uint32(cp.CurveIdx))<<32 | uint64(uint32(cp.PointIdx))
-	}
 	PointIDs := make(map[uint64]int) // 点唯一键 -> 该点在 pts 中的全局下标(gid)
 	var PointsIdx []CurvePoint       // 全部稀化点(去重后)，下标即 gid; 所有点拍平放在这里
 	for _, list := range g.cellIndex {
 		for _, cp := range list {
-			k := keyOf(cp)
+			k := cp.key()
 			if _, ok := PointIDs[k]; !ok {
 				PointIDs[k] = len(PointsIdx)
 				PointsIdx = append(PointsIdx, cp)
@@ -786,19 +619,15 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	// 2) 识别「junction(粘接点)」并把跨曲线重合的点并成同一簇。
 	//    对每个点调用 findNode(onlyOne=false) 找出 tolerance 内、属于*其他*曲线的点：
 	//    命中即说明这里是两条曲线的粘接处。用并查集(junctions)把这些重合点并成一个簇，簇根
-	//    充当该 junction 的节点 id；isJunction 标记哪些点是粘接点(非粘接点是曲线内部
-	//    点，不参与建图)。
+	//    充当该 junction 的节点 id；isJunction 标记哪些点是粘接点(非粘接点是曲线内部点，不参与建图)。
 	//    scannedCurves: 查询前把自身曲线临时置 true，让 findNode 只返回*别的*曲线的点，
 	//    避免把「同一条曲线里彼此靠近的点」误判为粘接；查完立即复位，零分配复用。
 	junctions := newUnionFind(len(PointsIdx))  // junction(粘接点) 集合
 	isJunction := make([]bool, len(PointsIdx)) // 是否是 junction(粘接点)
-	scannedCurves := make([]bool, len(curves)) // 已经扫描过的曲线
 	for idx, ponit := range PointsIdx {
-		scannedCurves[ponit.CurveIdx] = true
-		matches := g.findNode(ponit.Coords, tolerance, scannedCurves, false)
-		scannedCurves[ponit.CurveIdx] = false
+		matches := g.findNode(ponit.Coords, tolerance, ponit.CurveIdx, false)
 		for _, m := range matches {
-			matcheIdx := PointIDs[keyOf(m)] // 命中点的 gid
+			matcheIdx := PointIDs[m.key()]  // 命中点的 gid
 			junctions.union(idx, matcheIdx) // 两个粘接点并入同一 junction 簇
 			isJunction[idx] = true
 			isJunction[matcheIdx] = true
@@ -832,11 +661,7 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	//    edge.u/v：两端 junction 的节点 idx；edge.coords：从 u 到 v 的完整密集坐标(含两端)。
 	//    edgeKey：以「无序节点对」为键去重——同一段边界被数字化两次会产生端点相同的两条
 	//    边，只保留一条，重叠段就此塌成单边被消除。
-	type edge struct {
-		u, v   int      // 两端 junction 的节点 idx
-		coords []Coords // 从 u 到 v 的完整密集坐标(含两端)
-	}
-	var edges []edge
+	var edges []Edge
 	edgeKey := make(map[uint64]bool) // 无序节点对键 -> 是否已建过边
 	for curveIdx, junctionNodes := range curveJunctionNodes {
 		for j := 0; j+1 < len(junctionNodes); j++ {
@@ -855,7 +680,7 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 			edgeKey[ek] = true
 			// 截取该子路径的原始密集坐标(左闭右闭)，独立拷贝一份，避免与源切片别名。
 			coords := append([]Coords(nil), curves[curveIdx][a.pointIdx:b.pointIdx+1]...)
-			edges = append(edges, edge{u: a.node, v: b.node, coords: coords})
+			edges = append(edges, Edge{start: a.node, end: b.node, coords: coords})
 		}
 	}
 	if len(edges) == 0 {
@@ -869,8 +694,8 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	type half struct{ to, edgeID int }
 	adj := make(map[int][]half)
 	for id, e := range edges {
-		adj[e.u] = append(adj[e.u], half{e.v, id})
-		adj[e.v] = append(adj[e.v], half{e.u, id})
+		adj[e.start] = append(adj[e.start], half{e.end, id})
+		adj[e.end] = append(adj[e.end], half{e.start, id})
 	}
 	used := make([]bool, len(edges))
 	// step：从 cur 出发挑一条尚未用过的邻接边，返回对端节点与边号；无可走边则 ok=false。
@@ -885,8 +710,8 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	// appendEdge：把一条边的坐标按「from->对端」的方向追加进 ring。
 	// edge.coords 存的是 u->v 方向；若本次是从 v 进入(from!=u)，需逆序追加。
 	// skipFirst：跳过该边的起点，避免和上一段的尾点重复(相邻边共享 junction 顶点)。
-	appendEdge := func(ring []Coords, e edge, from int, skipFirst bool) []Coords {
-		if e.u == from { // 正向：u->v
+	appendEdge := func(ring []Coords, e Edge, from int, skipFirst bool) []Coords {
+		if e.start == from { // 正向：u->v
 			if skipFirst {
 				return append(ring, e.coords[1:]...)
 			}
@@ -908,7 +733,7 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 		if used[id] {
 			continue // 该边已被并入某条链
 		}
-		start := edges[id].u // 以这条边的一端为链起点
+		start := edges[id].start // 以这条边的一端为链起点
 		cur := start
 		ring = ring[:0]
 		first, closed := true, false // first：是否第一段(第一段不跳起点)；closed：是否走回起点
@@ -937,7 +762,124 @@ func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	return rings
 }
 
-func MergeCurves4(curves [][]Coords, tolerance float64) []Ring {
+// 边
+type Edge struct {
+	curveIdx int // 曲线idx
+	start    int
+	end      int      // 两端 junction 的节点 idx
+	coords   []Coords // 从 u 到 v 的完整密集坐标(含两端)
+}
+type RingEdge struct {
+	Edges    []Edge
+	IsClosed bool
+}
+
+type Matche struct {
+	pointIdx int          // 曲线 a 的idx
+	matches  []CurvePoint // 曲线n 的idx在这里
+}
+type Stack struct {
+	edges         []Edge // 曲线的边的顺序
+	curvesScanned []bool // 已经扫描过的曲线
+
+	curves [][]Coords // 所有曲线
+
+	// 当前正在处理的点
+	CurveIdx      int
+	startPointIdx int
+}
+
+func (s Stack) Clone() (out Stack) {
+	out = s
+	out.curvesScanned = append(s.curvesScanned[:0:0], s.curvesScanned...)
+	return
+}
+
+// MergeCurves4 的嵌套部分
+func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePointIdx) (edges []*RingEdge) {
+	if stack.curvesScanned[stack.CurveIdx] {
+		if len(stack.edges) <= 1 {
+			return
+		}
+		var lastPointIdx int
+		for lastPointIdx = range stack.edges {
+			if stack.edges[lastPointIdx].curveIdx == stack.CurveIdx {
+				break
+			}
+		}
+		if stack.edges[lastPointIdx].curveIdx != stack.CurveIdx {
+			log.Ctx(ctx).Warn().Msgf("数据错误, 已经扫描过的曲线没有出现在栈里")
+			return
+		}
+
+		edges = append(edges, &RingEdge{
+			Edges: append(append(stack.edges[:0:0], stack.edges[lastPointIdx+1:]...), Edge{
+				curveIdx: stack.CurveIdx,
+				start:    stack.startPointIdx,
+				end:      stack.edges[lastPointIdx].end, //
+			}),
+			IsClosed: true,
+		})
+		return // 曲线已扫过，说明死循环或拓扑断裂
+	}
+
+	stack.curvesScanned[stack.CurveIdx] = true
+	currentCurve := stack.curves[stack.CurveIdx]
+
+	// 扫顺序：优先尝试终点、起点、实在不行再扫中段。; 简洁: 把复杂扫顺序写道一个循环里
+	none := true
+	lastStored, step := currentCurve[0], tolerance/2
+	for idx := range currentCurve {
+		if DistShort(lastStored, currentCurve[idx]) < step {
+			continue
+		}
+		lastStored = currentCurve[idx]
+		if DistShort(currentCurve[idx], currentCurve[stack.startPointIdx]) <= tolerance {
+			continue
+		}
+		matches := g.findNode(currentCurve[idx], tolerance, stack.CurveIdx, false)
+		if len(matches) > 0 {
+			for i, match := range matches {
+				k := match.key()
+				if g.junctionsUsed[k] {
+					continue
+				}
+				g.junctionsUsed[k] = true
+				none = false
+				s0 := stack
+				if idx != len(currentCurve)-1 || i != len(matches)-1 {
+					s0 = s0.Clone() // 不是最后一个粘接点，就都需要 Clone 一份, 避免相互污染
+				}
+				s0.edges = append(s0.edges, Edge{
+					curveIdx: stack.CurveIdx,
+					start:    stack.startPointIdx,
+					end:      idx,
+				})
+				s0.startPointIdx = match.PointIdx
+				s0.CurveIdx = match.CurveIdx
+
+				edges1 := mergeCurves(ctx, s0, tolerance, g)
+				edges = append(edges, edges1...)
+			}
+		}
+	}
+	// 这是一条开放的曲线
+	if none {
+		edges = append(edges, &RingEdge{
+			Edges: append(append(stack.edges[:0:0], stack.edges...), Edge{
+				curveIdx: stack.CurveIdx,
+				start:    stack.startPointIdx,
+				end:      len(stack.curves[stack.CurveIdx]) - 1, // 开放的曲线
+			}),
+			IsClosed: false,
+		})
+		return
+	}
+	return
+}
+
+// 自己形成闭合环怎么处理？
+func MergeCurves4(curves [][]Coords, tolerance float64) (rings []Ring) {
 	if len(curves) == 0 {
 		return nil
 	}
@@ -948,151 +890,37 @@ func MergeCurves4(curves [][]Coords, tolerance float64) []Ring {
 		return nil
 	}
 
-	// 1) 收集所有已索引的稀化点，给每个点一个全局 id。
-	keyOf := func(cp CurvePoint) uint64 {
-		return uint64(uint32(cp.CurveIdx))<<32 | uint64(uint32(cp.PointIdx))
+	s0 := Stack{
+		edges:         nil,
+		curvesScanned: make([]bool, len(curves)), // 已经扫描过的曲线
+		curves:        curves,
+
+		// 当前正在处理的点
+		CurveIdx:      0,
+		startPointIdx: 0,
 	}
-	ptID := make(map[uint64]int) // 每个线的点顶一个唯一id?
-	var pts []CurvePoint
-	for _, list := range g.cellIndex {
-		for _, cp := range list {
-			k := keyOf(cp)
-			if _, ok := ptID[k]; !ok {
-				ptID[k] = len(pts)
-				pts = append(pts, cp)
+
+	// TODO: 未用的曲线，也要走一遍
+	edges := mergeCurves(context.TODO(), s0, tolerance, g)
+	// ring：走链时复用的坐标缓冲，预分配到稀化点总数上界，每条链游走前 ring[:0] 清空复用。
+	var ring []Coords = make([]Coords, g.countAllPoint)
+	for _, edge := range edges {
+		ring = ring[:0]
+		for _, r := range edge.Edges {
+			if r.start > r.end {
+				for ; r.start > r.end; r.start-- {
+					ring = append(ring, curves[r.curveIdx][r.start])
+				}
+			} else {
+				ring = append(ring, curves[r.curveIdx][r.start:r.end]...)
 			}
 		}
-	}
-
-	// 2) 对每个点 findNode(onlyOne=false) 找出 tolerance 内其他曲线的点，用并查集把
-	//    这些跨曲线重合的点并成同一个 junction 簇。查询时临时排除自身曲线。
-	uf := newUnionFind(len(pts))
-	isJunction := make([]bool, len(pts))
-	scanned := make([]bool, len(curves))
-	for gi, cp := range pts {
-		scanned[cp.CurveIdx] = true
-		matches := g.findNode(cp.Coords, tolerance, scanned, false)
-		scanned[cp.CurveIdx] = false
-		for _, m := range matches {
-			mi := ptID[keyOf(m)]
-			uf.union(gi, mi)
-			isJunction[gi] = true
-			isJunction[mi] = true
-		}
-	}
-
-	// 3) 每条曲线按 pointIdx 顺序收集它的 junction 点(簇根作节点 id)。
-	type cj struct{ pointIdx, node int }
-	perCurve := make([][]cj, len(curves))
-	for gi, cp := range pts {
-		if !isJunction[gi] {
-			continue
-		}
-		perCurve[cp.CurveIdx] = append(perCurve[cp.CurveIdx], cj{cp.PointIdx, uf.find(gi)})
-	}
-	for i := range perCurve {
-		sort.Slice(perCurve[i], func(a, b int) bool {
-			return perCurve[i][a].pointIdx < perCurve[i][b].pointIdx
+		rings = append(rings, Ring{
+			IsClosed: edge.IsClosed,
+			Coords:   append(ring[:0:0], ring...),
 		})
 	}
-
-	// 4) 相邻 junction 之间的曲线子路径构成一条无向边(携带原始密集坐标)。相同节点对
-	//    的边只保留一条——重复数字化的重叠段就此塌成一条被消除。
-	type edge struct {
-		u, v   int
-		coords []Coords // 从 u 到 v 的坐标(含两端)
-	}
-	var edges []edge
-	edgeKey := make(map[uint64]bool)
-	for i, cjs := range perCurve {
-		for j := 0; j+1 < len(cjs); j++ {
-			a, b := cjs[j], cjs[j+1]
-			if a.node == b.node {
-				continue // 同簇自环
-			}
-			ku, kv := a.node, b.node
-			if ku > kv {
-				ku, kv = kv, ku
-			}
-			ek := uint64(uint32(ku))<<32 | uint64(uint32(kv))
-			if edgeKey[ek] {
-				continue // 重叠段：相同节点对只保留一条
-			}
-			edgeKey[ek] = true
-			coords := append([]Coords(nil), curves[i][a.pointIdx:b.pointIdx+1]...)
-			edges = append(edges, edge{u: a.node, v: b.node, coords: coords})
-		}
-	}
-	if len(edges) == 0 {
-		return nil
-	}
-
-	// 5) 邻接表 + 走链：每次从一条未用边出发，沿未用边走到回起点(闭合环)或断头(开放链)。
-	type half struct{ to, edgeID int }
-	adj := make(map[int][]half)
-	for id, e := range edges {
-		adj[e.u] = append(adj[e.u], half{e.v, id})
-		adj[e.v] = append(adj[e.v], half{e.u, id})
-	}
-	used := make([]bool, len(edges))
-	step := func(cur int) (to, edgeID int, ok bool) {
-		for _, h := range adj[cur] {
-			if !used[h.edgeID] {
-				return h.to, h.edgeID, true
-			}
-		}
-		return 0, 0, false
-	}
-	// 把 edge 坐标按 from->to 方向追加(skipFirst 避免与上一段尾点重复)。
-	appendEdge := func(ring []Coords, e edge, from int, skipFirst bool) []Coords {
-		if e.u == from {
-			if skipFirst {
-				return append(ring, e.coords[1:]...)
-			}
-			return append(ring, e.coords...)
-		}
-		for k := len(e.coords) - 1; k >= 0; k-- {
-			if skipFirst && k == len(e.coords)-1 {
-				continue
-			}
-			ring = append(ring, e.coords[k])
-		}
-		return ring
-	}
-
-	var rings []Ring
-	var ring []Coords = make([]Coords, g.countAllPoint)
-	for id := range edges {
-		if used[id] {
-			continue
-		}
-		start := edges[id].u
-		cur := start
-		// var ring []Coords
-		ring = ring[:0]
-		first, closed := true, false
-		for {
-			to, eid, ok := step(cur)
-			if !ok {
-				break // 断头：开放链
-			}
-			used[eid] = true
-			ring = appendEdge(ring, edges[eid], cur, !first)
-			first = false
-			cur = to
-			if cur == start {
-				closed = true
-				break
-			}
-		}
-		if closed && len(ring) > 1 && distMeters(ring[0], ring[len(ring)-1]) <= tolerance {
-			ring = ring[:len(ring)-1] // 丢弃与首点重合的尾点
-		}
-
-		// rings = append(rings, Ring{Coords: ring, IsClosed: closed})
-		rings = append(rings, Ring{Coords: append(ring[:0:0], ring...), IsClosed: closed})
-	}
-	return rings
+	return
 }
 
 // MergeCurvesGeoInt 是 MergeCurves 的 geohash 版本。

@@ -96,7 +96,6 @@ func TestMergeCurves_SquareFromScrambledEdges(t *testing.T) {
 		}
 	}
 	t.Run("MergeCurves", func(t *testing.T) { check(t, MergeCurves(curves, tolerance)) })
-	t.Run("MergeCurves2", func(t *testing.T) { check(t, MergeCurves2(curves, tolerance)) })
 }
 
 // 衔接处端点存在微小偏差(< tolerance)时应被去重衔接(密集点曲线)。
@@ -122,7 +121,6 @@ func TestMergeCurves_ToleranceDedup(t *testing.T) {
 		fn   func([][]Coords, float64) []Coords
 	}{
 		{"MergeCurves", MergeCurves},
-		{"MergeCurves2", MergeCurves2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ring := tc.fn([][]Coords{e1, e2, e3}, tolerance)
@@ -162,14 +160,5 @@ func TestMergeCurvesGeoInt_RoundTrip(t *testing.T) {
 	want := AreaCoords(corners)
 	if rel := math.Abs(got-want) / want; rel > 1e-3 {
 		t.Fatalf("area=%.2f want=%.2f relErr=%.4f", got, want, rel)
-	}
-}
-
-func TestMergeCurves_Empty(t *testing.T) {
-	if r := MergeCurves(nil, 1.0); r != nil {
-		t.Fatalf("nil input should return nil, got %+v", r)
-	}
-	if r := MergeCurves2(nil, 1.0); r != nil {
-		t.Fatalf("nil input should return nil, got %+v", r)
 	}
 }

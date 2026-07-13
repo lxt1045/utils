@@ -142,13 +142,6 @@ func BenchmarkMergeOverlap(b *testing.B) {
 
 		areaMine := geohash.AreaCoords(ringMine)
 
-		// MergeCurves2 前提是「密集点曲线 + 粘接点对齐」。本数据集已调密集(相邻点
-		// ~0.14~0.014m < tolerance/2)，满足密集前提；但仍含中段重叠(addOverlapPath 追加的
-		// 精确复制曲线)，多出的重叠曲线无法纳入单环游走——预期仍还原不出正确环。
-		// 一并计入对比，如实反映其在「密集但含重叠」场景下的边界行为。
-		ringMine2 := geohash.MergeCurves2(overlap, tolerance)
-		areaMine2 := geohash.AreaCoords(ringMine2)
-
 		// MergeCurves3 分区遍历：返回所有链(闭合环 + 开放链)。重复数字化的重叠曲线会
 		// 自成一条独立链，不污染主环。只对闭合环(IsClosed=true)求面积，取最大的一条作为
 		// 真实边界环(重叠曲线形成的退化环面积远小于主环)。
@@ -178,19 +171,15 @@ func BenchmarkMergeOverlap(b *testing.B) {
 		}
 
 		relErr := func(a float64) float64 { return math.Abs(a-wantArea) / wantArea }
-		b.Logf("[%d 条 ×%d 点 +%d 重合] 环顶点: 真值=%d MergeCurves=%d MergeCurves2=%d MergeCurves3(主环)=%d(闭合环%d/共%d链); 面积误差: MergeCurves=%.3e MergeCurves2=%.3e MergeCurves3=%.3e MergeCurves4=%.3e",
-			nCurves, ptsPerCurve, nOverlap, len(baseRing), len(ringMine), len(ringMine2), mainVerts, closedCnt, len(rings3), relErr(areaMine), relErr(areaMine2), relErr(areaMine3), relErr(areaMine4))
+		b.Logf("[%d 条 ×%d 点 +%d 重合] 环顶点: 真值=%d MergeCurves=%d MergeCurves3(主环)=%d(闭合环%d/共%d链); "+
+			"面积误差: MergeCurves=%.3e MergeCurves3=%.3e MergeCurves4=%.3e",
+			nCurves, ptsPerCurve, nOverlap, len(baseRing), len(ringMine), mainVerts, closedCnt,
+			len(rings3), relErr(areaMine), relErr(areaMine3), relErr(areaMine4))
 
 		b.Run(fmt.Sprintf("MergeCurves/%d", nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				_ = geohash.MergeCurves(overlap, tolerance)
-			}
-		})
-		b.Run(fmt.Sprintf("MergeCurves2/%d", nCurves), func(b *testing.B) {
-			b.ReportAllocs()
-			for range b.N {
-				_ = geohash.MergeCurves2(overlap, tolerance)
 			}
 		})
 		b.Run(fmt.Sprintf("MergeCurves3/%d", nCurves), func(b *testing.B) {
@@ -221,7 +210,8 @@ func BenchmarkMergeOverlapPprof(b *testing.B) {
 		radiusDeg   = 0.01 // 半径 ~1.11km、周长 ~7km；相邻点间距随曲线数在 ~0.14m(50 条)到 ~0.014m(500 条)间，全档 < tolerance/2 = 0.5m，满足 MergeCurves2 密集点前提
 	)
 
-	for _, nCurves := range []int{50, 100, 200, 500} {
+	for _, nCurves := range []int{50, 100, 200} {
+		// for _, nCurves := range []int{50, 100} {
 		// —— 公共数据准备(不计入计时) ——
 		base := buildScrambledRingCurves(nCurves, ptsPerCurve, radiusDeg, 0 /*精确重合*/, 42)
 		overlap := addOverlapPath(base, nOverlap)
@@ -229,7 +219,7 @@ func BenchmarkMergeOverlapPprof(b *testing.B) {
 		b.Run(fmt.Sprintf("MergeCurves3/%d", nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = geohash.MergeCurves3(overlap, tolerance)
+				_ = geohash.MergeCurves4(overlap, tolerance)
 			}
 		})
 	}

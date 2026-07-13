@@ -6,7 +6,9 @@
       "Bash(go env *)",
       "Bash(wsl *)",
       "Bash(go build *)",
-      "Bash(go vet *)"
+      "Bash(go vet *)",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)"
     ]
   }
 }

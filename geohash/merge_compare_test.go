@@ -48,7 +48,7 @@ func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg, denseSt
 		d := distMeters(u, v)
 		steps := int(d/denseStepM) + 1
 		out := make([]Coords, 0, steps)
-		for k := 0; k < steps; k++ {
+		for k := range steps {
 			f := float64(k) / float64(steps)
 			out = append(out, Coords{Lat: u.Lat + (v.Lat-u.Lat)*f, Lng: u.Lng + (v.Lng-u.Lng)*f})
 		}
@@ -208,54 +208,5 @@ func TestMergeCurves_CompareAreaWithLibraries(t *testing.T) {
 			}
 		})
 
-		t.Run(tc.name+"-MergeCurves2", func(t *testing.T) {
-			// 关节抖动约 0.5m(≈ 4.5e-6 度),容差取 5m 以覆盖抖动。
-			const jitterDeg = 4.5e-6
-			const tolerance = 5.0
-			const denseStepM = 2.0 // < tolerance/2，满足 MergeCurves2 的密集点前提
-
-			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg, denseStepM)
-			merged := MergeCurves2(curves, tolerance)
-
-			// 密集重采样后重建环含大量顶点，不再等于原环顶点数；用面积校验拓扑正确性。
-			if len(merged) < len(tc.ring) {
-				t.Fatalf("重建环顶点数=%d, 过少(至少应有原环 %d 个拐点)", len(merged), len(tc.ring))
-			}
-
-			// 三种面积:本包 / orb / 椭球真值,均基于重建环。
-			mineMerged := AreaCoords(merged)
-			orbMerged := orbArea(merged)
-			geoMerged := geodesicArea(merged)
-
-			// 参照:直接用"真实边界"算的面积(同样三种库)。
-			mineTruth := AreaCoords(tc.ring)
-			geoTruth := geodesicArea(tc.ring)
-
-			// (1) 拼接前后本包面积应几乎相等(仅关节抖动带来的极小差异)。
-			relMerge := math.Abs(mineMerged-mineTruth) / mineTruth
-			// (2) 重建环相对椭球真值(用真实边界算)的误差。
-			relGeo := math.Abs(mineMerged-geoTruth) / geoTruth
-			// (3) 重建环上 本包 vs orb 的差异(应恒约 0.224%,球半径差异)。
-			relOrb := math.Abs(mineMerged-orbMerged) / geoMerged
-
-			t.Logf("重建环: AreaCoords=%.3f  orb=%.3f  geodesic=%.3f", mineMerged, orbMerged, geoMerged)
-			t.Logf("真实边界: AreaCoords=%.3f  geodesic=%.3f", mineTruth, geoTruth)
-			t.Logf("拼接引入误差(本包 前后)=%.6f%%  重建→椭球真值=%.4f%%  重建 本包→orb=%.4f%%",
-				relMerge*100, relGeo*100, relOrb*100)
-
-			// 拼接本身不应引入可观误差:关节抖动 ~0.5m 对城市街区/公里级多边形
-			// 面积的相对影响应远小于 0.1%。
-			if relMerge > 1e-3 {
-				t.Errorf("拼接前后面积差异过大, 说明重建引入了额外误差: relErr=%.6f", relMerge)
-			}
-			// 重建环相对椭球真值的误差,应与 area_compare_test 同量级(< 0.6%)。
-			if relGeo > 6e-3 {
-				t.Errorf("重建环相对椭球真值误差过大: relErr=%.6f", relGeo)
-			}
-			// 重建环上 本包 vs orb 的差异仍是球半径之差,应 < 0.3%。
-			if relOrb > 3e-3 {
-				t.Errorf("重建环 本包 vs orb 差异过大: relErr=%.6f", relOrb)
-			}
-		})
 	}
 }
