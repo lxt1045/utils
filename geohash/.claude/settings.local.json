@@ -38,7 +38,11 @@
       "Bash(go vet *)",
       "Bash(echo \"---exit:$?---\")",
       "Bash(echo \"build exit:$?\")",
-      "Bash(PATH=/usr/local/lib/go/bin:/usr/bin:/bin CGO_ENABLED=1 /usr/local/lib/go/bin/go test -bench BenchmarkMergeOverlap -benchmem -run '^$' .)"
+      "Bash(PATH=/usr/local/lib/go/bin:/usr/bin:/bin CGO_ENABLED=1 /usr/local/lib/go/bin/go test -bench BenchmarkMergeOverlap -benchmem -run '^$' .)",
+      "Bash(grep -v \"//\")",
+      "Bash(grep -vE \"^\\\\S+:[0-9]+:\\\\s*//\")",
+      "Bash(grep -vE ':\\\\s*//')",
+      "Bash(grep -v '//')"
     ]
   }
 }

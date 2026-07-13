@@ -125,7 +125,7 @@ func BenchmarkMergeOverlap(b *testing.B) {
 		// ~0.14~0.014m < tolerance/2)，满足密集前提；但仍含中段重叠(addOverlapPath 追加的
 		// 精确复制曲线)，多出的重叠曲线无法纳入单环游走——预期仍还原不出正确环。
 		// 一并计入对比，如实反映其在「密集但含重叠」场景下的边界行为。
-		ringMine2 := geohash.MergeCurves2(overlap, tolerance)
+		ringMine2 := mergeCurves3MainRing(overlap, tolerance)
 		areaMine2 := geohash.AreaCoords(ringMine2)
 
 		// MergeCurves3 分区遍历：返回所有链(闭合环 + 开放链)。重复数字化的重叠曲线会
@@ -154,10 +154,10 @@ func BenchmarkMergeOverlap(b *testing.B) {
 				_ = geohash.MergeCurves(overlap, tolerance)
 			}
 		})
-		b.Run(fmt.Sprintf("MergeCurves2/%d", nCurves), func(b *testing.B) {
+		b.Run(fmt.Sprintf("MergeCurves3/%d", nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = geohash.MergeCurves2(overlap, tolerance)
+				_ = geohash.MergeCurves3(overlap, tolerance)
 			}
 		})
 		b.Run(fmt.Sprintf("MergeCurves3/%d", nCurves), func(b *testing.B) {

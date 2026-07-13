@@ -120,7 +120,7 @@ type CurvePointIdx struct {
 	countAllPoint int
 	countCurve    int
 
-	junctionsUsed map[uint64]bool
+	junctionsUsed map[uint64]bool // 同一个点只处理一次
 }
 
 // snapGrid 保存 snap-rounding 用的节点集合与网格索引。
@@ -586,6 +586,15 @@ func (u *unionFind2) union(a, b int) {
 // 出正确的闭合环。调用方按 IsClosed 过滤，只对闭合环求面积(见测试)。
 //
 // 前提与 MergeCurves2 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
+//
+// 与 MergeCurves4 的选型(基准 50~800 条曲线,见 TestMergeCurves4/BenchmarkMergeCurves3vs4)：
+// 两者正确性等价(闭合主环面积逐点一致,误差 < 1e-7)。差异在重叠段处理与规模表现——
+//   - MergeCurves3(本函数,建图+单次走边)：重叠段靠「无序节点对」边去重,恒还原出 1 条
+//     主闭合环,输出干净;内存随规模线性、稳定。重叠为主且规模大(≥200 条)时更省内存、更快。
+//   - MergeCurves4(DFS+分支去重)：干净数据全面更快更省(耗时 0.7~0.8x、内存低至 0.54x)；
+//     但重叠数据会残留 3~4 条退化闭合环(不影响主环,取最大环即可),大规模比本函数慢 ~1.35x、
+//     内存 ~1.5x。
+// 经验法则：干净/近干净数据首选 MergeCurves4;重叠为主且规模大用 MergeCurves3。
 func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
 	if len(curves) == 0 {
 		return nil
@@ -829,8 +838,9 @@ func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePo
 	// 扫顺序：优先尝试终点、起点、实在不行再扫中段。; 简洁: 把复杂扫顺序写道一个循环里
 	none := true
 	lastStored, step := currentCurve[0], tolerance/2
+	userCurves := make([]bool, g.countCurve) // 同一条曲线的交叉线只使用一次
 	for idx := range currentCurve {
-		if DistShort(lastStored, currentCurve[idx]) < step {
+		if idx != 0 && idx != len(currentCurve)-1 && DistShort(lastStored, currentCurve[idx]) < step {
 			continue
 		}
 		lastStored = currentCurve[idx]
@@ -841,10 +851,13 @@ func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePo
 		if len(matches) > 0 {
 			for i, match := range matches {
 				k := match.key()
-				if g.junctionsUsed[k] {
+				if userCurves[match.CurveIdx] || g.junctionsUsed[k] {
 					continue
 				}
 				g.junctionsUsed[k] = true
+
+				userCurves[match.CurveIdx] = true
+
 				none = false
 				s0 := stack
 				if idx != len(currentCurve)-1 || i != len(matches)-1 {
@@ -878,7 +891,19 @@ func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePo
 	return
 }
 
-// 自己形成闭合环怎么处理？
+// MergeCurves4 与 MergeCurves3 等价：把多条无序曲线按粘接点拼接，返回所有闭合环。
+// 二者结果正确性一致(干净数据面积逐点相同；重叠数据面积误差 < 1e-7)。
+//
+// 算法差异：MergeCurves3 用「junction 图 + 单次走边」(建无向边并按节点对去重叠，
+// 再线性走链)；MergeCurves4 用「DFS 递归 + 分支回溯」，配合 junctionsUsed(全局粘接
+// 点去重)与 userCurves(同曲线只接一次)抑制分支爆炸，末尾只保留闭合环(IsClosed=true)。
+//
+// 选型建议(基准见 BenchmarkMergeCurves3vs4，50~800 曲线)：
+//   - 干净数据(无重复数字化)：优先 MergeCurves4——耗时约 0.7~0.8x、内存约 0.6~0.8x，全面更省。
+//   - 重叠为主且规模大(≥500 曲线)：优先 MergeCurves3——它靠边去重使重叠段恒塌成 1 环；
+//     MergeCurves4 的 DFS 对重叠段会残留 3~4 个退化闭合环，大规模下慢约 1.3x、内存约 1.5x。
+//
+// 前提与 MergeCurves3 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
 func MergeCurves4(curves [][]Coords, tolerance float64) (rings []Ring) {
 	if len(curves) == 0 {
 		return nil
@@ -905,6 +930,9 @@ func MergeCurves4(curves [][]Coords, tolerance float64) (rings []Ring) {
 	// ring：走链时复用的坐标缓冲，预分配到稀化点总数上界，每条链游走前 ring[:0] 清空复用。
 	var ring []Coords = make([]Coords, g.countAllPoint)
 	for _, edge := range edges {
+		if !edge.IsClosed {
+			continue
+		}
 		ring = ring[:0]
 		for _, r := range edge.Edges {
 			if r.start > r.end {
