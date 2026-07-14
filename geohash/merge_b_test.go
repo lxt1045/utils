@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// buildScrambledRingCurves 构造用于压测 MergeCurves 的数据集。
+// buildScrambledRingCurves 构造用于压测 MergeCurves0 的数据集。
 //
 // 做法：取一个大圆环作为多边形边界，均匀采样出若干顶点，再把边界切成
 // nCurves 段，每段 ptsPerCurve 个坐标。相邻两段在衔接处本应共享同一个
@@ -60,7 +60,7 @@ func buildScrambledRingCurves(nCurves, ptsPerCurve int, radiusDeg, jitterDeg flo
 		curves[s] = seg
 	}
 
-	// 随机反转部分段方向(让 MergeCurves 的四种衔接分支都被触发)。
+	// 随机反转部分段方向(让 MergeCurves0 的四种衔接分支都被触发)。
 	for s := range curves {
 		if rng.Intn(2) == 0 {
 			curves[s] = reverseCoords(curves[s])
@@ -74,11 +74,11 @@ func buildScrambledRingCurves(nCurves, ptsPerCurve int, radiusDeg, jitterDeg flo
 	return curves
 }
 
-// BenchmarkMergeCurves 压测 MergeCurves：
+// BenchmarkMergeCurves0 压测 MergeCurves0：
 //   - 100 条曲线
 //   - 每条曲线 1024 个坐标
 //   - 段间约 200 个近似重合的衔接坐标(唯一差距 < tolerance)
-func BenchmarkMergeCurves(b *testing.B) {
+func BenchmarkMergeCurves0(b *testing.B) {
 	const (
 		nCurves     = 100
 		ptsPerCurve = 1024
@@ -91,7 +91,7 @@ func BenchmarkMergeCurves(b *testing.B) {
 
 	// 先校验：拼接应还原出完整闭合环，顶点数=总边数。
 	wantVerts := nCurves * (ptsPerCurve - 1)
-	if got := MergeCurves(curves, tolerance); len(got) != wantVerts {
+	if got := MergeCurves0(curves, tolerance); len(got) != wantVerts {
 		b.Fatalf("拼接未成完整环：得到 %d 顶点，期望 %d", len(got), wantVerts)
 	}
 	b.Logf("输入: %d 条曲线 × %d 点；近似重合衔接坐标 %d 个；输出环顶点 %d",
@@ -100,18 +100,17 @@ func BenchmarkMergeCurves(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = MergeCurves(curves, tolerance)
+		_ = MergeCurves0(curves, tolerance)
 	}
 }
 
-// BenchmarkMergeCurvesVs2 对比两种实现在「相邻曲线共享端点(带亚容差抖动)」这类
-// 干净数据上的耗时：
-//   - MergeCurves  : snap-rounding(顶点聚类 + 逐段 DDA noding + 边去重 + 环游走)
-//   - MergeCurves2 : 端点链式拼接(只索引端点、双向延伸)
+// BenchmarkMergeCurves0VsMergeCurves 对比两种实现在「相邻曲线共享端点(带亚容差抖动)」
+// 这类干净数据上的耗时：
+//   - MergeCurves0 : snap-rounding(顶点聚类 + 逐段 DDA noding + 边去重 + 环游走)
+//   - MergeCurves  : junction 图 + 边去重 + 环游走(返回所有链)
 //
-// 两者在这类数据上结果一致(都还原同一环)，但 MergeCurves2 不做逐点 noding，
-// 预期明显更快。曲线数取 50/100/200/500 档，每条 1024 点。
-func BenchmarkMergeCurvesVs2(b *testing.B) {
+// 两者在这类数据上结果一致(都还原同一环)。曲线数取 50/100/200/500 档，每条 1024 点。
+func BenchmarkMergeCurves0VsMergeCurves(b *testing.B) {
 	const (
 		ptsPerCurve = 1024
 		tolerance   = 1.0
@@ -122,21 +121,21 @@ func BenchmarkMergeCurvesVs2(b *testing.B) {
 		curves := buildScrambledRingCurves(nCurves, ptsPerCurve, radiusDeg, jitterDeg, 42)
 
 		// 一致性校验(计时外)：两者顶点数应相同。
-		r1 := MergeCurves(curves, tolerance)
-		r3 := MergeCurves3(curves, tolerance)
-		b.Logf("[%d 条 ×%d 点] 环顶点: MergeCurves=%d MergeCurves3=%d",
+		r1 := MergeCurves0(curves, tolerance)
+		r3 := MergeCurves(curves, tolerance)
+		b.Logf("[%d 条 ×%d 点] 环顶点: MergeCurves0=%d MergeCurves=%d",
 			nCurves, ptsPerCurve, len(r1), len(r3[0].Coords))
 
+		b.Run("MergeCurves0/"+itoa(nCurves), func(b *testing.B) {
+			b.ReportAllocs()
+			for range b.N {
+				_ = MergeCurves0(curves, tolerance)
+			}
+		})
 		b.Run("MergeCurves/"+itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				_ = MergeCurves(curves, tolerance)
-			}
-		})
-		b.Run("MergeCurves3/"+itoa(nCurves), func(b *testing.B) {
-			b.ReportAllocs()
-			for range b.N {
-				_ = MergeCurves3(curves, tolerance)
 			}
 		})
 	}

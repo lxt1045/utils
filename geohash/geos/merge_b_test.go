@@ -28,7 +28,7 @@ func reverseCoordsB(c []geohash.Coords) []geohash.Coords {
 // 完全相等”的衔接点(闭合环共 2*nCurves 个)。最后随机反转段方向并打乱段顺序。
 //
 // jitterDeg=0 时衔接点“精确重合”，用于喂给 GEOSLineMerge(它要求端点严格相等
-// 才会缝合)；jitterDeg>0 时用于压测 MergeCurves 的容差去重路径。
+// 才会缝合)；jitterDeg>0 时用于压测 MergeCurves0 的容差去重路径。
 //
 // 尺度约束：段内相邻采样点间距必须 > tolerance(否则被 dedupConsecutive 折叠)，
 // 衔接抖动必须 < tolerance(否则断链)。radiusDeg=1° 时段内间距约 6.8m。
@@ -97,7 +97,7 @@ func curvesToWKT(curves [][]geohash.Coords) string {
 }
 
 // wktLineStringToCoords 把 GEOSLineMerge 输出的单条 LineString 转回 geohash.Coords，
-// 并去掉与首点重合的尾点(闭合环)，得到与 MergeCurves 同约定的顶点序列，便于求面积。
+// 并去掉与首点重合的尾点(闭合环)，得到与 MergeCurves0 同约定的顶点序列，便于求面积。
 func wktLineStringToCoords(ls geom.LineString) []geohash.Coords {
 	seq := ls.Coordinates()
 	n := seq.Length()
@@ -142,7 +142,7 @@ func jitterEndpoints(curves [][]geohash.Coords, jitterDeg float64, seed int64) [
 // 抖动(误差范围内)。段内部点保持不变。
 //
 // 目的：模拟真实数据里“同一个衔接点被多份图幅各自采样了上百次、彼此都在误差内
-// 但不完全相等”的极端形态，专门压 MergeCurves 的 dedupConsecutive 去重路径——
+// 但不完全相等”的极端形态，专门压 MergeCurves0 的 dedupConsecutive 去重路径——
 // 每条曲线两端各 nJ 个近似重合点都要被逐一距离判定并折叠。
 //
 // 折叠后每条曲线恢复为 (原端点 1 + 段内 + 原端点 1)，故拼接结果的环顶点数与
@@ -174,16 +174,16 @@ func denseJunctions(curves [][]geohash.Coords, nJ int, jitterDeg float64, seed i
 }
 
 // BenchmarkMerge 在同一个基准函数里用 b.Run() 压测三个子基准：
-//   - MergeCurves      : 本包实现，精确重合衔接(与 GEOS 同输入)
+//   - MergeCurves0      : 本包实现，精确重合衔接(与 GEOS 同输入)
 //   - MergeCurvesFuzzy : 本包实现，模糊重合衔接(端点带 < tolerance 抖动)
 //   - LineMergeWKT     : GEOS 参照实现(GEOSLineMerge 的 cgo 封装)
 //
 // 数据规模：100 条曲线 × 每条 1024 个坐标。两套数据集：
 //   - 精确重合(jitterDeg=0)：GEOSLineMerge 要求端点严格相等才会缝合，注入抖动它
-//     就拼不成单条线；对 MergeCurves 是容差判定的特例，仍走完打乱/反转/去重全流程。
-//     用它让 MergeCurves 与 GEOS 吃完全相同的输入，公平对比。
+//     就拼不成单条线；对 MergeCurves0 是容差判定的特例，仍走完打乱/反转/去重全流程。
+//     用它让 MergeCurves0 与 GEOS 吃完全相同的输入，公平对比。
 //   - 模糊重合(jitterDeg>0)：衔接点带 < tolerance 的抖动，是真实图幅数据的常见形态，
-//     只有 MergeCurves 的容差去重能处理，体现其相对裸 GEOSLineMerge 的实用价值。
+//     只有 MergeCurves0 的容差去重能处理，体现其相对裸 GEOSLineMerge 的实用价值。
 //
 // 公共部分(计时外)完成：构造两套曲线、构造喂给 GEOSLineMerge 的 WKT、正确性校验。
 // 尤其 WKT 构造是把纯 Go 几何交给 C 库前的数据处理，放在公共部分以免影响基准。
@@ -198,7 +198,7 @@ func BenchmarkMerge(b *testing.B) {
 	const jitterDeg = 1.5e-6 // ~0.17m (< tolerance)，衔接点抖动量
 
 	// —— 公共数据准备(不计入任何子基准的计时) ——
-	// 精确重合数据集：MergeCurves 与 GEOSLineMerge 共用(GEOS 要求端点严格相等)。
+	// 精确重合数据集：MergeCurves0 与 GEOSLineMerge 共用(GEOS 要求端点严格相等)。
 	curves := buildScrambledRingCurves(nCurves, ptsPerCurve, radiusDeg, 0 /*精确重合*/, 42)
 	inWKT := curvesToWKT(curves) // LineMergeWKT 的输入，提前构造好
 	// 模糊重合数据集：在精确数据集基础上，仅对每条曲线的两个端点(衔接点)注入
@@ -212,18 +212,18 @@ func BenchmarkMerge(b *testing.B) {
 
 	// 校验各条路径都能正确把所有段拼接成完整闭合环，并各自求拼接后环的面积。
 	wantVerts := nCurves * (ptsPerCurve - 1)
-	ringExact := geohash.MergeCurves(curves, tolerance)
+	ringExact := geohash.MergeCurves0(curves, tolerance)
 	if len(ringExact) != wantVerts {
-		b.Fatalf("MergeCurves(精确) 拼接未成完整环：得到 %d 顶点，期望 %d", len(ringExact), wantVerts)
+		b.Fatalf("MergeCurves0(精确) 拼接未成完整环：得到 %d 顶点，期望 %d", len(ringExact), wantVerts)
 	}
-	ringFuzzy := geohash.MergeCurves(curvesFuzzy, tolerance)
+	ringFuzzy := geohash.MergeCurves0(curvesFuzzy, tolerance)
 	if len(ringFuzzy) != wantVerts {
-		b.Fatalf("MergeCurves(模糊) 拼接未成完整环：得到 %d 顶点，期望 %d", len(ringFuzzy), wantVerts)
+		b.Fatalf("MergeCurves0(模糊) 拼接未成完整环：得到 %d 顶点，期望 %d", len(ringFuzzy), wantVerts)
 	}
 	// 密集衔接集：每端一簇近似重合点会被 dedupConsecutive 折叠回单点，环顶点数仍为 wantVerts。
-	ringDense := geohash.MergeCurves(curvesDense, tolerance)
+	ringDense := geohash.MergeCurves0(curvesDense, tolerance)
 	if len(ringDense) != wantVerts {
-		b.Fatalf("MergeCurves(密集衔接) 拼接未成完整环：得到 %d 顶点，期望 %d", len(ringDense), wantVerts)
+		b.Fatalf("MergeCurves0(密集衔接) 拼接未成完整环：得到 %d 顶点，期望 %d", len(ringDense), wantVerts)
 	}
 	outWKT, err := geos.LineMergeWKT(inWKT)
 	if err != nil {
@@ -256,7 +256,7 @@ func BenchmarkMerge(b *testing.B) {
 	   ┌──────────────────┬─────────────────────┬──────────┬──────────┐
 	   │      子基准      │      衔接形态       │   耗时   │ 内存/op  │
 	   ├──────────────────┼─────────────────────┼──────────┼──────────┤
-	   │ MergeCurves      │ 精确重合(每端1点)   │ ~5.75 ms │ 10.56 MB │
+	   │ MergeCurves0      │ 精确重合(每端1点)   │ ~5.75 ms │ 10.56 MB │
 	   ├──────────────────┼─────────────────────┼──────────┼──────────┤
 	   │ MergeCurvesFuzzy │ 亚容差抖动(每端1点) │ ~5.76 ms │ 10.56 MB │
 	   ├──────────────────┼─────────────────────┼──────────┼──────────┤
@@ -266,30 +266,30 @@ func BenchmarkMerge(b *testing.B) {
 	   └──────────────────┴─────────────────────┴──────────┴──────────┘
 	 //*/
 
-	// —— 子基准 1：本包 MergeCurves(纯 Go，精确重合衔接) ——
-	b.Run("MergeCurves", func(b *testing.B) {
+	// —— 子基准 1：本包 MergeCurves0(纯 Go，精确重合衔接) ——
+	b.Run("MergeCurves0", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			_ = geohash.MergeCurves(curves, tolerance)
+			_ = geohash.MergeCurves0(curves, tolerance)
 		}
 	})
 
-	// —— 子基准 2：本包 MergeCurves(纯 Go，模糊重合衔接) ——
+	// —— 子基准 2：本包 MergeCurves0(纯 Go，模糊重合衔接) ——
 	// 衔接端点带 < tolerance 的抖动，走容差去重路径(GEOSLineMerge 无法处理这种输入)。
 	b.Run("MergeCurvesFuzzy", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			_ = geohash.MergeCurves(curvesFuzzy, tolerance)
+			_ = geohash.MergeCurves0(curvesFuzzy, tolerance)
 		}
 	})
 
-	// —— 子基准 3：本包 MergeCurves(纯 Go，密集衔接簇) ——
+	// —— 子基准 3：本包 MergeCurves0(纯 Go，密集衔接簇) ——
 	// 每条曲线两端各有 100+ 个近似重合的衔接点(全部在 tolerance 内)，
 	// 重点压测 dedupConsecutive 的容差折叠与衔接去重路径。
 	b.Run("MergeCurvesDense", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
-			_ = geohash.MergeCurves(curvesDense, tolerance)
+			_ = geohash.MergeCurves0(curvesDense, tolerance)
 		}
 	})
 

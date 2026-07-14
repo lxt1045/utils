@@ -41,7 +41,7 @@ func TestMergeCurves_MidSegmentOverlap(t *testing.T) {
 
 	curves := [][]Coords{dig1, rest, dig2} // 顺序打乱
 
-	ring := MergeCurves(curves, tolerance)
+	ring := MergeCurves0(curves, tolerance)
 	if len(ring) < 5 {
 		t.Fatalf("环顶点数=%d, 过少(应至少还原 A,P,B,C,D 五个拐点): %+v", len(ring), ring)
 	}
@@ -54,7 +54,7 @@ func TestMergeCurves_MidSegmentOverlap(t *testing.T) {
 	}
 }
 
-// BenchmarkMergeCurvesScaling 在不同顶点数下压测 MergeCurves，展示其近 O(V) 的标度。
+// BenchmarkMergeCurvesScaling 在不同顶点数下压测 MergeCurves0，展示其近 O(V) 的标度。
 //
 // 关键：snap-rounding 的 noding 成本主要在沿线段扫格的 DDA，其代价正比于
 // 「边界总长 / cell 尺寸」，与顶点数无关。若固定半径(边界总长恒定)只增顶点数，
@@ -73,13 +73,13 @@ func BenchmarkMergeCurvesScaling(b *testing.B) {
 		b.Run(itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = MergeCurves(curves, tolerance)
+				_ = MergeCurves0(curves, tolerance)
 			}
 		})
 		b.Run(itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = MergeCurves3(curves, tolerance)
+				_ = MergeCurves(curves, tolerance)
 			}
 		})
 	}
@@ -99,9 +99,9 @@ func mainClosedArea(rings []Ring) (area float64, closedCnt int) {
 	return area, closedCnt
 }
 
-// TestMergeCurves4 在多档曲线数下对比 MergeCurves3 与 MergeCurves4 的等效性：
+// TestMergeCurves1 在多档曲线数下对比 MergeCurves 与 MergeCurves1 的等效性：
 // 两者都应从同一份「打乱的干净圆环」还原出唯一的闭合主环，且面积逐点一致。
-func TestMergeCurves4(t *testing.T) {
+func TestMergeCurves1(t *testing.T) {
 	const (
 		tolerance = 1.0
 		segMeters = 8.0 // 每段约 8m (>tolerance 保证节点可区分；~8 cell/段令 DDA∝V)
@@ -112,8 +112,8 @@ func TestMergeCurves4(t *testing.T) {
 		radiusDeg := segMeters * float64(nCurves) / (2 * math.Pi) / 111320.0
 		curves := buildScrambledRingCurves(nCurves, 2, radiusDeg, 0, 42)
 
-		rings3 := MergeCurves3(curves, tolerance)
-		rings4 := MergeCurves4(curves, tolerance)
+		rings3 := MergeCurves(curves, tolerance)
+		rings4 := MergeCurves1(curves, tolerance)
 
 		area3, closed3 := mainClosedArea(rings3)
 		area4, closed4 := mainClosedArea(rings4)
@@ -122,14 +122,14 @@ func TestMergeCurves4(t *testing.T) {
 		if area3 > 0 {
 			relDiff = math.Abs(area3-area4) / area3
 		}
-		t.Logf("[%d 条] MergeCurves3: %d 链/%d 闭合 主环面积=%.6f | MergeCurves4: %d 链/%d 闭合 主环面积=%.6f | 相对差=%.3e",
+		t.Logf("[%d 条] MergeCurves: %d 链/%d 闭合 主环面积=%.6f | MergeCurves1: %d 链/%d 闭合 主环面积=%.6f | 相对差=%.3e",
 			nCurves, len(rings3), closed3, area3, len(rings4), closed4, area4, relDiff)
 
 		if closed3 == 0 {
-			t.Errorf("[%d 条] MergeCurves3 未产出闭合环", nCurves)
+			t.Errorf("[%d 条] MergeCurves 未产出闭合环", nCurves)
 		}
 		if closed4 == 0 {
-			t.Errorf("[%d 条] MergeCurves4 未产出闭合环", nCurves)
+			t.Errorf("[%d 条] MergeCurves1 未产出闭合环", nCurves)
 		}
 		if area3 > 0 && area4 > 0 && relDiff > 1e-6 {
 			t.Errorf("[%d 条] 两者主环面积差异过大: %.3e", nCurves, relDiff)
@@ -154,10 +154,10 @@ func addOverlapPath(curves [][]Coords, nOverlap int) [][]Coords {
 	return append(out, dup)
 }
 
-// TestMergeCurves4_Overlap 在含「中段重叠(重复数字化)」的数据上，多档对比 MergeCurves3
-// 与 MergeCurves4：追加一条精确复制的重叠曲线后，两者是否都能消除重叠、还原出与无重叠
+// TestMergeCurves1_Overlap 在含「中段重叠(重复数字化)」的数据上，多档对比 MergeCurves
+// 与 MergeCurves1：追加一条精确复制的重叠曲线后，两者是否都能消除重叠、还原出与无重叠
 // 版一致的主环面积。这是判定二者「完全等效」的关键——干净数据谁都能过，重叠才见真章。
-func TestMergeCurves4_Overlap(t *testing.T) {
+func TestMergeCurves1_Overlap(t *testing.T) {
 	const (
 		tolerance   = 1.0
 		ptsPerCurve = 64
@@ -170,32 +170,32 @@ func TestMergeCurves4_Overlap(t *testing.T) {
 		base := buildScrambledRingCurves(nCurves, ptsPerCurve, radiusDeg, 0, 42)
 
 		// 无重叠真值面积：对 base 求主环面积。
-		baseArea3, _ := mainClosedArea(MergeCurves3(base, tolerance))
+		baseArea3, _ := mainClosedArea(MergeCurves(base, tolerance))
 
 		overlap := addOverlapPath(base, nOverlap)
-		area3, closed3 := mainClosedArea(MergeCurves3(overlap, tolerance))
-		area4, closed4 := mainClosedArea(MergeCurves4(overlap, tolerance))
+		area3, closed3 := mainClosedArea(MergeCurves(overlap, tolerance))
+		area4, closed4 := mainClosedArea(MergeCurves1(overlap, tolerance))
 
 		rel3, rel4 := 0.0, 0.0
 		if baseArea3 > 0 {
 			rel3 = math.Abs(area3-baseArea3) / baseArea3
 			rel4 = math.Abs(area4-baseArea3) / baseArea3
 		}
-		t.Logf("[%d 条 +%d 重合] 真值面积=%.3f | MergeCurves3: %d 闭合 面积=%.3f 误差=%.3e | MergeCurves4: %d 闭合 面积=%.3f 误差=%.3e",
+		t.Logf("[%d 条 +%d 重合] 真值面积=%.3f | MergeCurves: %d 闭合 面积=%.3f 误差=%.3e | MergeCurves1: %d 闭合 面积=%.3f 误差=%.3e",
 			nCurves, nOverlap, baseArea3, closed3, area3, rel3, closed4, area4, rel4)
 
 		if closed4 == 0 {
-			t.Errorf("[%d 条] MergeCurves4 在重叠数据上未产出闭合环", nCurves)
+			t.Errorf("[%d 条] MergeCurves1 在重叠数据上未产出闭合环", nCurves)
 		}
 		if baseArea3 > 0 && rel4 > 1e-3 {
-			t.Errorf("[%d 条] MergeCurves4 主环面积偏离无重叠真值过大: %.3e (疑似重叠未消除)", nCurves, rel4)
+			t.Errorf("[%d 条] MergeCurves1 主环面积偏离无重叠真值过大: %.3e (疑似重叠未消除)", nCurves, rel4)
 		}
 	}
 }
 
-// BenchmarkMergeCurves3vs4 在多档曲线数下对比 MergeCurves3 与 MergeCurves4 的耗时/分配，
+// BenchmarkMergeCurvesVs1 在多档曲线数下对比 MergeCurves 与 MergeCurves1 的耗时/分配，
 // 干净数据与含中段重叠(重复数字化)两种输入各测一遍。
-func BenchmarkMergeCurves3vs4(b *testing.B) {
+func BenchmarkMergeCurvesVs1(b *testing.B) {
 	const (
 		tolerance   = 1.0
 		ptsPerCurve = 64
@@ -206,28 +206,28 @@ func BenchmarkMergeCurves3vs4(b *testing.B) {
 		base := buildScrambledRingCurves(nCurves, ptsPerCurve, radiusDeg, 0, 42)
 		overlap := addOverlapPath(base, nOverlap)
 
-		b.Run("clean/MergeCurves3/"+itoa(nCurves), func(b *testing.B) {
+		b.Run("clean/MergeCurves/"+itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = MergeCurves3(base, tolerance)
+				_ = MergeCurves(base, tolerance)
 			}
 		})
-		b.Run("clean/MergeCurves4/"+itoa(nCurves), func(b *testing.B) {
+		b.Run("clean/MergeCurves1/"+itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = MergeCurves4(base, tolerance)
+				_ = MergeCurves1(base, tolerance)
 			}
 		})
-		b.Run("overlap/MergeCurves3/"+itoa(nCurves), func(b *testing.B) {
+		b.Run("overlap/MergeCurves/"+itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = MergeCurves3(overlap, tolerance)
+				_ = MergeCurves(overlap, tolerance)
 			}
 		})
-		b.Run("overlap/MergeCurves4/"+itoa(nCurves), func(b *testing.B) {
+		b.Run("overlap/MergeCurves1/"+itoa(nCurves), func(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
-				_ = MergeCurves4(overlap, tolerance)
+				_ = MergeCurves1(overlap, tolerance)
 			}
 		})
 	}

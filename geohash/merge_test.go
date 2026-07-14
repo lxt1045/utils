@@ -61,7 +61,7 @@ func densifyEdgeTest(u, v Coords, stepM float64) []Coords {
 }
 
 // 把一个正方形边界拆成 4 条乱序、方向不一、端点重合的密集点曲线，
-// 验证 MergeCurves / MergeCurves2 都能拼回闭合环，且面积与直接构造的一致。
+// 验证 MergeCurves0 / MergeCurves2 都能拼回闭合环，且面积与直接构造的一致。
 func TestMergeCurves_SquareFromScrambledEdges(t *testing.T) {
 	// 正方形四角(北京附近，边长 ~1.1km；顺时针)。用小尺度以便密集采样点数可控。
 	a := Coords{Lat: 39.90, Lng: 116.30}
@@ -95,7 +95,7 @@ func TestMergeCurves_SquareFromScrambledEdges(t *testing.T) {
 			t.Fatalf("merged area=%.4f want=%.4f relErr=%.2e", got, want, rel)
 		}
 	}
-	t.Run("MergeCurves", func(t *testing.T) { check(t, MergeCurves(curves, tolerance)) })
+	t.Run("MergeCurves0", func(t *testing.T) { check(t, MergeCurves0(curves, tolerance)) })
 }
 
 // 衔接处端点存在微小偏差(< tolerance)时应被去重衔接(密集点曲线)。
@@ -120,7 +120,7 @@ func TestMergeCurves_ToleranceDedup(t *testing.T) {
 		name string
 		fn   func([][]Coords, float64) []Coords
 	}{
-		{"MergeCurves", MergeCurves},
+		{"MergeCurves0", MergeCurves0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ring := tc.fn([][]Coords{e1, e2, e3}, tolerance)

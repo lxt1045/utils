@@ -155,7 +155,7 @@ func (g *CurvePointIdx) cellXY(p Coords) (cx, cy uint32) {
 // 尚未被使用(curvesScanned[CurveIdx]==false)的已索引点。
 //
 // onlyOne=true: 返回第一个命中点(单结果，用于 MergeCurves2 的确定性单链游走)。
-// onlyOne=false: 返回所有命中点，每条曲线去重后只保留一个点(用于 MergeCurves3 的多分支探索)。
+// onlyOne=false: 返回所有命中点，每条曲线去重后只保留一个点(用于 MergeCurves 的多分支探索)。
 //
 // 用 curvesScanned 而非单个 excludeCurve：不仅排除「p 自己所在的曲线」，还排除
 // 所有已消费的曲线。这样能正确处理「同一段边界被数字化两次」的重叠——一条曲线被
@@ -464,7 +464,7 @@ func ringFromNodeSeqs(seqs [][]int, nodes []Coords, tolerance float64) []Coords 
 	return ring
 }
 
-// MergeCurves 将多条无序曲线拼接成一条闭合环，返回环上的有序顶点(方向不保证，
+// MergeCurves0 将多条无序曲线拼接成一条闭合环，返回环上的有序顶点(方向不保证，
 // 不含重复首尾点)。结果可直接传入 AreaCoords 求面积。
 //
 // curves    : 每条曲线是一串有序坐标点(WGS84，度)；曲线间无先后顺序、方向不定。
@@ -476,7 +476,7 @@ func ringFromNodeSeqs(seqs [][]int, nodes []Coords, tolerance float64) []Coords 
 // 复杂度约 O(顶点数)。
 //
 // 注意：若输入曲线不能连成单一环(断裂或多个独立环)，只返回从起点能连通的那条链。
-func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
+func MergeCurves0(curves [][]Coords, tolerance float64) []Coords {
 	if len(curves) == 0 {
 		return nil
 	}
@@ -496,7 +496,7 @@ func MergeCurves(curves [][]Coords, tolerance float64) []Coords {
 	return ringFromNodeSeqs(seqs, g.nodes, tolerance)
 }
 
-// Ring 表示 MergeCurves3 找到的一条拼接链：顶点序列与是否闭合。
+// Ring 表示 MergeCurves 找到的一条拼接链：顶点序列与是否闭合。
 // IsClosed=true 时首尾在 tolerance 内相接(可求面积)；false 时是断裂的开放链
 // (重复数字化的重叠曲线、或拓扑断裂的残段)，调用方通常跳过不计面积。
 type Ring struct {
@@ -574,10 +574,10 @@ func (u *unionFind2) union(a, b int) {
 	// }
 }
 
-// MergeCurves3 把多条无序曲线按粘接点拼接，返回找到的所有环(闭合环 + 开放链)。
+// MergeCurves 把多条无序曲线按粘接点拼接，返回找到的所有环(闭合环 + 开放链)。
 //
 // 与 MergeCurves2 的区别：MergeCurves2 走贪心单链，要求所有曲线连成单一闭合环，
-// 任何多余/重叠曲线都会污染主环或导致整体 nil。MergeCurves3 改成「junction 图 +
+// 任何多余/重叠曲线都会污染主环或导致整体 nil。MergeCurves 改成「junction 图 +
 // 走链」：先把跨曲线重合的粘接点并成 junction 节点，junction 之间的曲线子路径作为
 // 无向边并去重(重复数字化的重叠段产生相同节点对的边，塌成一条被消除)，再沿未用边
 // 走链——回到起点为闭合环(IsClosed=true)，走到断头为开放链(false)。
@@ -587,15 +587,15 @@ func (u *unionFind2) union(a, b int) {
 //
 // 前提与 MergeCurves2 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
 //
-// 与 MergeCurves4 的选型(基准 50~800 条曲线,见 TestMergeCurves4/BenchmarkMergeCurves3vs4)：
+// 与 MergeCurves1 的选型(基准 50~800 条曲线,见 TestMergeCurves1/BenchmarkMergeCurvesVs1)：
 // 两者正确性等价(闭合主环面积逐点一致,误差 < 1e-7)。差异在重叠段处理与规模表现——
-//   - MergeCurves3(本函数,建图+单次走边)：重叠段靠「无序节点对」边去重,恒还原出 1 条
+//   - MergeCurves(本函数,建图+单次走边)：重叠段靠「无序节点对」边去重,恒还原出 1 条
 //     主闭合环,输出干净;内存随规模线性、稳定。重叠为主且规模大(≥200 条)时更省内存、更快。
-//   - MergeCurves4(DFS+分支去重)：干净数据全面更快更省(耗时 0.7~0.8x、内存低至 0.54x)；
+//   - MergeCurves1(DFS+分支去重)：干净数据全面更快更省(耗时 0.7~0.8x、内存低至 0.54x)；
 //     但重叠数据会残留 3~4 条退化闭合环(不影响主环,取最大环即可),大规模比本函数慢 ~1.35x、
 //     内存 ~1.5x。
-// 经验法则：干净/近干净数据首选 MergeCurves4;重叠为主且规模大用 MergeCurves3。
-func MergeCurves3(curves [][]Coords, tolerance float64) []Ring {
+// 经验法则：干净/近干净数据首选 MergeCurves1;重叠为主且规模大用 MergeCurves。
+func MergeCurves(curves [][]Coords, tolerance float64) []Ring {
 	if len(curves) == 0 {
 		return nil
 	}
@@ -804,7 +804,7 @@ func (s Stack) Clone() (out Stack) {
 	return
 }
 
-// MergeCurves4 的嵌套部分
+// MergeCurves1 的嵌套部分
 func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePointIdx) (edges []*RingEdge) {
 	if stack.curvesScanned[stack.CurveIdx] {
 		if len(stack.edges) <= 1 {
@@ -891,20 +891,20 @@ func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePo
 	return
 }
 
-// MergeCurves4 与 MergeCurves3 等价：把多条无序曲线按粘接点拼接，返回所有闭合环。
+// MergeCurves1 与 MergeCurves 等价：把多条无序曲线按粘接点拼接，返回所有闭合环。
 // 二者结果正确性一致(干净数据面积逐点相同；重叠数据面积误差 < 1e-7)。
 //
-// 算法差异：MergeCurves3 用「junction 图 + 单次走边」(建无向边并按节点对去重叠，
-// 再线性走链)；MergeCurves4 用「DFS 递归 + 分支回溯」，配合 junctionsUsed(全局粘接
+// 算法差异：MergeCurves 用「junction 图 + 单次走边」(建无向边并按节点对去重叠，
+// 再线性走链)；MergeCurves1 用「DFS 递归 + 分支回溯」，配合 junctionsUsed(全局粘接
 // 点去重)与 userCurves(同曲线只接一次)抑制分支爆炸，末尾只保留闭合环(IsClosed=true)。
 //
-// 选型建议(基准见 BenchmarkMergeCurves3vs4，50~800 曲线)：
-//   - 干净数据(无重复数字化)：优先 MergeCurves4——耗时约 0.7~0.8x、内存约 0.6~0.8x，全面更省。
-//   - 重叠为主且规模大(≥500 曲线)：优先 MergeCurves3——它靠边去重使重叠段恒塌成 1 环；
-//     MergeCurves4 的 DFS 对重叠段会残留 3~4 个退化闭合环，大规模下慢约 1.3x、内存约 1.5x。
+// 选型建议(基准见 BenchmarkMergeCurvesVs1，50~800 曲线)：
+//   - 干净数据(无重复数字化)：优先 MergeCurves1——耗时约 0.7~0.8x、内存约 0.6~0.8x，全面更省。
+//   - 重叠为主且规模大(≥500 曲线)：优先 MergeCurves——它靠边去重使重叠段恒塌成 1 环；
+//     MergeCurves1 的 DFS 对重叠段会残留 3~4 个退化闭合环，大规模下慢约 1.3x、内存约 1.5x。
 //
-// 前提与 MergeCurves3 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
-func MergeCurves4(curves [][]Coords, tolerance float64) (rings []Ring) {
+// 前提与 MergeCurves 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
+func MergeCurves1(curves [][]Coords, tolerance float64) (rings []Ring) {
 	if len(curves) == 0 {
 		return nil
 	}
@@ -951,7 +951,7 @@ func MergeCurves4(curves [][]Coords, tolerance float64) (rings []Ring) {
 	return
 }
 
-// MergeCurvesGeoInt 是 MergeCurves 的 geohash 版本。
+// MergeCurvesGeoInt 是 MergeCurves0 的 geohash 版本。
 //
 // curves 中每个 uint64 都是由 WGS84 坐标经 EncodeInt 得到的整型编码。
 // 函数先用 DecodeInt 还原为坐标，拼接成闭合环后再重新编码为 []uint64。
@@ -959,7 +959,7 @@ func MergeCurves4(curves [][]Coords, tolerance float64) (rings []Ring) {
 //
 // 注意：geohash 是有损网格编码，DecodeInt 得到的是网格角点，端点会被
 // 量化到网格分辨率上。tolerance 应不小于网格尺寸，否则本应重合的端点
-// 可能因量化而判为不相接。若追求精度，请保留原始浮点坐标并用 MergeCurves。
+// 可能因量化而判为不相接。若追求精度，请保留原始浮点坐标并用 MergeCurves0。
 func MergeCurvesGeoInt(curves [][]uint64, tolerance float64) []uint64 {
 	coordCurves := make([][]Coords, len(curves))
 	for i, cv := range curves {
@@ -971,7 +971,7 @@ func MergeCurvesGeoInt(curves [][]uint64, tolerance float64) []uint64 {
 		coordCurves[i] = cc
 	}
 
-	ring := MergeCurves(coordCurves, tolerance)
+	ring := MergeCurves0(coordCurves, tolerance)
 	out := make([]uint64, len(ring))
 	for i, c := range ring {
 		out[i] = EncodeInt(c.Lat, c.Lng)

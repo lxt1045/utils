@@ -42,7 +42,10 @@
       "Bash(grep -v \"//\")",
       "Bash(grep -vE \"^\\\\S+:[0-9]+:\\\\s*//\")",
       "Bash(grep -vE ':\\\\s*//')",
-      "Bash(grep -v '//')"
+      "Bash(grep -v '//')",
+      "Bash(grep -v 'b.Run\\\\|t.Run\\\\|Logf\\\\|Fatalf\\\\|Errorf\\\\|//')",
+      "Bash(echo \"---rc=$?---\")",
+      "Bash(echo \"rc=$?\")"
     ]
   }
 }

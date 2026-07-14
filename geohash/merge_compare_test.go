@@ -5,20 +5,20 @@ import (
 	"testing"
 )
 
-// 本文件验证 MergeCurves(拼接无序曲线成闭合环)的正确性。
+// 本文件验证 MergeCurves0(拼接无序曲线成闭合环)的正确性。
 //
-// 背景：MergeCurves 在功能上等价于 JTS 的 LineMerger / GEOS 的 GEOSLineMerge /
+// 背景：MergeCurves0 在功能上等价于 JTS 的 LineMerger / GEOS 的 GEOSLineMerge /
 // PostGIS 的 ST_LineMerge——把一组无序、方向不定、端点共享的折线缝合成连续线串
 // (进而闭合成环)。这些参照实现都不是纯 Go(Java / C++ / GEOS+CGO)，无法在本仓库
 // 内直接调用做逐点比对。
 //
-// 但 MergeCurves 属于"拓扑重建":给定某个已知多边形的边界被打散后的曲线集合，
+// 但 MergeCurves0 属于"拓扑重建":给定某个已知多边形的边界被打散后的曲线集合，
 // 正确的输出就应当还原出这个多边形。因此可以用"重建环所围面积"作为误差度量,
 // 并借助本仓库已有的两个独立参照库交叉验证:
 //   - paulmach/orb        : 球面角盈公式(orbArea, 见 area_compare_test.go)
 //   - tidwall/geodesic    : WGS84 椭球测地真值(geodesicArea, 见 area_compare_test.go)
 //
-// 结论(由实测得出):在容差(tolerance)大于关节处抖动的前提下,MergeCurves 重建
+// 结论(由实测得出):在容差(tolerance)大于关节处抖动的前提下,MergeCurves0 重建
 // 的环与真实边界在拓扑上完全一致,所围面积相对 orb 与椭球真值的误差,与直接用
 // 真实边界计算面积的误差完全同量级(即误差只来自面积公式本身的球/椭球近似,
 // 拼接过程不引入额外误差)。
@@ -30,7 +30,7 @@ import (
 // 每条边会被密集重采样，使相邻点间距 < tolerance/2——满足 MergeCurves2 的「密集点
 // 曲线」前提(粘接点靠点距离在网格里反查)。denseStepM 是重采样步长(米)。
 //
-// 返回的曲线集合恰好覆盖整条边界且相邻段共享端点,适合喂给 MergeCurves / MergeCurves2。
+// 返回的曲线集合恰好覆盖整条边界且相邻段共享端点,适合喂给 MergeCurves0 / MergeCurves2。
 func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg, denseStepM float64) [][]Coords {
 	n := len(ring)
 	// 闭合边界的有向顶点序列(把首点再接到末尾,形成 n 条边、n+1 个点)。
@@ -109,7 +109,7 @@ func splitRingIntoScrambledCurves(ring []Coords, nCurves int, jitterDeg, denseSt
 	return scrambled
 }
 
-// TestMergeCurves_CompareAreaWithLibraries 验证:把已知多边形边界打散后再 MergeCurves
+// TestMergeCurves_CompareAreaWithLibraries 验证:把已知多边形边界打散后再 MergeCurves0
 // 重建,重建环的面积与"真实边界面积"在 orb / 椭球真值下误差同量级,拼接不引入额外误差。
 func TestMergeCurves_CompareAreaWithLibraries(t *testing.T) {
 	cases := []struct {
@@ -163,9 +163,9 @@ func TestMergeCurves_CompareAreaWithLibraries(t *testing.T) {
 			const denseStepM = 2.0 // < tolerance/2,满足 MergeCurves2 密集点前提
 
 			curves := splitRingIntoScrambledCurves(tc.ring, tc.nCurves, jitterDeg, denseStepM)
-			merged := MergeCurves(curves, tolerance)
+			merged := MergeCurves0(curves, tolerance)
 
-			// MergeCurves 用 snap-rounding 聚类密集点,合并后顶点数会明显少于密集
+			// MergeCurves0 用 snap-rounding 聚类密集点,合并后顶点数会明显少于密集
 			// 输入(tolerance 内的点塌成单节点)。跳过顶点数检查,只校验面积拓扑。
 			if len(merged) < len(tc.ring) {
 				t.Fatalf("重建环顶点数=%d < 原环=%d, 拼接拓扑断裂: %+v",

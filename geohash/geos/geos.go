@@ -1,10 +1,10 @@
 //go:build !windows && cgo
 
 // Package geos 提供对 libgeos_c 若干函数的最小 cgo 封装，作为
-// geohash.MergeCurves 系列的参照实现：
+// geohash.MergeCurves0 系列的参照实现：
 //   - LineMergeWKT  : 绑定 GEOSLineMerge，把多条线首尾缝合成连续线串。
 //   - UnaryUnionWKT : 绑定 GEOSUnaryUnion，对线做 noding + 去重叠 + dissolve，
-//                     是容差 snap-rounding 版 MergeCurves 的 noding 参照。
+//                     是容差 snap-rounding 版 MergeCurves0 的 noding 参照。
 //
 // 说明：simplefeatures v0.59.0 的公开 API 并未导出这两个操作的直接入口，
 // 故这里直接绑定 C 库函数(与 PostGIS ST_LineMerge / ST_UnaryUnion 同一实现)。

@@ -31,7 +31,7 @@ func curvesToMultiLineWKT(t *testing.T, curves [][]geohash.Coords) string {
 // wktToRing 用 simplefeatures 的 geom 解析 GEOSLineMerge 输出的 WKT，
 // 取出其顶点序列并转回 geohash.Coords。要求结果是单条 LINESTRING
 // (即所有曲线被成功缝合成一条线)；否则返回 ok=false。
-// 若线首尾在 tolerance 内闭合，则去掉重复的尾点，与 MergeCurves 的约定一致。
+// 若线首尾在 tolerance 内闭合，则去掉重复的尾点，与 MergeCurves0 的约定一致。
 func wktToRing(t *testing.T, wkt string, tolerance float64) (ring []geohash.Coords, ok bool) {
 	t.Helper()
 	g, err := geom.UnmarshalWKT(wkt)
@@ -55,12 +55,12 @@ func wktToRing(t *testing.T, wkt string, tolerance float64) (ring []geohash.Coor
 	return ring, true
 }
 
-// mergeCurves3MainRing 从 MergeCurves3 返回的所有链中取最大的闭合环(主环)。
-// MergeCurves3 返回 []Ring(闭合环 + 开放链)，重复数字化的重叠曲线会自成退化环，
+// mergeCurvesMainRing 从 MergeCurves 返回的所有链中取最大的闭合环(主环)。
+// MergeCurves 返回 []Ring(闭合环 + 开放链)，重复数字化的重叠曲线会自成退化环，
 // 其面积远小于真实边界环，故取面积最大的闭合环即主环。用于替代旧的 MergeCurves2
 // (返回单条 []Coords)在对比测试中的位置。
-func mergeCurves3MainRing(curves [][]geohash.Coords, tolerance float64) []geohash.Coords {
-	rings := geohash.MergeCurves3(curves, tolerance)
+func mergeCurvesMainRing(curves [][]geohash.Coords, tolerance float64) []geohash.Coords {
+	rings := geohash.MergeCurves(curves, tolerance)
 	var main []geohash.Coords
 	best := 0.0
 	for _, r := range rings {
@@ -135,7 +135,7 @@ func densifyCurve(curve []geohash.Coords, stepM float64) []geohash.Coords {
 func TestMergeCurves_CompareWithGEOSLineMerge(t *testing.T) {
 	// 构造测试用例：给定已知多边形顶点，切成若干段、打乱顺序与方向。
 	// GEOSLineMerge 要求衔接端点“精确重合”才会缝合，因此这里不注入抖动
-	// (抖动场景在 tolerance 子测试里单独验证 MergeCurves 的鲁棒性)。
+	// (抖动场景在 tolerance 子测试里单独验证 MergeCurves0 的鲁棒性)。
 	mkPolygonCurves := func(verts []geohash.Coords, segLens []int, reverseEven bool) [][]geohash.Coords {
 		// 闭合：把首点接到末尾。
 		closed := append(append([]geohash.Coords(nil), verts...), verts[0])
@@ -207,8 +207,8 @@ func TestMergeCurves_CompareWithGEOSLineMerge(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			curves := mkPolygonCurves(tc.verts, tc.segLens, true)
 
-			// —— 本包 MergeCurves ——
-			mine := geohash.MergeCurves(curves, tc.tolerance)
+			// —— 本包 MergeCurves0 ——
+			mine := geohash.MergeCurves0(curves, tc.tolerance)
 
 			// —— GEOS 参照：simplefeatures geom 造 WKT → GEOSLineMerge → geom 解析 ——
 			inWKT := curvesToMultiLineWKT(t, curves)
@@ -223,7 +223,7 @@ func TestMergeCurves_CompareWithGEOSLineMerge(t *testing.T) {
 
 			// —— 顶点数应与原多边形一致 ——
 			if len(mine) != len(tc.verts) {
-				t.Errorf("MergeCurves 顶点数=%d, 期望=%d", len(mine), len(tc.verts))
+				t.Errorf("MergeCurves0 顶点数=%d, 期望=%d", len(mine), len(tc.verts))
 			}
 			if len(geosRing) != len(tc.verts) {
 				t.Errorf("GEOSLineMerge 顶点数=%d, 期望=%d", len(geosRing), len(tc.verts))
@@ -232,7 +232,7 @@ func TestMergeCurves_CompareWithGEOSLineMerge(t *testing.T) {
 			// —— 两者拓扑应一致(允许旋转/反向), 顶点误差应极小 ——
 			maxErr, matched := ringsMatch(mine, geosRing, tc.tolerance)
 			if !matched {
-				t.Fatalf("MergeCurves 与 GEOSLineMerge 结果不一致\n  mine =%+v\n  geos =%+v",
+				t.Fatalf("MergeCurves0 与 GEOSLineMerge 结果不一致\n  mine =%+v\n  geos =%+v",
 					mine, geosRing)
 			}
 
@@ -255,9 +255,9 @@ func TestMergeCurves_CompareWithGEOSLineMerge(t *testing.T) {
 	}
 }
 
-// TestMergeCurves_ToleranceRobustness 验证 MergeCurves 在“衔接端点有微小抖动”
+// TestMergeCurves_ToleranceRobustness 验证 MergeCurves0 在“衔接端点有微小抖动”
 // (真实数据常见)时仍能缝合成环，而 GEOSLineMerge 因要求端点精确重合会失败——
-// 这正是 MergeCurves 相对裸 GEOSLineMerge 的实用价值。抖动去除后两者面积应一致。
+// 这正是 MergeCurves0 相对裸 GEOSLineMerge 的实用价值。抖动去除后两者面积应一致。
 func TestMergeCurves_ToleranceRobustness(t *testing.T) {
 	verts := []geohash.Coords{
 		{Lat: 40.0, Lng: 116.0},
@@ -273,10 +273,10 @@ func TestMergeCurves_ToleranceRobustness(t *testing.T) {
 		{{Lat: verts[3].Lat - jitter, Lng: verts[3].Lng}, verts[0]},
 	}
 
-	// MergeCurves 用 5m 容差应能缝合成 4 顶点环。
-	mine := geohash.MergeCurves(curves, 5.0)
+	// MergeCurves0 用 5m 容差应能缝合成 4 顶点环。
+	mine := geohash.MergeCurves0(curves, 5.0)
 	if len(mine) != 4 {
-		t.Fatalf("MergeCurves 抖动场景应得到 4 顶点环, 实际=%d: %+v", len(mine), mine)
+		t.Fatalf("MergeCurves0 抖动场景应得到 4 顶点环, 实际=%d: %+v", len(mine), mine)
 	}
 
 	// GEOSLineMerge 对同样(未对齐)的输入：端点不精确重合, 无法缝合成单条线。
@@ -291,11 +291,11 @@ func TestMergeCurves_ToleranceRobustness(t *testing.T) {
 	}
 	t.Logf("抖动输入下 GEOSLineMerge 输出类型=%s (期望仍为 MultiLineString, 说明未缝合)", g.Type())
 
-	// 面积健全性：MergeCurves 结果面积应接近"真实无抖动多边形"面积。
+	// 面积健全性：MergeCurves0 结果面积应接近"真实无抖动多边形"面积。
 	areaMine := geohash.AreaCoords(mine)
 	areaTruth := geohash.AreaCoords(verts)
 	rel := math.Abs(areaMine-areaTruth) / areaTruth
-	t.Logf("MergeCurves 面积=%.3f  真值=%.3f  相对误差=%.4e", areaMine, areaTruth, rel)
+	t.Logf("MergeCurves0 面积=%.3f  真值=%.3f  相对误差=%.4e", areaMine, areaTruth, rel)
 	if rel > 1e-3 {
 		t.Errorf("抖动去除后面积相对误差过大: %.4e", rel)
 	}
