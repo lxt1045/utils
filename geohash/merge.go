@@ -504,7 +504,16 @@ type Ring struct {
 	IsClosed bool
 }
 
+// JunctionNode: 曲线上一个 junction 的 {沿线位置 pointIdx, 所属 junction 节点 id(=簇根)}。
+// perCurve[i]：第 i 条曲线上所有 junction 点，排序后相邻两个之间正好夹着一段
+// 「不含其它 junction 的子路径」——这就是下一步要抽出的图的边。
+type JunctionNode struct {
+	pointIdx int // 全局的点的索引id
+	node     int // 曲线上一个 junction 的 {沿线位置 pointIdx, 所属 junction 节点 id(=簇根)}。
+}
+
 // unionFind 把「跨曲线重合的粘接点」并成同一个 junction 节点(带路径减半)。
+// 就是用同一个点(最后调用union()的点)指代“粘接”在一起的点
 type unionFind struct {
 	matchPoints []int // 粘接点对: 初始化时 idx:idx, 扫描到时 idx: matchIdx; 多条曲线(超过2条)的共同点: 碰撞处理,链式处理
 }
@@ -576,17 +585,6 @@ func (u *unionFind2) union(a, b int) {
 
 // MergeCurves 把多条无序曲线按粘接点拼接，返回找到的所有环(闭合环 + 开放链)。
 //
-// 与 MergeCurves2 的区别：MergeCurves2 走贪心单链，要求所有曲线连成单一闭合环，
-// 任何多余/重叠曲线都会污染主环或导致整体 nil。MergeCurves 改成「junction 图 +
-// 走链」：先把跨曲线重合的粘接点并成 junction 节点，junction 之间的曲线子路径作为
-// 无向边并去重(重复数字化的重叠段产生相同节点对的边，塌成一条被消除)，再沿未用边
-// 走链——回到起点为闭合环(IsClosed=true)，走到断头为开放链(false)。
-//
-// 好处：重复数字化的重叠曲线被边去重自然消除，不再污染真实边界的主环，能稳定还原
-// 出正确的闭合环。调用方按 IsClosed 过滤，只对闭合环求面积(见测试)。
-//
-// 前提与 MergeCurves2 相同：密集点曲线(相邻点间距 < tolerance/2)、粘接点对齐。
-//
 // 与 MergeCurves1 的选型(基准 50~800 条曲线,见 TestMergeCurves1/BenchmarkMergeCurvesVs1)：
 // 两者正确性等价(闭合主环面积逐点一致,误差 < 1e-7)。差异在重叠段处理与规模表现——
 //   - MergeCurves(本函数,建图+单次走边)：重叠段靠「无序节点对」边去重,恒还原出 1 条
@@ -594,6 +592,7 @@ func (u *unionFind2) union(a, b int) {
 //   - MergeCurves1(DFS+分支去重)：干净数据全面更快更省(耗时 0.7~0.8x、内存低至 0.54x)；
 //     但重叠数据会残留 3~4 条退化闭合环(不影响主环,取最大环即可),大规模比本函数慢 ~1.35x、
 //     内存 ~1.5x。
+//
 // 经验法则：干净/近干净数据首选 MergeCurves1;重叠为主且规模大用 MergeCurves。
 func MergeCurves(curves [][]Coords, tolerance float64) []Ring {
 	if len(curves) == 0 {
@@ -644,18 +643,12 @@ func MergeCurves(curves [][]Coords, tolerance float64) []Ring {
 	}
 
 	// 3) 按曲线归拢 junction 点(接合点、交叉点)，并沿曲线走向(pointIdx 升序)排好序。
-	//    CurveJunctionNode: 曲线上一个 junction 的 {沿线位置 pointIdx, 所属 junction 节点 id(=簇根)}。
-	//    perCurve[i]：第 i 条曲线上所有 junction 点，排序后相邻两个之间正好夹着一段
-	//    「不含其它 junction 的子路径」——这就是下一步要抽出的图的边。
-	type CurveJunctionNode struct {
-		pointIdx, node int //  曲线上一个 junction 的 {沿线位置 pointIdx, 所属 junction 节点 id(=簇根)}。
-	}
-	curveJunctionNodes := make([][]CurveJunctionNode, len(curves)) // 每条曲线上所有的 junction 点(接合点、交叉点)
+	curveJunctionNodes := make([][]JunctionNode, len(curves)) // 每条曲线上所有的 junction 点(接合点、交叉点)
 	for idx, ponit := range PointsIdx {
 		if !isJunction[idx] {
 			continue // 曲线内部点不入图
 		}
-		curveJunctionNodes[ponit.CurveIdx] = append(curveJunctionNodes[ponit.CurveIdx], CurveJunctionNode{
+		curveJunctionNodes[ponit.CurveIdx] = append(curveJunctionNodes[ponit.CurveIdx], JunctionNode{
 			pointIdx: ponit.PointIdx,
 			node:     junctions.find(idx),
 		})
@@ -805,7 +798,7 @@ func (s Stack) Clone() (out Stack) {
 }
 
 // MergeCurves1 的嵌套部分
-func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePointIdx) (edges []*RingEdge) {
+func mergeCurves1(ctx context.Context, stack Stack, tolerance float64, g *CurvePointIdx) (edges []*RingEdge) {
 	if stack.curvesScanned[stack.CurveIdx] {
 		if len(stack.edges) <= 1 {
 			return
@@ -871,7 +864,7 @@ func mergeCurves(ctx context.Context, stack Stack, tolerance float64, g *CurvePo
 				s0.startPointIdx = match.PointIdx
 				s0.CurveIdx = match.CurveIdx
 
-				edges1 := mergeCurves(ctx, s0, tolerance, g)
+				edges1 := mergeCurves1(ctx, s0, tolerance, g)
 				edges = append(edges, edges1...)
 			}
 		}
@@ -926,7 +919,7 @@ func MergeCurves1(curves [][]Coords, tolerance float64) (rings []Ring) {
 	}
 
 	// TODO: 未用的曲线，也要走一遍
-	edges := mergeCurves(context.TODO(), s0, tolerance, g)
+	edges := mergeCurves1(context.TODO(), s0, tolerance, g)
 	// ring：走链时复用的坐标缓冲，预分配到稀化点总数上界，每条链游走前 ring[:0] 清空复用。
 	var ring []Coords = make([]Coords, g.countAllPoint)
 	for _, edge := range edges {
