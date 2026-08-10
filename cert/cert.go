@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -76,6 +77,20 @@ func New(keyPem, certPem []byte) (cert *Cert, err error) {
 
 // MakeEcdsa certMode: root, inner, leaf
 func (c *Cert) MakeEcdsa(certMode CertMode, ips, hosts []string) (privPEM, certPEM []byte, err error) {
+	subject := defaultSubject
+	subject.CommonName = "unkown"
+	switch certMode {
+	case CertModeRoot:
+		subject.CommonName = "Lxt Root CA"
+	case CertModeInner:
+		subject.CommonName = "Lxt Organization CA" // 中间证书
+	case CertModeLeaf:
+		subject.CommonName = "lxt1045.com" // 中间证书
+	}
+	return c.MakeEcdsaWithInfo(certMode, subject, ips, hosts)
+}
+
+func (c *Cert) MakeEcdsaWithInfo(certMode CertMode, subject pkix.Name, ips, hosts []string) (privPEM, certPEM []byte, err error) {
 	defer func() {
 		if ec, ok := err.(*errors.Code); !ok && err != nil && ec.Code() == 0 {
 			err = errors.Errorf(err.Error())
@@ -94,16 +109,9 @@ func (c *Cert) MakeEcdsa(certMode CertMode, ips, hosts []string) (privPEM, certP
 		return
 	}
 	unsignedCert := &x509.Certificate{
-		Version:      3,
-		SerialNumber: randSN,
-		Subject: pkix.Name{
-			Country:            []string{"CN"},
-			Province:           []string{"Chengdu"},
-			Locality:           []string{"Chengdu"},
-			Organization:       []string{"LxtLtd"},
-			OrganizationalUnit: []string{"LxtProxy"},
-			// CommonName:         "Lxt Root CA",
-		},
+		Version:               3,
+		SerialNumber:          randSN,
+		Subject:               subject,
 		NotBefore:             time.Now(),
 		NotAfter:              expiration,
 		BasicConstraintsValid: true,
@@ -111,19 +119,16 @@ func (c *Cert) MakeEcdsa(certMode CertMode, ips, hosts []string) (privPEM, certP
 
 	switch certMode {
 	case CertModeRoot:
-		unsignedCert.Subject.CommonName = "Lxt Root CA"
 		unsignedCert.IsCA = true
 		unsignedCert.MaxPathLen = 1
 		unsignedCert.MaxPathLenZero = false
 		unsignedCert.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
 	case CertModeInner:
-		unsignedCert.Subject.CommonName = "Lxt Organization CA" // 中间证书
 		unsignedCert.IsCA = true
 		unsignedCert.MaxPathLen = 0
 		unsignedCert.MaxPathLenZero = true
 		unsignedCert.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
 	case CertModeLeaf:
-		unsignedCert.Subject.CommonName = "lxt1045.com"
 		unsignedCert.IsCA = false
 		unsignedCert.KeyUsage = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
 		unsignedCert.ExtKeyUsage = []x509.ExtKeyUsage{
@@ -158,6 +163,108 @@ func (c *Cert) MakeEcdsa(certMode CertMode, ips, hosts []string) (privPEM, certP
 	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
 	if err != nil {
 		log.Println(err)
+		return
+	}
+	privPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER}) // "EC PRIVATE KEY"
+
+	return
+}
+
+// MakeEcdsa certMode: root, inner, leaf
+func (c *Cert) MakeRsa(certMode CertMode, ips, hosts []string) (privPEM, certPEM []byte, err error) {
+	subject := defaultSubject
+	subject.CommonName = "unkown"
+	switch certMode {
+	case CertModeRoot:
+		subject.CommonName = "Lxt Root CA"
+	case CertModeInner:
+		subject.CommonName = "Lxt Organization CA" // 中间证书
+	case CertModeLeaf:
+		subject.CommonName = "lxt1045.com" // 中间证书
+	}
+	return c.MakeRsaWithInfo(certMode, subject, ips, hosts)
+}
+
+// MakeEcdsa clientMode: root, inner, leaf
+func (c *Cert) MakeRsaWithInfo(clientMode CertMode, subject pkix.Name, ips, hosts []string) (privPEM, certPEM []byte, err error) {
+	// priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	// if err != nil {
+	// 	return
+	// }
+	// pub := priv.Public()
+
+	bits := 1024
+	priv, err := rsa.GenerateKey(rand.Reader, bits)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return nil, nil, err
+	}
+
+	// 生成公钥文件
+	pub := &priv.PublicKey
+
+	caCert, caKey := c.rootCert, c.rootKey
+
+	randSN, err := randomSerialNumber()
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	unsignedCert := &x509.Certificate{
+		Version:               3,
+		SerialNumber:          randSN,
+		Subject:               subject,
+		NotBefore:             time.Now(),
+		NotAfter:              expiration,
+		BasicConstraintsValid: true,
+	}
+
+	switch clientMode {
+	case CertModeRoot:
+		unsignedCert.IsCA = true
+		unsignedCert.MaxPathLen = 1
+		unsignedCert.MaxPathLenZero = false
+		unsignedCert.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
+	case CertModeInner:
+		unsignedCert.IsCA = true
+		unsignedCert.MaxPathLen = 0
+		unsignedCert.MaxPathLenZero = true
+		unsignedCert.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageCRLSign
+	case CertModeLeaf:
+		unsignedCert.IsCA = false
+		unsignedCert.KeyUsage = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
+		unsignedCert.ExtKeyUsage = []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+			x509.ExtKeyUsageClientAuth,
+		}
+		unsignedCert.DNSNames = hosts
+		for _, h := range ips {
+			if ip := net.ParseIP(h); ip != nil {
+				unsignedCert.IPAddresses = append(unsignedCert.IPAddresses, ip)
+			}
+		}
+	default:
+		errors.Errorf("clientMode[%s] error, only support: root, inner, leaf", clientMode)
+		return
+	}
+
+	bSelfSigned := c.rootCert == nil || c.rootKey == nil
+	if bSelfSigned {
+		caCert, caKey = unsignedCert, priv
+	}
+
+	// 签名公钥? 	ecPublicKey, err := x509.MarshalPKIXPublicKey(&publicKey)
+	cert, err := x509.CreateCertificate(rand.Reader, unsignedCert, caCert, pub, caKey)
+	if err != nil {
+		err = errors.Errorf(err.Error())
+		return
+	}
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert})
+
+	// privDER, err := x509.MarshalECPrivateKey(priv)
+	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		err = errors.Errorf(err.Error())
 		return
 	}
 	privPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER}) // "EC PRIVATE KEY"
