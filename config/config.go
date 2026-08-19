@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"embed"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/lxt1045/errors"
 	"github.com/mitchellh/mapstructure"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -27,6 +29,8 @@ type DB struct {
 	SSLMode          bool
 	WriteConcurrency int
 	Span             int
+	DialTimeout      int
+	ReadTimeout      int
 }
 
 type GRPC struct {
@@ -95,6 +99,42 @@ type Log struct {
 	// 若该值为空，则日志会保存到os.TempDir()目录下，日志文件名为
 	// <processname>-lumberjack.log
 	Filename string
+}
+
+func Env() string {
+	for _, a := range os.Args {
+		if a == "dev" {
+			return "dev"
+		}
+		if a == "test" {
+			return "test"
+		}
+		if a == "prod" {
+			return "prod"
+		}
+	}
+	return ""
+}
+
+func Init[T any](ctx context.Context, pfs *embed.FS, file, env string) (conf T, err error) {
+	if env != "" {
+		i := strings.LastIndexByte(file, '.')
+		file = file[:i] + "_" + env + file[i:]
+		fmt.Printf("run in %s ...\n", env)
+	} else {
+		fmt.Println("run in default ...")
+	}
+
+	bs, err := fs.ReadFile(pfs, file)
+	if err != nil {
+		err = errors.Errorf("file:%s, err:%s", file, err.Error())
+		return
+	}
+	err = Unmarshal(bs, &conf)
+	if err != nil {
+		return
+	}
+	return
 }
 
 func UnmarshalFS(file string, fsStatic embed.FS, conf interface{}) (err error) {

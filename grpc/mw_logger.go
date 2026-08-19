@@ -25,8 +25,8 @@ const (
 )
 
 func getLogid(ctx context.Context) (logid int64, from uint8) {
-	logid, ok := log.Logid(ctx)
-	if ok {
+	logid = log.Logid(ctx)
+	if logid > 0 {
 		from = fromLog
 		return
 	}
@@ -38,7 +38,7 @@ func getLogid(ctx context.Context) (logid int64, from uint8) {
 			return
 		}
 	}
-	logid = gid.GetGID()
+	logid = gid.New()
 	return
 }
 

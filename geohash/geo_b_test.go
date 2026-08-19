@@ -50,7 +50,7 @@ func BenchmarkEncode2(b *testing.B) {
 	})
 	b.Run("mmcloughlin_geohash1x", func(b *testing.B) {
 		for i := 0; i < b.N; i++ { //use b.N for looping
-			mmcloughlin_geohash.EncodeIntx(x, y)
+			mmcloughlin_geohash.EncodeInt(x, y)
 		}
 	})
 	b.Run("gansidui_geohash", func(b *testing.B) {

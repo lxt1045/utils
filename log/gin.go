@@ -6,42 +6,46 @@ import (
 	"github.com/lxt1045/utils/gid"
 )
 
-func GetLogID(ctx *gin.Context) int64 {
-	logid, _ := getLogID(ctx)
+const (
+	ginLogID  = "logid"
+	ginLogger = "logger"
+)
+
+func GinLogID(c *gin.Context) int64 {
+	vid, _ := c.Get(ginLogID)
+	logid, _ := vid.(int64)
 	return logid
 }
 
-func getLogID(ctx *gin.Context) (logid int64, ok bool) {
-	vid, _ := ctx.Get(ginLogID)
-	logid, ok = vid.(int64)
-	return
+func GinWithLogid(c *gin.Context, logid int64) *zerolog.Logger {
+	c.Set(ginLogID, logid)
+
+	l := zerolog.New(GetOutput())
+	l = l.Hook(logidHook{logid: logid})
+
+	c.Set(ginLogger, &l)
+	return &l
 }
-func GinGet(ctx *gin.Context) *zerolog.Logger {
-	v, _ := ctx.Get(ginLogger)
+
+func GinCtx(c *gin.Context) *zerolog.Logger {
+	v, _ := c.Get(ginLogger)
 	logger, ok := v.(*zerolog.Logger)
 	if ok {
 		return logger
 	}
 
-	vid, _ := ctx.Get(ginLogID)
+	vid, _ := c.Get(ginLogID)
 	logid, _ := vid.(int64)
 	if logid == 0 {
-		logid = gid.GetGID()
+		logid, ok := c.Value(logID{}).(int64)
+		if ok {
+			l := zerolog.Ctx(c)
+			c.Set(ginLogID, logid)
+			c.Set(ginLogger, &l)
+			return l
+		}
+		logid = gid.New()
 	}
 
-	return GinWithLogid(ctx, logid)
-}
-
-func GinCtx(ctx *gin.Context) *zerolog.Logger {
-	return GinGet(ctx)
-}
-func GinWithLogid(ctx *gin.Context, logid int64) *zerolog.Logger {
-	ctx.Set(ginLogID, logid)
-
-	l := zerolog.New(GetOutput())
-	l = l.Hook(logidHook{logid: logid})
-	// l = l.Hook(th) // l = l.With().Timestamp().Logger()
-
-	ctx.Set(ginLogger, &l)
-	return &l
+	return GinWithLogid(c, logid)
 }

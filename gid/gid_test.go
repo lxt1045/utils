@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/mockey"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -13,99 +12,100 @@ var _ = assert.NotNil
 func TestSetLastGID(t *testing.T) {
 	t.Run("SetLastGID-1", func(t *testing.T) {
 		N := 1000
+		ts := GetTsNow()
 		for i := 0; i < N; i++ {
-			id := GetGID()
-			assert.Equal(t, int64(0), id&AgentIDMask)
-			assert.Equal(t, int64(i), (id>>14)&0xffff)
+			id := newID(ts)
+			assert.Equal(t, int64(0), id&svcIDMask)
+			assert.Equal(t, int64(i), (id>>snLeft)&snMask)
 		}
-		agentid := int64(1086)
-		InitClient(int16(agentid), 0)
+		svcid := int64(10086)
+		Init(int16(svcid), 0)
 		for i := 0; i < N; i++ {
-			id := GetGID()
-			assert.Equal(t, int64(agentid), id&AgentIDMask)
-			assert.Equal(t, int64(i+N), (id>>14)&0xffff)
+			id := newID(ts)
+			assert.Equal(t, int64(svcid), id&svcIDMask)
+			assert.Equal(t, int64(i+N), (id>>snLeft)&snMask)
+		}
+	})
+	t.Run("SetLastGID-2", func(t *testing.T) {
+		N := 1000
+		ts := GetTsNow()
+		svcid := int64(10086)
+		Init(int16(svcid), 0)
+		for i := 0; i < N; i++ {
+			id := newID(ts)
+			assert.Equal(t, int64(svcid), id&svcIDMask)
+			assert.Equal(t, int64(i), (id>>snLeft)&snMask)
 		}
 	})
 
-	// Skipped: 该子测试依赖 mockey.Mock(time.Now) 改变时间，
-	// 但当前实现 GetGID 使用 runtime.nanotime (RuntimeNano) 计算秒数，
-	// 不经过 time.Now，因此无法通过 mockey 注入时间跳变。该测试已不再适用。
-	t.Run("SetLastGID", func(t *testing.T) {
-		t.Skip("GetGID 使用 runtime.nanotime，无法用 mockey.Mock(time.Now) 注入时间，跳过。")
-
-		lastID = 0
-		tNow, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
-		if err != nil {
-			t.Fatal(err)
-		}
-		fUnPatch := mockey.Mock(time.Now).Return(tNow).Build().UnPatch
-
-		var lastID int64
-		id := GetGID()
-		if lastID >= id {
-			t.Fatal("lastID>id", lastID, id)
-		}
-		lastID = id
-		fGetID := func(i time.Duration) int64 {
-			tsID0 := (time.Now().Add(i).Unix() & 0x1FFFFFFFF) << 30 // 当前秒数第0个编号
-			tsID0 |= agentID
-			return tsID0
-		}
-		nextSecond := time.Second * 100
-		maxID := fGetID(nextSecond)
-		SetLastGID(maxID)
+	t.Run("Init", func(t *testing.T) {
+		ts := time.Now().Unix()
+		lastID := newID(ts)
+		Init(0, lastID)
 		for i := 0; i < 300; i++ {
-			id := GetGID()
-			maxID += idInterval
-			if id != maxID {
-				t.Logf("id:%064b", maxID)
+			id := newID(ts)
+			lastID += idInterval
+			if id != lastID {
+				t.Logf("id:%064b", lastID)
 				t.Logf("id:%064b", id)
-				t.Fatalf("id != maxID\nid:%064b\nid:%064b", id, maxID)
+				t.Fatalf("id != lastID\nid:%064b\nid:%064b", id, lastID)
 			}
 		}
-		fUnPatch()
-		tNow = tNow.Add(nextSecond * 3)
-		defer mockey.Mock(time.Now).Return(tNow).Build().UnPatch()
-		lastMaxID, maxID := maxID, fGetID(0)
-		if lastMaxID >= maxID {
-			t.Logf("maxID:%064b", maxID)
-			t.Logf("maxID:%064b", fGetID(0))
-			t.Fatal("lastMaxID >= maxID")
+
+		lastID = newID(ts + 100)
+		Init(0, lastID)
+		for i := 0; i < 300; i++ {
+			id := newID(ts)
+			lastID += idInterval
+			if id != lastID {
+				t.Logf("id:%064b", lastID)
+				t.Logf("id:%064b", id)
+				t.Fatalf("id != lastID\nid:%064b\nid:%064b", id, lastID)
+			}
 		}
-		maxID = fGetID(0)
+
+		ts += 100 + 1
+		curID := newID(ts)
+		if lastID >= curID {
+			t.Logf("lastID:%064b", lastID)
+			t.Logf(" curID:%064b", curID)
+			t.Fatal("lastID >= curID")
+		}
 		for i := 0; i < 3; i++ {
-			id := GetGID()
-			if id != maxID {
-				t.Logf("id:%064b", maxID)
-				t.Logf("id:%064b", id)
-				t.Fatalf("id != maxID\nid:%064b\nid:%064b", id, maxID)
+			lastID, curID = curID+idInterval, newID(ts)
+			if lastID != curID {
+				t.Logf("id:%064b", lastID)
+				t.Logf("id:%064b", curID)
+				t.Fatalf("id != lastID\nid:%064b\nid:%064b", lastID, curID)
 			}
-			maxID += idInterval
 		}
 	})
 }
 
 func TestT(t *testing.T) {
-	var Logid int64 = 1835294501162188800
-	t1 := Logid / 1073741824
-	if t1 != Logid>>30 {
+	var gid int64 = 1835294501162188800
+	t1 := gid / 1073741824
+	if t1 != gid>>30 {
 		panic("eeee")
 	}
-	tsStr, agentid, sNO := Parse(Logid)
+	tsStr, agentid, sn := Parse(gid)
 
 	t.Log("agentid", agentid)
-	t.Log("sNO", sNO)
+	t.Log("sn", sn)
 	t.Log("ts", t1)
 	t.Log("tsStr", tsStr)
-	t.Log("Logid", Logid)
+	t.Log("gid", gid)
 }
 
 func TestGetGID(t *testing.T) {
-	t.Run("GetGID", func(t *testing.T) {
+	Init(0b01010101010101, 0)
+	t.Run("New", func(t *testing.T) {
 		var lastID int64
+		//     id:0001101010011111101000011110101101000000000000000000000000000000
+		t.Log("    |              ts               ||      sn      ||   svc_id   |")
 		for i := 0; i < 3; i++ {
 			for i := 0; i < 3; i++ {
-				id := GetGID()
+				id := New()
 				if lastID >= id {
 					t.Fatal("lastID>id", lastID, id)
 				}
@@ -125,7 +125,7 @@ func BenchmarkGetGID(b *testing.B) {
 	b.Run("GetGID", func(b *testing.B) {
 		var lastID int64
 		for i := 0; i < b.N; i++ {
-			id := GetGID()
+			id := New()
 			if lastID >= id {
 				b.Fatal("lastID>id", lastID, id)
 			}
@@ -137,7 +137,7 @@ func BenchmarkGetGID(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
 			var lastID int64
 			for pb.Next() {
-				id := GetGID()
+				id := New()
 				if lastID >= id {
 					b.Fatal("lastID>id", lastID, id)
 				}
@@ -178,16 +178,8 @@ func BenchmarkGetGID(b *testing.B) {
 func TestGetTsNow(t *testing.T) {
 	t.Log("GetTsNow", GetTsNow())
 	t.Log("time.Now().Unix()", time.Now().Unix())
-}
 
-func TestGIDResetAgentID(t *testing.T) {
-	t.Run("1", func(t *testing.T) {
-		id := GIDResetAgentID(0x7FFFFFFFFFFFFFFF, 1)
-		assert.Equal(t, id, int64(0x7FFFFFFFFFFFC001))
-	})
-	t.Run("0x3FFE", func(t *testing.T) {
-		id := GIDResetAgentID(0x7FFFFFFFFFFFFFFF, 0x3FFE)
-		// t.Logf("0x3FFE:%X", id)
-		assert.Equal(t, id, int64(0x7FFFFFFFFFFFFFFE))
-	})
+	if GetTsNow() != time.Now().Unix() {
+		panic("GetTsNow")
+	}
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,42 +16,24 @@ import (
 	rszlog "github.com/rs/zerolog"
 )
 
+type logID struct{}
+
 var (
-	outputL sync.RWMutex
-	output  io.Writer
+	output = func() (p atomic.Pointer[io.Writer]) {
+		w := io.Writer(os.Stdout)
+		p.Store(&w)
+		return
+	}()
 
 	_ = func() bool {
 		rszlog.TimeFieldFormat = time.RFC3339Nano // time 对 RFC3339Nano 类型做了特化处理
 		return true
-	}
+	}()
 )
-
-func SetOutput(w io.Writer) {
-	outputL.Lock()
-	defer outputL.Unlock()
-	output = w
-	return
-}
-func GetOutput() io.Writer {
-	if output != nil {
-		return output
-	}
-	outputL.RLock()
-	defer outputL.RUnlock()
-	if output != nil {
-		return output
-	}
-	return os.Stdout
-}
-
-func GetStdOutput(ctx context.Context) io.Writer {
-	ctx, _ = MustLogid(ctx)
-	return NewStdWriter(ctx)
-}
 
 func Init(ctx context.Context, conf config.Log) (err error) {
 	if conf.LogLevel != "" {
-		err = setGlobalLevel(conf.LogLevel)
+		err = SetGlobalLevel(conf.LogLevel)
 		if err != nil {
 			return
 		}
@@ -73,13 +55,21 @@ func Init(ctx context.Context, conf config.Log) (err error) {
 		}
 	}
 
+	l := rszlog.New(GetOutput())
+	rszlog.DefaultContextLogger = &l
+
 	return
 }
 
-type logID struct{}
+func SetOutput(w io.Writer) {
+	if w != nil {
+		output.Store(&w)
+	}
+}
 
-const ginLogID = "logid"
-const ginLogger = "logger"
+func GetOutput() io.Writer {
+	return *output.Load()
+}
 
 func New(writer ...io.Writer) *zerolog.Logger {
 	w := GetOutput()
@@ -90,7 +80,7 @@ func New(writer ...io.Writer) *zerolog.Logger {
 	return &l
 }
 
-func setGlobalLevel(level string) (err error) {
+func SetGlobalLevel(level string) (err error) {
 	l, err := Level(level)
 	if err != nil {
 		err = errors.Errorf(err.Error())
@@ -118,52 +108,43 @@ func Level(l string) (zerolog.Level, error) {
 			return zerolog.Level(level), nil
 		}
 	}
-	return zerolog.Level(zerolog.DebugLevel), errors.Errorf("err")
+	return zerolog.Level(zerolog.DebugLevel), errors.Errorf("level not suport: %s", l)
 }
 
 func Ctx(ctx context.Context) *zerolog.Logger {
-	if c, ok := ctx.(*gin.Context); ok {
-		return GinGet(c)
+	switch c := ctx.(type) {
+	case *gin.Context:
+		return GinCtx(c)
 	}
+
 	_, ok := ctx.Value(logID{}).(int64)
 	if ok {
 		return zerolog.Ctx(ctx)
 	}
-	_, l := WithLogid(ctx, gid.GetGID())
+	_, l := WithLogid(ctx, gid.New())
 	return l
 }
 
-func MustLogid(ctx context.Context) (ctx1 context.Context, logid int64) {
-	ctx1 = ctx
-	logid, ok := Logid(ctx)
-	if ok {
-		return
-	}
-	logid = gid.GetGID()
-	ctx1, _ = WithLogid(ctx, logid)
-	return
-}
-
-func Logid(ctx context.Context) (logid int64, ok bool) {
+func Logid(ctx context.Context) (logid int64) {
 	if c, ok := ctx.(*gin.Context); ok {
-		return getLogID(c)
+		return GinLogID(c)
 	}
-	logid, ok = ctx.Value(logID{}).(int64)
+	logid, _ = ctx.Value(logID{}).(int64)
 	return
 }
 
 func WithLogid(ctx context.Context, logid int64) (context.Context, *zerolog.Logger) {
-	if c, ok := ctx.(*gin.Context); ok {
-		l := GinWithLogid(c, logid)
-		return ctx, l
-	}
 	ctx = context.WithValue(ctx, logID{}, logid)
 
 	l := zerolog.New(GetOutput())
 	l = l.Hook(logidHook{logid: logid})
-	// l = l.Hook(th) // l = l.With().Timestamp().Logger()
 
 	return l.WithContext(ctx), &l
+}
+
+func RefleshLogid(ctx context.Context) context.Context {
+	ctx, _ = WithLogid(ctx, gid.New())
+	return ctx
 }
 
 type logidHook struct {
@@ -174,10 +155,3 @@ func (ch logidHook) Run(e *rszlog.Event, _ rszlog.Level, _ string) {
 	e.Int64("logid", ch.logid)
 }
 
-type timestampHook struct{}
-
-func (ts timestampHook) Run(e *rszlog.Event, _ rszlog.Level, _ string) {
-	e.Timestamp()
-}
-
-var th = timestampHook{}

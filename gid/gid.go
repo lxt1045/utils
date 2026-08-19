@@ -8,11 +8,23 @@ import (
 	_ "unsafe"
 )
 
+// 不用(1bit)  | 时间戳(s, 33bit,至2242年)  |  序列号(16bit,65536) | svc_id(14bit,16384)
+//  63         |  30~62                     |   14~29             |    0~13
+// 0x01 <<63   |    0x1ffffffff <<30        |   0xffff <<14       |    0x3fff
+
+const (
+	svcIDMask        = 0x3FFF      // 0b0011 1111 1111 1111
+	tsMask           = 0x1ffffffff // 时间戳掩码
+	tsLeft           = 30          // 时间戳左移位数
+	snMask           = 0xffff      // 序列号掩码
+	snLeft           = 14          // 序列号左移位数
+	idInterval int64 = 1 << snLeft
+)
+
 var (
-	agentID    int64 = 0 & 0x3FFF // 0b0001 1111 1111 1111
-	idInterval int64 = 1 << 14
-	lastID     int64
-	gidLock    sync.Mutex
+	svcID   int64 = 0 & svcIDMask
+	lastID  int64 // 上次分配的id, 避免重复分配
+	gidLock sync.Mutex
 
 	timeMonotonic, tsMonotonic, tsRuntimeNano = func() (time.Time, int64, int64) {
 		tNow := time.Now()
@@ -20,146 +32,109 @@ var (
 	}()
 )
 
-const (
-	AgentIDMask          = 0x3FFF
-	OffsetServiceAgentID = 0x3000
-	MaxServiceAgentID    = 0xfff
-	MaxClientAgentID     = 0x2FFF
-)
-
-func InitClient(agentid int16, lastid int64) {
-	atomic.StoreInt64(&agentID, int64(agentid&0x3FFF))
-	if (lastid & AgentIDMask) == int64(agentid) {
-		SetLastGID(lastid)
-		return
-	}
-	for {
-		lastid := atomic.LoadInt64(&lastID)
-		if lastid&0x3fff == atomic.LoadInt64(&agentID) {
-			return
-		}
-		now := (lastid & (^0x3fff)) | atomic.LoadInt64(&agentID)
-		swapped := atomic.CompareAndSwapInt64(&lastID, lastid, now)
-		if swapped {
-			return
-		}
-	}
-}
-
-// tLastUpdated 单位 秒
-func InitService(svcid int16, tLastUpdated int64) {
-	// agentID = int64(svcid&0xFFF) | 0x3000
-	atomic.StoreInt64(&agentID, int64(svcid&0xFFF)|0x3000)
-
-	lastid := TsToGID(tLastUpdated + 30) // 为避免重复，往前走30秒；service 每10s刷新一次
-	SetLastGID(lastid)
-}
-
-func SetLastGID(lastid int64) {
-	for {
-		now := atomic.LoadInt64(&lastID)
-		if lastid < now {
-			return
-		}
-		if lastid&0x3fff != atomic.LoadInt64(&agentID) {
-			lastid = (lastid & (^0x3fff)) | atomic.LoadInt64(&agentID)
-		}
-		swapped := atomic.CompareAndSwapInt64(&lastID, now, lastid)
-		if swapped {
-			return
-		}
-	}
-}
-
-func Parse(id int64) (tsStr string, agentid, sNO int64) {
-	t1 := id >> 30
-	tsStr = time.Unix(t1, 0).Format(time.RFC3339)
-	agentid = id & 0x3fff
-	sNO = (id >> 14) & 0xffff
-	return
-}
-
-func TsToGID(ts int64) int64 {
-	tsID0 := (ts & 0x1FFFFFFFF) << 30
-	tsID0 |= atomic.LoadInt64(&agentID)
-	return tsID0
-}
-
-func GIDToTs(gid int64) int64 {
-	return gid >> 30
-}
-
-func DiffTs(gid0, gid1 int64) int64 {
-	ts0 := gid0 >> 30
-	ts1 := gid1 >> 30
-	return ts0 - ts1
-}
-
 //go:linkname RuntimeNano runtime.nanotime
 func RuntimeNano() int64
 
+// GetTsNow 需要处理时间回溯的问题
 func GetTsNow() int64 {
 	// return time.Now().Unix()
 
-	// 这里使用用单调时间
+	// 这里使用用单调时间; 中间修改了系统时间重启钱都不会产生时间回溯问题
 	// return int64(time.Since(timeMonotonic)/time.Second) + tsMonotonic
 
 	return (RuntimeNano()-tsRuntimeNano)/int64(time.Second) + tsMonotonic
-
 }
 
-/*
-	    基于IM（即时通信）的ID可以采用：
-		不用(1bit)  | 时间戳(min, 20bit, 1.9年) |  序列号(11bit,2048) | agent_id(32bit,42亿)
-		63         |  43~62                |   32~42           |    0~31
-*/
+// Parse 返回 GID 的信息
+func Parse(id int64) (ts, svcID, sn int64) {
+	ts = id >> tsLeft
+	svcID = id & svcIDMask
+	sn = (id >> snLeft) & snMask
+	return
+}
 
-/*
-	    基于IM（即时通信）的ID可以采用：
-		不用(1bit)  | 时间戳(s, 25bit, 1年) |  序列号(11bit,2048)| agent_id(27bit,1.3亿,连接后分配)
-		63         |  38~62                |   27~37         |    0~26
-*/
-/*
-	    基于IM（即时通信）的ID可以采用：
-		不用(1bit)  | 时间戳(ms, 36bit, 2年) | agent_id(27bit,1.3亿,连接后分配)
-		63         |  27~62                 |      0~26
-*/
-func GetGID() int64 {
-	// 不用(1bit)  | 时间戳(s, 33bit,至2242年)  |  序列号(16bit,65536) | agent_id(14bit,16384;0x3000~0x3fff 预留给service)
-	//  63         |  30~62                     |   14~29             |    0~13
-	// 0x01 <<63   |    0x1ffffffff <<30        |   0xffff <<14       |    0x3fff
+// Format 自己组装 GID
+func Format(ts, svcID, sn int64) (id int64) {
+	ts = id >> tsLeft
+	svcID = id & svcIDMask
+	sn = (id >> snLeft) & snMask
+	return ((ts & tsMask) << tsLeft) | ((sn & snMask) << snLeft) | (svcID & svcIDMask)
+}
 
-	tsID0 := TsToGID(GetTsNow()) // 当前秒数第0个编号
+// Interval 返回两个 GID 的 时间间隔
+func Interval(gid0, gid1 int64) int64 {
+	ts0 := gid0 >> tsLeft
+	ts1 := gid1 >> tsLeft
+	return ts0 - ts1
+}
+
+// ToTs 获取 GID 的时间戳
+func ToTs(gid int64) int64 {
+	return gid >> tsLeft
+}
+
+// FromTs 用秒时间戳转换成 GID
+func FromTs(ts int64) int64 {
+	// tsID0 |= atomic.LoadInt64(&svcID)
+	return fromTs(ts) | svcID
+}
+
+func fromTs(ts int64) int64 {
+	return (ts & tsMask) << tsLeft
+}
+
+func setLastGID(idNew int64) {
+	for {
+		idOld := atomic.LoadInt64(&lastID)
+		if idNew < idOld {
+			return
+		}
+		swapped := atomic.CompareAndSwapInt64(&lastID, idOld, idNew)
+		if swapped {
+			return
+		}
+	}
+}
+
+func Init(svcid int16, lastid int64) {
+	if svcid > 0 {
+		atomic.StoreInt64(&svcID, int64(svcid)&svcIDMask)
+	}
+	if lastid > 0 {
+		setLastGID(lastid)
+	}
+}
+
+// New 生成新的单调 GID
+func New() int64 {
+	return newID(GetTsNow())
+	// t.Logf("GID:%020d", id)
+	// // 3210987654321098765432109876543210987654321098765432109876543210
+	// // 0001100100100111100101000001010001000000000000000100000000000001
+	// t.Logf("GID:%064b", id)
+
+	// t.Logf("divide:%064b, x:%d", id/(1<<tsLeft), 1<<tsLeft)
+	// t.Logf("divide:%064b", id>>tsLeft)
+}
+func newID(ts int64) int64 {
+	return newRawID(ts) | svcID
+}
+
+func newRawID(ts int64) int64 {
+	tsID := fromTs(ts) // 当前秒数第0个编号
 	id := atomic.AddInt64(&lastID, idInterval)
-	if id > tsID0 {
+	if id > tsID {
 		return id
 	}
 
 	if gidLock.TryLock() {
 		defer gidLock.Unlock()
 		id := atomic.AddInt64(&lastID, idInterval)
-		if id > tsID0 {
+		if id > tsID {
 			return id
 		}
-		atomic.StoreInt64(&lastID, tsID0)
-		return tsID0
+		atomic.StoreInt64(&lastID, tsID)
+		return tsID
 	}
 	return id
-	// t.Logf("GID:%020d", id)
-	// // 3210987654321098765432109876543210987654321098765432109876543210
-	// // 0001100100100111100101000001010001000000000000000100000000000001
-	// t.Logf("GID:%064b", id)
-
-	// t.Logf("divide:%064b, x:%d", id/(1<<30), 1<<30)
-	// t.Logf("divide:%064b", id>>30)
-}
-
-func GetGIDWithAgentID(agentID int64) int64 {
-	gid := GetGID()
-	return GIDResetAgentID(gid, agentID)
-}
-
-func GIDResetAgentID(gid, agentID int64) int64 {
-	gid = (gid & 0x7FFFFFFFFFFFC000) | (agentID & 0x3FFF)
-	return gid
 }

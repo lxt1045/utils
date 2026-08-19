@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -39,10 +40,22 @@ func TestNew(t *testing.T) {
 			Int("int", 3).
 			Msg("some log messages")
 	})
+	t.Run("std", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout,
+			&slog.HandlerOptions{
+				Level:     slog.LevelDebug, // slog记录所有的日志
+				AddSource: true,            // 显示文件行号
+			}))
+		logger.Error(
+			"some log messages",
+			"string", `some string format log information`,
+			"int", 3,
+		)
+	})
 }
 
-func TestLog(t *testing.T) {
-	err := setGlobalLevel("warn")
+func TestLevel(t *testing.T) {
+	err := SetGlobalLevel("warn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,6 +268,36 @@ func BenchmarkLog(b *testing.B) {
 		}
 	})
 
+	b.Run("std", func(b *testing.B) {
+		b.StopTimer()
+		b.ReportAllocs()
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		b.StartTimer()
+		for i := 0; i < b.N; i++ {
+			logger.Info(
+				"some log messages",
+				"string", `some string format log information`,
+				"int", 3,
+			)
+		}
+	})
+	b.Run("std+caller", func(b *testing.B) {
+		b.StopTimer()
+		b.ReportAllocs()
+		logger := slog.New(slog.NewTextHandler(io.Discard,
+			&slog.HandlerOptions{
+				Level:     slog.LevelDebug, // slog记录所有的日志
+				AddSource: true,            // 显示文件行号
+			}))
+		b.StartTimer()
+		for i := 0; i < b.N; i++ {
+			logger.Info(
+				"some log messages",
+				"string", `some string format log information`,
+				"int", 3,
+			)
+		}
+	})
 }
 
 func BenchmarkZeroCaller(b *testing.B) {

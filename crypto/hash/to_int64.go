@@ -1,8 +1,13 @@
 package hash
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
+	"encoding/hex"
+
+	"github.com/lxt1045/errors"
 )
 
 // StringToInt64SHA256 将字符串使用 SHA256 哈希算法转换为 int64
@@ -14,4 +19,17 @@ func StringToInt64SHA256(s string) int64 {
 
 	// 取前 8 字节转换为 int64
 	return int64(binary.BigEndian.Uint64(bs[:8]) & 0x7FFFFFFFFFFFFFFF)
+}
+
+func Hmac(pwd, UserKey string) (code string, err error) {
+	mac := hmac.New(sha512.New, []byte(UserKey))
+	_, err = mac.Write([]byte(pwd))
+	if err != nil {
+		err = errors.New(err.Error())
+		return
+	}
+
+	strHMAC := mac.Sum(nil)
+	code = hex.EncodeToString(strHMAC)
+	return
 }

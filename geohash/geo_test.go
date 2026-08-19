@@ -208,7 +208,7 @@ func TestEncode3(t *testing.T) {
 	x, y := 39.92324, 116.3906
 	t.Logf("%b", EncodeInt(x, y))
 	t.Logf("%b", mmcloughlin_geohash.EncodeInt(x, y))
-	t.Logf("%b", mmcloughlin_geohash.EncodeIntx(x, y))
+	t.Logf("%b", mmcloughlin_geohash.EncodeInt(x, y))
 }
 
 func TestEncode5(t *testing.T) {
@@ -307,7 +307,7 @@ func TestCoords2Geox(t *testing.T) {
 	x, y := 39.92324, 116.3906
 	a := EncodeInt(x, y)
 	b := mmcloughlin_geohash.EncodeInt(x, y)
-	c := mmcloughlin_geohash.EncodeIntx(x, y)
+	c := mmcloughlin_geohash.EncodeInt(x, y)
 
 	if a != b {
 		t.Errorf("\na:%b,\nb:%b\nc:%b", a, b, c)
