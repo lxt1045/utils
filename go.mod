@@ -13,9 +13,11 @@ require (
 	github.com/fanixk/geohash v0.0.0-20150324002647-c1f9b5fa157a
 	github.com/gansidui/geohash v0.0.0-20141019080235-ebe5ba447f34
 	github.com/gin-gonic/gin v1.9.1
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
-	github.com/lxt1045/errors v0.0.0-20260819102700-8f2b7d88b95b
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/lxt1045/errors v0.0.0-20260820021401-491eee623d39
 	github.com/markuskont/datamodels v0.1.1
 	github.com/markuskont/go-sigma-rule-engine v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -39,11 +41,13 @@ require (
 	google.golang.org/grpc v1.56.2
 	gopkg.in/yaml.v2 v2.4.0
 	gorm.io/driver/clickhouse v0.7.0
+	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/gorm v1.31.2
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/ClickHouse/ch-go v0.61.5 // indirect
 	github.com/ClickHouse/clickhouse-go/v2 v2.30.0 // indirect

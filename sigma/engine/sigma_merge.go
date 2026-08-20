@@ -160,7 +160,7 @@ func (rule *mergeRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Dat
 
 		// 没有 count 统计条件，也没有 having 限制条件，纯粹的合并成一个单独的事件
 		if rule.timeWindow > 0 {
-			ts := gid.GIDToTs(lastEventID)
+			ts := gid.ToTs(lastEventID)
 			if ts+rule.timeWindow/int64(time.Second) < gid.GetTsNow() {
 				swaped := atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, gid.New())
 				if swaped {
