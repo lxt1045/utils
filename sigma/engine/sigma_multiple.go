@@ -447,7 +447,7 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 			if rule.timeWindow > 0 {
 				ts := gid.GIDToTs(lastEventID)
 				if ts+rule.timeWindow/int64(time.Second) < gid.GetTsNow() {
-					newEventID := gid.GetGID()
+					newEventID := gid.New()
 					swaped := atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, newEventID)
 					if swaped {
 						mainRuleID = singleRuleID64
@@ -459,7 +459,7 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 					lastEventID = atomic.LoadInt64(&g.lastEventID)
 				}
 			} else if lastEventID == 0 {
-				newEventID := gid.GetGID()
+				newEventID := gid.New()
 				swaped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, newEventID)
 				if swaped {
 					mainRuleID = singleRuleID64
@@ -557,7 +557,7 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 		}
 
 		// 输出 group 队列中的所有数据，并生成新的event_id
-		newEventID := gid.GetGID()
+		newEventID := gid.New()
 		swapped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, newEventID)
 		if !swapped {
 			newEventID1 := atomic.LoadInt64(&g.lastEventID)

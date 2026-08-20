@@ -806,7 +806,7 @@ func Benchmark_Eval(b *testing.B) {
 }
 
 func showQps(ctx context.Context, msgSuss *int64) {
-	ctx, _ = log.WithLogid(ctx, gid.GetGID())
+	ctx, _ = log.WithLogid(ctx, gid.New())
 	go func() {
 		var lastCount int64
 		lastTime := time.Now().UnixNano()

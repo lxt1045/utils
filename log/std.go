@@ -6,11 +6,10 @@ import (
 	"log/slog"
 	"runtime"
 	"strconv"
-	"strings"
-	"sync"
 	"time"
-	"unsafe"
 
+	"github.com/lxt1045/errors"
+	eslog "github.com/lxt1045/errors/slog"
 	"github.com/lxt1045/errors/zerolog"
 	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/petermattis/goid"

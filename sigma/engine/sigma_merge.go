@@ -153,7 +153,7 @@ func (rule *mergeRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Dat
 	score := int16(rule.yml.Initial)
 
 	fEval = func(m *T) (hits []DataHit[T]) {
-		newEventID, tsNow := gid.GetGID(), time.Now().UnixNano()
+		newEventID, tsNow := gid.New(), time.Now().UnixNano()
 		g := rule.MustGetGroup(m, newEventID, tsNow)
 		lastEventID := atomic.LoadInt64(&g.lastEventID)
 		var mainRuleID int64
@@ -162,14 +162,14 @@ func (rule *mergeRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Dat
 		if rule.timeWindow > 0 {
 			ts := gid.GIDToTs(lastEventID)
 			if ts+rule.timeWindow/int64(time.Second) < gid.GetTsNow() {
-				swaped := atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, gid.GetGID())
+				swaped := atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, gid.New())
 				if swaped {
 					mainRuleID = singleRuleID64
 				}
 				lastEventID = atomic.LoadInt64(&g.lastEventID)
 			}
 		} else if lastEventID == 0 {
-			swaped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, gid.GetGID())
+			swaped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, gid.New())
 			if swaped {
 				mainRuleID = singleRuleID64
 			}

@@ -47,7 +47,7 @@ SOCKS 代理示例见 `rpc/test/socks/README.md`。
 | `config` | yaml 配置加载 + embed.FS 支持 + `LoadTLSConfig` | `config.UnmarshalFS`, `config.LoadTLSConfig` | ✓ | 内置 `Conn`/`DB`/`GRPC`/`Log`/`TLS` 结构 |
 | `cache` | LoadingCache（factory + load + singleflight） | `cache.NewLoadingCache` | ✓ | 后端可选 bigcache / noop |
 | `delay` | 一写多读延时队列 | `delay.NewQueue[T]` | ✓ | 用于 `rpc.Codec` 的超时队列 |
-| `gid` | 全局 ID 生成器（agent-id + 时间 + 序列） | `gid.GetGID`, `gid.InitClient/InitService` | ✓ | 基于 `//go:linkname runtime.nanotime` |
+| `gid` | 全局 ID 生成器（agent-id + 时间 + 序列） | `gid.New`, `gid.InitClient/InitService` | ✓ | 基于 `//go:linkname runtime.nanotime` |
 | `tag` | struct tag 反射解析与缓存 | `tag.NewTagInfos` | ✓ | 用于 yaml/json 之外的自定义反序列化 |
 | `cert` | 自签 CA / 服务端 / 客户端 / 多级证书生成 | `cert.NewRootCA`, `cert.GenServerCert` | ✓ | 默认 10 年有效期 |
 | `socks` | SOCKS5 / HTTP CONNECT 协议解析与代理 | `socks.Handshake`, `socks.TCPLocalOnly` | 低 | 被 `rpc/test/socks/` 复用 |
@@ -253,7 +253,7 @@ import (
     "github.com/lxt1045/utils/log"
 )
 
-ctx, _ := log.WithLogid(context.Background(), gid.GetGID())
+ctx, _ := log.WithLogid(context.Background(), gid.New())
 log.Ctx(ctx).Info().Str("user", "alice").Msg("login")
 // {"level":"info","time":"...","user":"alice","logid":1907..., "message":"login"}
 ```
