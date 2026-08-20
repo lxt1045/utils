@@ -56,6 +56,18 @@ func PostgreDNS(params map[string]string) string {
 	return dsn
 }
 
+func ConnCkSqlx(ctx context.Context, conf config.DB) (sqlxDb *sqlx.DB, err error) {
+	tcpInfo := fmt.Sprintf("clickhouse://%s:%s@%s:%s/%s?read_timeout=%ds&output_format_native_use_flattened_dynamic_and_json_serialization=1",
+		conf.User, url.QueryEscape(conf.Password), conf.Host, conf.Port, conf.DBName, conf.ReadTimeout)
+
+	sqlxDb, err = sqlx.Open("clickhouse", tcpInfo)
+	if err != nil {
+		err = errors.WithErr(err)
+		return
+	}
+	return sqlxDb, err
+}
+
 func ConnCkGorm(ctx context.Context, conf config.DB) (*gorm.DB, error) {
 	if conf.DialTimeout <= 0 {
 		conf.DialTimeout = 10
