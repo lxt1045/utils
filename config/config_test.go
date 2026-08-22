@@ -211,14 +211,87 @@ func TestFloat(t *testing.T) {
 	})
 }
 
+func TestLoadEnvFile(t *testing.T) {
+	t.Run("loadEnvFile", func(t *testing.T) {
+		// Create a test .env file
+		envContent := `# Test environment variables
+TEST_VAR1=value1
+TEST_VAR2=value2
+  TEST_VAR3  =  value3
+TEST_VAR4="quoted value"
+TEST_VAR5='single quoted'
+
+# Comment line
+EMPTY_VAR=
+
+INVALID LINE WITHOUT EQUALS
+`
+		tmpFile := ".env.test.tmp"
+		err := os.WriteFile(tmpFile, []byte(envContent), 0644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(tmpFile)
+
+		envMap, err := loadEnvFile(tmpFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		assert.Equal(t, "value1", envMap["TEST_VAR1"])
+		assert.Equal(t, "value2", envMap["TEST_VAR2"])
+		assert.Equal(t, "value3", envMap["TEST_VAR3"])
+		assert.Equal(t, "quoted value", envMap["TEST_VAR4"])
+		assert.Equal(t, "single quoted", envMap["TEST_VAR5"])
+		assert.Equal(t, "", envMap["EMPTY_VAR"])
+
+		t.Logf("envMap: %+v", envMap)
+	})
+
+	t.Run("loadEnvFile-nonexistent", func(t *testing.T) {
+		_, err := loadEnvFile(".env.nonexistent")
+		if err == nil {
+			t.Fatal("expected error for nonexistent file")
+		}
+	})
+}
+
 func TestAssignVarFromEnv(t *testing.T) {
 	err := os.Setenv("Var_Test", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	t.Run("AssignVarFromEnv-priority", func(t *testing.T) {
+		// Test priority: environment variable > .env file
+		envMap := map[string]string{
+			"Var_Test": "from_env_file",
+		}
+		// Should get value from OS environment, not envMap
+		out, ok := AssignVarFromEnv("${Var_Test}", envMap)
+		if !ok {
+			t.Fatal("not exist")
+		}
+		assert.Equal(t, "test", out, "should get value from OS environment")
+		t.Logf("out from OS env: %s", out)
+	})
+
+	t.Run("AssignVarFromEnv-fallback", func(t *testing.T) {
+		// Test fallback to .env file when not in OS environment
+		envMap := map[string]string{
+			"Var_From_File": "file_value",
+		}
+		out, ok := AssignVarFromEnv("${Var_From_File}", envMap)
+		if !ok {
+			t.Fatal("not exist")
+		}
+		assert.Equal(t, "file_value", out, "should get value from envMap")
+		t.Logf("out from envMap: %s", out)
+	})
+
 	t.Run("AssignVarFromEnv", func(t *testing.T) {
-		out, ok := AssignVarFromEnv("${Var_Test}")
+		envMap := make(map[string]string)
+		out, ok := AssignVarFromEnv("${Var_Test}", envMap)
 		if !ok {
 			t.Fatal("not exist")
 		}
@@ -229,7 +302,8 @@ func TestAssignVarFromEnv(t *testing.T) {
 		m := map[string]string{
 			"key1": "${Var_Test}",
 		}
-		out, err := AssignMapFromEnv(m)
+		envMap := make(map[string]string)
+		out, err := AssignMapFromEnv(m, envMap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,7 +314,8 @@ func TestAssignVarFromEnv(t *testing.T) {
 		m := map[string]interface{}{
 			"key1": "${Var_Test}",
 		}
-		out, err := AssignMapFromEnv(m)
+		envMap := make(map[string]string)
+		out, err := AssignMapFromEnv(m, envMap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -249,7 +324,8 @@ func TestAssignVarFromEnv(t *testing.T) {
 
 	t.Run("AssignVarsFromEnv-slice", func(t *testing.T) {
 		m := []string{"test222", "${Var_Test}"}
-		err := AssignVarsFromEnv(&m)
+		envMap := make(map[string]string)
+		err := AssignVarsFromEnv(&m, envMap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,7 +334,8 @@ func TestAssignVarFromEnv(t *testing.T) {
 
 	t.Run("AssignVarsFromEnv-array", func(t *testing.T) {
 		m := [2]string{"test222", "${Var_Test}"}
-		err := AssignVarsFromEnv(&m)
+		envMap := make(map[string]string)
+		err := AssignVarsFromEnv(&m, envMap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -275,7 +352,8 @@ func TestAssignVarFromEnv(t *testing.T) {
 				"key1": "${Var_Test}",
 			},
 		}
-		err := AssignVarsFromEnv(&obj)
+		envMap := make(map[string]string)
+		err := AssignVarsFromEnv(&obj, envMap)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -298,7 +376,8 @@ func TestAssignVarFromEnv(t *testing.T) {
 				"Empty": "${Var_xxx}  ",
 			},
 		}
-		err := AssignVarsFromEnv(&obj)
+		envMap := make(map[string]string)
+		err := AssignVarsFromEnv(&obj, envMap)
 		if err != nil {
 			t.Fatal(err)
 		}

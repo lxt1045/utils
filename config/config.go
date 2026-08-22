@@ -33,6 +33,16 @@ type DB struct {
 	ReadTimeout      int
 }
 
+type HTTP struct {
+	ServerKey  string
+	ServerCert string
+	TLS        bool
+	Relaese    bool
+	Addr       string
+	Static     bool
+	Path       string
+	Download   bool
+}
 type GRPC struct {
 	CACert     string
 	ServerKey  string
@@ -191,8 +201,15 @@ func Unmarshal(bs []byte, conf interface{}) (err error) {
 		err = errors.Errorf(err.Error())
 		return err
 	}
+	// 加载 .env 文件中的环境变量
+	envMap, err := loadEnvFile(".env")
+	if err != nil {
+		// .env 文件不存在或读取失败不影响程序运行
+		envMap = make(map[string]string)
+	}
+
 	// 环境变量处理
-	err = AssignVarsFromEnv(conf)
+	err = AssignVarsFromEnv(conf, envMap)
 	if err != nil {
 		return
 	}
@@ -200,8 +217,44 @@ func Unmarshal(bs []byte, conf interface{}) (err error) {
 	return
 }
 
+// loadEnvFile 加载 .env 文件并解析为 map
+func loadEnvFile(filename string) (envMap map[string]string, err error) {
+	envMap = make(map[string]string)
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return envMap, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// 跳过空行和注释
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 解析 KEY=VALUE 格式
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// 移除值两端的引号
+		value = strings.Trim(value, "\"'")
+
+		envMap[key] = value
+	}
+
+	return envMap, nil
+}
+
 // 环境变量处理
-func AssignVarsFromEnv(conf interface{}) (err error) {
+func AssignVarsFromEnv(conf interface{}, envMap map[string]string) (err error) {
 	if conf == nil {
 		return
 	}
@@ -214,7 +267,7 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 
 	switch valueIn.Type().Kind() {
 	case reflect.Pointer:
-		err = AssignVarsFromEnv(valueIn.Interface())
+		err = AssignVarsFromEnv(valueIn.Interface(), envMap)
 		if err != nil {
 			return
 		}
@@ -223,7 +276,7 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 		vUnderlying := valueIn.Elem()            // interface 底层的值
 		vpNew := reflect.New(vUnderlying.Type()) // 不能直接取地址，所以需要先创建一个新的变量，再做修改
 		vpNew.Elem().Set(vUnderlying)
-		err = AssignVarsFromEnv(vpNew.Interface())
+		err = AssignVarsFromEnv(vpNew.Interface(), envMap)
 		if err != nil {
 			return
 		}
@@ -235,7 +288,7 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 		return
 	case reflect.String:
 		str1 := valueIn.String()
-		str, ok := AssignVarFromEnv(str1)
+		str, ok := AssignVarFromEnv(str1, envMap)
 		if ok {
 			if !valueIn.CanSet() {
 				err = errors.Errorf("conf is can not set")
@@ -255,11 +308,11 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 		}
 		return
 	case reflect.Slice, reflect.Array:
-		err = AssignSliceFromEnv(valueIn.Addr().Interface())
+		err = AssignSliceFromEnv(valueIn.Addr().Interface(), envMap)
 		return
 	case reflect.Map:
 		// map 在 golang 中是一个指针，所以这里不需要重新给 conf 赋值
-		_, err = AssignMapFromEnv(valueIn.Interface())
+		_, err = AssignMapFromEnv(valueIn.Interface(), envMap)
 		return
 	case reflect.Struct:
 		for i := 0; i < valueIn.NumField(); i++ {
@@ -274,7 +327,7 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 				continue // 跳过0值
 			}
 			if v.Addr().CanInterface() {
-				err = AssignVarsFromEnv(v.Addr().Interface())
+				err = AssignVarsFromEnv(v.Addr().Interface(), envMap)
 				if err != nil {
 					return
 				}
@@ -287,7 +340,7 @@ func AssignVarsFromEnv(conf interface{}) (err error) {
 }
 
 // 从环境变量给变量赋值，变量格式为: ${Var}
-func AssignVarFromEnv(v string) (out string, ok bool) {
+func AssignVarFromEnv(v string, envMap map[string]string) (out string, ok bool) {
 	v = strings.TrimSpace(v)
 	i := strings.IndexByte(v, '}')
 	if i < 0 || len(v) <= 3 || v[0] != '$' || v[1] != '{' {
@@ -295,12 +348,17 @@ func AssignVarFromEnv(v string) (out string, ok bool) {
 	}
 	ok = true
 	v = v[2:i]
-	out, _ = os.LookupEnv(v)
+	// 优先从系统环境变量查找
+	out, found := os.LookupEnv(v)
+	if !found {
+		// 如果系统环境变量不存在，则从 .env 文件的 map 中查找
+		out = envMap[v]
+	}
 	fmt.Printf("config from env: %s: %s\n", v, out)
 	return
 }
 
-func AssignMapFromEnv(m interface{}) (out interface{}, err error) {
+func AssignMapFromEnv(m interface{}, envMap map[string]string) (out interface{}, err error) {
 	vm := reflect.ValueOf(m)
 	if !vm.IsValid() {
 		return
@@ -331,7 +389,7 @@ func AssignMapFromEnv(m interface{}) (out interface{}, err error) {
 
 		vpNew := reflect.New(v.Type()) // 不能直接取地址，所以需要先创建一个新的变量，再做修改
 		vpNew.Elem().Set(v)
-		err = AssignVarsFromEnv(vpNew.Interface())
+		err = AssignVarsFromEnv(vpNew.Interface(), envMap)
 		if err != nil {
 			return
 		}
@@ -341,7 +399,7 @@ func AssignMapFromEnv(m interface{}) (out interface{}, err error) {
 	return m, nil
 }
 
-func AssignSliceFromEnv(m interface{}) (err error) {
+func AssignSliceFromEnv(m interface{}, envMap map[string]string) (err error) {
 	vm := reflect.ValueOf(m)
 	if !vm.IsValid() {
 		return
@@ -362,14 +420,14 @@ func AssignSliceFromEnv(m interface{}) (err error) {
 			continue
 		}
 
-		err = AssignVarsFromEnv(v.Addr().Interface())
+		err = AssignVarsFromEnv(v.Addr().Interface(), envMap)
 		if err != nil {
 			return
 		}
 	}
 	return
 }
-func AssignVarsFromEnvHookFunc() mapstructure.DecodeHookFunc {
+func AssignVarsFromEnvHookFunc(envMap map[string]string) mapstructure.DecodeHookFunc {
 	return func(
 		f reflect.Kind,
 		t reflect.Kind,
@@ -382,7 +440,7 @@ func AssignVarsFromEnvHookFunc() mapstructure.DecodeHookFunc {
 		if !ok || raw == "" {
 			return data, nil
 		}
-		raw, ok = AssignVarFromEnv(raw)
+		raw, ok = AssignVarFromEnv(raw, envMap)
 		if !ok {
 			return data, nil
 		}
