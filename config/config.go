@@ -31,6 +31,7 @@ type DB struct {
 	Span             int
 	DialTimeout      int
 	ReadTimeout      int
+	AtlasDevDBName   string
 }
 
 type HTTP struct {
