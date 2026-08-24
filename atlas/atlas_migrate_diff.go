@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// atlas migrate diff test_name --dir "file://e:/test/atlas/migrations" --to "file://e:/test/atlas/test.sql" --dev-url "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/atlas_dev" --format '{{ sql . \"  \" }}'
+// atlas migrate diff test_name --dir "file://e:/test/atlas/migrations" --to "file://e:/test/atlas/test.sql" --dev-url "mysql://root:password@127.0.0.1:3306/atlas_dev" --format '{{ sql . \"  \" }}'
 func MigrateDiffRun(ctx context.Context, toURL, schemas []string, name, formatTo, dirURL, devURL, qualifier string) (err error) {
 	dev, err := sqlclient.Open(ctx, devURL)
 	if err != nil {

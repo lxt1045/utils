@@ -21,8 +21,8 @@ import (
 
 // --format '{{ sql . }}' : 一行 sql ;
 // --format '{{ sql . \"  \" }}' : 转成多行，方便查看 ;
-// atlas schema diff --from "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/dji1" --to "file://e:/test/atlas/test.sql" --format '{{ sql . \"  \" }}' --dev-url "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/atlas_dev"
-// atlas schema diff --from "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/dji1" --to "file://e:/test/atlas/test.sql" --format '{{ sql . }}' --dev-url "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/atlas_dev"
+// atlas schema diff --from "mysql://root:password@127.0.0.1:3306/dji1" --to "file://e:/test/atlas/test.sql" --format '{{ sql . \"  \" }}' --dev-url "mysql://root:password@127.0.0.1:3306/atlas_dev"
+// atlas schema diff --from "mysql://root:password@127.0.0.1:3306/dji1" --to "file://e:/test/atlas/test.sql" --format '{{ sql . }}' --dev-url "mysql://root:password@127.0.0.1:3306/atlas_dev"
 func SchemaDiffRun(ctx context.Context, fromURL, toURL, schemas, exclude []string, formatTo, devURL string) (err error) {
 	var (
 		c *sqlclient.Client
