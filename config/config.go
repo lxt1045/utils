@@ -34,8 +34,8 @@ type DB struct {
 	AtlasDB          AtlasDB
 }
 type AtlasDB struct {
-	DBName string
-	DBfile string
+	DBName     string
+	MigrateDir string
 }
 
 type HTTP struct {
