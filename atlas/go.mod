@@ -7,7 +7,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/lxt1045/atlas-cmd-internal v0.0.0-20260819164211-a0fccc6300ba
 	github.com/lxt1045/errors v0.0.0-20260820021401-491eee623d39
-	github.com/lxt1045/utils v0.0.0-20260824024940-733104aa0b9d
+	github.com/lxt1045/utils v0.0.0-20260824104156-46779e5c3c28
 	github.com/spf13/cobra v1.10.2
 )
 

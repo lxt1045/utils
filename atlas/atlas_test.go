@@ -92,3 +92,11 @@ func Test_migrateApply(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func Test_MigrateHashRun(t *testing.T) {
+	dirURL := "file://e:/test/atlas/migrations?format=golang-migrate"
+	err := atlas.MigrateHashRun(t.Context(), dirURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
