@@ -50,3 +50,10 @@ func TestMigrateApplyFS(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMigrateHash(t *testing.T) {
+	err := atlas.MigrateHash(t.Context(), "./testdata/migrate")
+	if err != nil {
+		t.Fatal(err)
+	}
+}

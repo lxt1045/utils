@@ -36,7 +36,8 @@ func MigrateDiff(ctx context.Context, versionName, inSqlFile, outMigrateDir stri
 	toURL := []string{"file://" + filepath.ToSlash(inSqlFile)}
 
 	// devURL := "mysql://root:password@127.0.0.1:3306/atlas_dev"
-	devURL := fmt.Sprintf("mysql://%s:%s@%s:%s/%s", conf.User, conf.Password, conf.Host, conf.Port, conf.AtlasDB.DBName)
+	conf.DBName = conf.AtlasDB.DBName
+	devURL := ToMysqlUrl(conf)
 
 	// dirURL := "file://e:/test/atlas/migrations?format=golang-migrate"
 	outMigrateDir, err = filepath.Abs(outMigrateDir)
@@ -44,7 +45,7 @@ func MigrateDiff(ctx context.Context, versionName, inSqlFile, outMigrateDir stri
 		err = errors.WithErr(err)
 		return
 	}
-	dirURL := "file://" + filepath.ToSlash(outMigrateDir) + "?format=golang-migrate"
+	dirURL := ToFileUrl(filepath.ToSlash(outMigrateDir))
 
 	// versionName = versionName   + time.Now().Format("20060102_150405")
 	schemas := []string{}
@@ -70,8 +71,8 @@ func MigrateApply(ctx context.Context, inMigrateDir string, conf config.DB) (err
 	}
 	// toURL := "mysql://root:password@127.0.0.1:3306/dji88"
 	// fromURL := "file://e:/test/atlas/migrations?format=golang-migrate"
-	toURL := fmt.Sprintf("mysql://%s:%s@%s:%s/%s", conf.User, conf.Password, conf.Host, conf.Port, conf.DBName)
-	fromURL := "file://" + filepath.ToSlash(inMigrateDir) + "?format=golang-migrate"
+	toURL := ToMysqlUrl(conf)
+	fromURL := ToFileUrl(filepath.ToSlash(inMigrateDir))
 	err = MigrateApplyRun(ctx, fromURL, toURL)
 	if err != nil {
 		err = errors.WithErr(err)
@@ -92,6 +93,26 @@ func MigrateApplyFS(ctx context.Context, fdb fs.FS, conf config.DB) (err error) 
 	}
 
 	return MigrateApply(ctx, filepath.Join(tmp, conf.AtlasDB.MigrateDir), conf)
+}
+
+func MigrateHash(ctx context.Context, inMigrateDir string) (err error) {
+	toURL := ToFileUrl(filepath.ToSlash(inMigrateDir))
+	err = MigrateHashRun(ctx, toURL)
+	if err != nil {
+		err = errors.WithErr(err)
+		return
+	}
+	return
+}
+
+func ToMysqlUrl(conf config.DB) string {
+	// toURL := "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/dji88"
+	toURL := fmt.Sprintf("mysql://%s:%s@%s:%s/%s", conf.User, conf.Password, conf.Host, conf.Port, conf.DBName)
+	return toURL
+}
+func ToFileUrl(path string) string {
+	// fromURL := "file://e:/test/atlas/migrations?format=golang-migrate"
+	return "file://" + filepath.ToSlash(path) + "?format=golang-migrate"
 }
 
 func CopyFSFile(file, fsFile string, fsys fs.FS) (err error) {
