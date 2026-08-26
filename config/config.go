@@ -44,6 +44,7 @@ type HTTP struct {
 	TLS        bool
 	Relaese    bool
 	Addr       string
+	SwagerAddr string
 	Static     bool
 	Path       string
 	Download   bool
