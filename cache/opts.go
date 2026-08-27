@@ -5,9 +5,6 @@ import (
 )
 
 type config[T Value] struct {
-	LifeWindow   int
-	CleanWindow  int
-	StoreFile    string
 	Name         string
 	MetricSec    int
 	MetricLogger func(attrs ...slog.Attr)
@@ -27,12 +24,6 @@ func WithMetrics[T Value](name string, sec int, logger func(attrs ...slog.Attr))
 	}
 }
 
-func WithStoremFile[T Value](storeFile string) Option[T] {
-	return func(c *config[T]) {
-		c.StoreFile = storeFile
-	}
-}
-
 func WithBatchLoad[T Value](f BatchLoadFunc[T]) Option[T] {
 	return func(c *config[T]) {
 		c.BatchLoader = f
@@ -41,17 +32,5 @@ func WithBatchLoad[T Value](f BatchLoadFunc[T]) Option[T] {
 func WithPostLoad[T Value](f PostLoadFunc[T]) Option[T] {
 	return func(c *config[T]) {
 		c.PostLoad = f
-	}
-}
-
-func WithLifeWindow[T Value](n int) Option[T] {
-	return func(c *config[T]) {
-		c.LifeWindow = n
-	}
-}
-
-func WithCleanWindow[T Value](n int) Option[T] {
-	return func(c *config[T]) {
-		c.CleanWindow = n
 	}
 }

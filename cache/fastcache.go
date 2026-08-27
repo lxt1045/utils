@@ -14,7 +14,7 @@ import (
 type Value interface {
 }
 
-type cache[T Value] struct {
+type fcache[T Value] struct {
 	cache      *fastcache.Cache
 	storeFile  string
 	lifeWindow int64
@@ -25,30 +25,26 @@ type data[T Value] struct {
 	expired int64 // 超时时间
 }
 
-// maxBytes capacity in bytes.
-func New[T Value](ctx context.Context, maxBytes int, opts ...Option[T]) (c *cache[T], err error) {
-	c, _, err = newCache(ctx, maxBytes, opts...)
+// // maxBytes 单位 MByte;
+func NewFastcache[T Value](ctx context.Context, maxBytes int, storeFile string, opts ...Option[T]) (c *fcache[T], err error) {
+	c, _, err = newFastcache(ctx, maxBytes*1024*1014, storeFile, opts...)
 	return
 }
-func newCache[T Value](ctx context.Context, maxBytes int, opts ...Option[T]) (c *cache[T], conf config[T], err error) {
+func newFastcache[T Value](ctx context.Context, maxBytes int, storeFile string, opts ...Option[T]) (c *fcache[T], conf config[T], err error) {
 	for _, opt := range opts {
 		opt(&conf)
 	}
 
-	if conf.LifeWindow != 0 || conf.CleanWindow != 0 {
-		err = errors.Errorf("default cache not support LifeWindow or CleanWindow")
-		return
-	}
 	if conf.BatchLoader != nil || conf.PostLoad != nil {
 		err = errors.Errorf("default cache not support BatchLoader or PostLoad")
 		return
 	}
 
-	c = &cache[T]{}
+	c = &fcache[T]{}
 
-	if conf.StoreFile != "" {
-		c.cache = fastcache.LoadFromFileOrNew(conf.StoreFile, maxBytes)
-		c.storeFile = conf.StoreFile
+	if storeFile != "" {
+		c.cache = fastcache.LoadFromFileOrNew(storeFile, maxBytes)
+		c.storeFile = storeFile
 	} else {
 		c.cache = fastcache.New(maxBytes)
 	}
@@ -60,14 +56,14 @@ func newCache[T Value](ctx context.Context, maxBytes int, opts ...Option[T]) (c 
 }
 
 // Store 将缓存序列化到文件中
-func (c *cache[T]) Store() (err error) {
+func (c *fcache[T]) Store() (err error) {
 	if c.storeFile != "" {
 		c.cache.SaveToFile(c.storeFile)
 	}
 	return
 }
 
-func (c *cache[T]) Set(k string, v *T) (err error) {
+func (c *fcache[T]) Set(k string, v *T) (err error) {
 	var buffer bytes.Buffer
 	err = gob.NewEncoder(&buffer).Encode(v)
 	if err != nil {
@@ -78,7 +74,7 @@ func (c *cache[T]) Set(k string, v *T) (err error) {
 	return
 }
 
-func (c *cache[T]) Get(k string) (d *T, err error) {
+func (c *fcache[T]) Get(k string) (d *T, err error) {
 	bs, ok := c.cache.HasGet(nil, toBs(k))
 	if !ok {
 		return
@@ -95,15 +91,15 @@ func (c *cache[T]) Get(k string) (d *T, err error) {
 	return
 }
 
-func (c *cache[T]) Has(k string) bool {
+func (c *fcache[T]) Has(k string) bool {
 	return c.cache.Has(toBs(k))
 }
 
-func (c *cache[T]) Del(k string) {
+func (c *fcache[T]) Del(k string) {
 	c.cache.Del(toBs(k))
 }
 
-func (c *cache[T]) EmitMetrics(ctx context.Context, name string, sec time.Duration, logger func(attrs ...slog.Attr)) {
+func (c *fcache[T]) EmitMetrics(ctx context.Context, name string, sec time.Duration, logger func(attrs ...slog.Attr)) {
 	ticker := time.NewTicker(time.Second * sec)
 	for {
 		select {
