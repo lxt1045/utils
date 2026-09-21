@@ -239,11 +239,11 @@ type HTTPRequest struct {
 
 func NewHTTPRequest(inConn *net.Conn, bufSize int, isBasicAuth bool, basicAuth *BasicAuth) (req HTTPRequest, err error) {
 	buf := make([]byte, bufSize)
-	len := 0
+	l := 0
 	req = HTTPRequest{
 		conn: inConn,
 	}
-	len, err = (*inConn).Read(buf[:])
+	l, err = (*inConn).Read(buf[:])
 	if err != nil {
 		if err != io.EOF {
 			err = fmt.Errorf("http decoder read err:%s", err)
@@ -251,16 +251,24 @@ func NewHTTPRequest(inConn *net.Conn, bufSize int, isBasicAuth bool, basicAuth *
 		CloseConn(inConn)
 		return
 	}
-	req.HeadBuf = buf[:len]
+	req.HeadBuf = buf[:l]
 	index := bytes.IndexByte(req.HeadBuf, '\n')
 	if index == -1 {
-		err = fmt.Errorf("http decoder data line err:%s", string(req.HeadBuf)[:50])
+		l := len(req.HeadBuf)
+		if l > 50 {
+			l = 50
+		}
+		err = fmt.Errorf("http decoder data line err:%s", string(req.HeadBuf)[:l])
 		CloseConn(inConn)
 		return
 	}
 	fmt.Sscanf(string(req.HeadBuf[:index]), "%s%s", &req.Method, &req.hostOrURL)
 	if req.Method == "" || req.hostOrURL == "" {
-		err = fmt.Errorf("http decoder data err:%s", string(req.HeadBuf)[:50])
+		l := len(req.HeadBuf)
+		if l > 50 {
+			l = 50
+		}
+		err = fmt.Errorf("http decoder data err:%s", string(req.HeadBuf)[:l])
 		CloseConn(inConn)
 		return
 	}

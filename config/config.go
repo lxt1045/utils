@@ -261,6 +261,14 @@ func loadEnvFile(filename string) (envMap map[string]string, err error) {
 
 // 环境变量处理
 func AssignVarsFromEnv(conf interface{}, envMap map[string]string) (err error) {
+	_, err = assignVarsFromEnv(conf, envMap)
+	return
+}
+
+// assignVarsFromEnv 是 AssignVarsFromEnv 的内部版本，额外返回是否实际发生过赋值。
+// changed 用于 nil 指针字段的"先分配、有值才保留、无值则丢弃"逻辑：
+// 只有当一个字符串字段真正被 ${Var} 替换（或其子结构发生了替换）时才算 changed。
+func assignVarsFromEnv(conf interface{}, envMap map[string]string) (changed bool, err error) {
 	if conf == nil {
 		return
 	}
@@ -270,19 +278,22 @@ func AssignVarsFromEnv(conf interface{}, envMap map[string]string) (err error) {
 		return
 	}
 	valueIn = valueIn.Elem()
-
-	switch valueIn.Type().Kind() {
-	case reflect.Pointer:
-		err = AssignVarsFromEnv(valueIn.Interface(), envMap)
-		if err != nil {
-			return
-		}
+	if !valueIn.IsValid() {
+		// conf 是 nil 指针（如 (*T)(nil)），没有可赋值的字段
 		return
+	}
+
+	switch valueIn.Kind() {
+	case reflect.Pointer:
+		return assignVarsFromEnv(valueIn.Interface(), envMap)
 	case reflect.Interface:
-		vUnderlying := valueIn.Elem()            // interface 底层的值
+		vUnderlying := valueIn.Elem() // interface 底层的值
+		if !vUnderlying.IsValid() {
+			return // nil interface，无值可赋
+		}
 		vpNew := reflect.New(vUnderlying.Type()) // 不能直接取地址，所以需要先创建一个新的变量，再做修改
 		vpNew.Elem().Set(vUnderlying)
-		err = AssignVarsFromEnv(vpNew.Interface(), envMap)
+		changed, err = assignVarsFromEnv(vpNew.Interface(), envMap)
 		if err != nil {
 			return
 		}
@@ -301,6 +312,7 @@ func AssignVarsFromEnv(conf interface{}, envMap map[string]string) (err error) {
 				return
 			}
 			valueIn.Set(reflect.ValueOf(str))
+			changed = true
 			if str == "" {
 				i := strings.IndexByte(str1, '}')
 				str1 = strings.TrimSpace(str1[i+1:])
@@ -314,29 +326,78 @@ func AssignVarsFromEnv(conf interface{}, envMap map[string]string) (err error) {
 		}
 		return
 	case reflect.Slice, reflect.Array:
-		err = AssignSliceFromEnv(valueIn.Addr().Interface(), envMap)
+		for i, n := 0, valueIn.Len(); i < n; i++ {
+			v := valueIn.Index(i)
+			if !v.IsValid() || !v.CanAddr() {
+				continue
+			}
+			c, err1 := assignVarsFromEnv(v.Addr().Interface(), envMap)
+			if err1 != nil {
+				err = err1
+				return
+			}
+			changed = changed || c
+		}
 		return
 	case reflect.Map:
 		// map 在 golang 中是一个指针，所以这里不需要重新给 conf 赋值
-		_, err = AssignMapFromEnv(valueIn.Interface(), envMap)
+		iter := valueIn.MapRange()
+		for iter.Next() {
+			k := iter.Key()
+			v := iter.Value()
+			if !v.IsValid() {
+				continue
+			}
+
+			vpNew := reflect.New(v.Type()) // 不能直接取地址，所以需要先创建一个新的变量，再做修改
+			vpNew.Elem().Set(v)
+			c, err1 := assignVarsFromEnv(vpNew.Interface(), envMap)
+			if err1 != nil {
+				err = err1
+				return
+			}
+			valueIn.SetMapIndex(k, vpNew.Elem())
+			changed = changed || c
+		}
 		return
 	case reflect.Struct:
 		for i := 0; i < valueIn.NumField(); i++ {
-			v := valueIn.Field(i)
-			if !v.IsValid() {
+			f := valueIn.Field(i)
+			if !f.IsValid() {
 				continue // 跳过0值
 			}
-			for v.Type().Kind() == reflect.Pointer {
+			if f.Kind() == reflect.Pointer && f.IsNil() {
+				// nil 指针字段：先创建一个实例去确认环境变量中是否有它的相关值，
+				// 有实际赋值则把该实例赋给字段，没有则丢弃（字段保持 nil）。
+				if !f.CanSet() {
+					continue
+				}
+				newV := reflect.New(f.Type().Elem())
+				c, err1 := assignVarsFromEnv(newV.Interface(), envMap)
+				if err1 != nil {
+					err = err1
+					return
+				}
+				if c {
+					f.Set(newV)
+					changed = true
+				}
+				continue
+			}
+			v := f
+			for v.Kind() == reflect.Pointer {
 				v = v.Elem()
 			}
 			if !v.IsValid() {
 				continue // 跳过0值
 			}
 			if v.Addr().CanInterface() {
-				err = AssignVarsFromEnv(v.Addr().Interface(), envMap)
-				if err != nil {
+				c, err1 := assignVarsFromEnv(v.Addr().Interface(), envMap)
+				if err1 != nil {
+					err = err1
 					return
 				}
+				changed = changed || c
 			}
 		}
 		return
