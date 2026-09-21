@@ -167,11 +167,28 @@ func UnmarshalFS(file string, fsStatic embed.FS, conf interface{}) (err error) {
 
 // Unmarshal 解析 yaml 到 conf，并处理两种环境变量赋值形式：
 //
-//  1. 值形式（仅 string）：字段值为 "${VAR}" 时替换为环境变量的值；
-//     "${VAR}|default" 在环境变量不存在时取 "|" 后的默认值。
-//  2. 注释形式（所有类型）：字段对应 yaml 节点的注释以 "${VAR}" 开头时，
-//     用环境变量的值覆盖该字段（按 yaml 解析成字段类型，支持 int/bool/
-//     float/slice/map/struct 等）；环境变量不存在时保持 yaml 中的值。
+//  1. 值形式（仅 string）：字段值为 "${...}" 时替换为环境变量求值结果；
+//     兼容旧语法 "${VAR}|default"（求值为空时取 "|" 后的默认值）。
+//  2. 注释形式（所有类型）：key 和 value 同一行的行尾注释中出现 "${...}" 时，
+//     用环境变量求值结果覆盖该字段（按 yaml 解析成字段类型，支持 int/bool/
+//     float/slice/map/struct 等）。行尾注释中有多个 "${...}" 时按回退链求值：
+//     以第一个存在的环境变量为值；全部不存在时以第一个带默认值（按 :-、-、
+//     :=、= 语法解析）的表达式为准；都没有则保持 yaml 中的值。
+//     只处理行尾注释，字段上方/下方的整块注释一律忽略。
+//
+// 两种形式都支持 POSIX Shell 参数扩展语法：
+//
+//	${VAR}           变量的值（值形式未设置 → 空串；注释形式未设置/求值为空 → 保持 yaml 值）
+//	${VAR:-default}  变量未设置或为空 → default
+//	${VAR-default}   变量未设置 → default（空值保留）
+//	${VAR:=default}  变量未设置或为空 → default，并写回 envMap（后续引用可见）
+//	${VAR=default}   变量未设置 → default 并写回 envMap（空值保留）
+//	${VAR:+alt}      变量已设置且非空 → alt；否则空
+//	${VAR+alt}       变量已设置 → alt（空值也算已设置）；未设置 → 空
+//	${VAR:?error}    变量未设置或为空 → 报错（error 可省略）
+//	${VAR?error}     变量未设置 → 报错（error 可省略，空值保留）
+//
+// 注意：":="/"=" 的写回只作用于本次 Unmarshal 的 envMap，不会 os.Setenv。
 //
 // 注释形式优先于值形式。环境变量查找顺序：系统环境变量 > .env 文件。
 // yaml 的 key 与结构体成员的映射支持驼峰、下划线、中划线、大小写开头等形式。
@@ -287,12 +304,17 @@ func assignNode(v reflect.Value, n *yaml.Node, envMap map[string]string, path st
 				continue
 			}
 			sub := joinPath(path, kn.Value)
-			// 注释形式优先：注释以 "${VAR}" 开头时整体覆盖字段值；
-			// 环境变量不存在时保持 yaml 中的值（回退到普通值解码）
-			if name, ok := envNameFromComment(kn, vn); ok {
-				if val, found := lookupEnv(name, envMap); found {
+			// 注释形式优先：行尾注释中的 ${...} 按链式求值（第一个存在的环境变量为值，
+			// 全不存在则取第一个默认值），命中且非空时整体覆盖字段值；
+			// 未命中或结果为空时保持 yaml 中的值（回退到普通值解码）
+			if exprs := envExprsFromComment(kn, vn); len(exprs) > 0 {
+				val, hit, err1 := evalEnvChain(exprs, envMap)
+				if err1 != nil {
+					return errNodef(kn, sub, "env ${%s}: %s", strings.Join(exprs, "} ${"), err1.Error())
+				}
+				if hit && val != "" {
 					if err = setEnvValue(f, val); err != nil {
-						return errNodef(kn, sub, "env ${%s}: %s", name, err.Error())
+						return errNodef(kn, sub, "env ${%s}: %s", strings.Join(exprs, "} ${"), err.Error())
 					}
 					continue
 				}
@@ -370,7 +392,9 @@ func assignNode(v reflect.Value, n *yaml.Node, envMap map[string]string, path st
 		if err = n.Decode(v.Addr().Interface()); err != nil {
 			return errNodef(n, path, "cannot decode %s into string: %s", nodeDesc(n), err.Error())
 		}
-		assignString(v, envMap)
+		if err = assignString(v, envMap); err != nil {
+			return errNodef(n, path, "%s", err.Error())
+		}
 	default:
 		if isNullNode(n) {
 			return
@@ -437,7 +461,8 @@ func assignValue(v reflect.Value, envMap map[string]string) (err error) {
 	}
 	switch v.Kind() {
 	case reflect.String:
-		assignString(v, envMap)
+		err = assignString(v, envMap)
+		return
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
 			if f := v.Field(i); f.CanSet() {
@@ -475,24 +500,34 @@ func assignValue(v reflect.Value, envMap map[string]string) (err error) {
 	return
 }
 
-// assignString 值形式的环境变量替换："${VAR}" 替换为环境变量的值；
-// 环境变量不存在时取 "${VAR}|default" 中 "|" 后的默认值（保持旧行为）。
-func assignString(v reflect.Value, envMap map[string]string) {
+// assignString 值形式的环境变量替换：支持 POSIX 参数扩展
+// ${VAR}、${VAR:-default}、${VAR-default}、${VAR:?error}、${VAR?error}；
+// 兼容旧语法 "${VAR}|default"（求值为空时取 "}" 之后 "|" 的默认值，保持旧行为）。
+func assignString(v reflect.Value, envMap map[string]string) (err error) {
 	str1 := v.String()
-	str, ok := AssignVarFromEnv(str1, envMap)
-	if !ok {
+	trimmed := strings.TrimSpace(str1)
+	i := strings.IndexByte(trimmed, '}')
+	if i < 0 || len(trimmed) <= 3 || trimmed[0] != '$' || trimmed[1] != '{' {
 		return
 	}
-	v.SetString(str)
-	if str == "" {
-		i := strings.IndexByte(str1, '}')
-		str1 = strings.TrimSpace(str1[i+1:])
+	val, hit, err := evalEnvExpr(trimmed[2:i], envMap)
+	if err != nil {
+		return
+	}
+	if !hit {
+		val = "" // 旧行为：${VAR} 未设置 → 空串
+	}
+	v.SetString(val)
+	if val == "" {
+		j := strings.IndexByte(str1, '}')
+		str1 = strings.TrimSpace(str1[j+1:])
 		str1 = strings.TrimLeft(str1, "|")
 		str1 = strings.TrimSpace(str1)
 		if str1 != "" {
 			v.SetString(str1)
 		}
 	}
+	return
 }
 
 // setEnvValue 把环境变量的字符串值赋给字段：string 直接赋值；
@@ -514,22 +549,27 @@ func setEnvValue(f reflect.Value, val string) (err error) {
 	return
 }
 
-// envNameFromComment 从节点的注释中提取 "${NAME}" 形式的环境变量名：
-// 只要 HeadComment/LineComment/FootComment 中的某一条以 "${" 开头即生效。
+// envExprsFromComment 从 key/value 同一行的行尾注释中提取全部 "${...}" 形式的
+// 环境变量表达式（按出现顺序，含 POSIX 参数扩展操作符和参数，如 "VAR:-8080"）。
+// 只处理行尾注释：字段上方/下方的整块注释一律忽略。
 // 注意 yaml.v3 的注释文本带有 "#" 前缀，需先剥掉。
-func envNameFromComment(nodes ...*yaml.Node) (name string, ok bool) {
+func envExprsFromComment(nodes ...*yaml.Node) (exprs []string) {
 	for _, n := range nodes {
 		if n == nil {
 			continue
 		}
-		for _, c := range []string{n.HeadComment, n.LineComment, n.FootComment} {
-			c = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(c), "#"))
-			if !strings.HasPrefix(c, "${") {
-				continue
+		c := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(n.LineComment), "#"))
+		for {
+			i := strings.Index(c, "${")
+			if i < 0 {
+				break
 			}
-			if i := strings.IndexByte(c, '}'); i > 2 {
-				return c[2:i], true
+			j := strings.IndexByte(c[i+2:], '}')
+			if j <= 0 {
+				break
 			}
+			exprs = append(exprs, c[i+2:i+2+j])
+			c = c[i+2+j+1:]
 		}
 	}
 	return
@@ -598,6 +638,8 @@ func fieldIndex(t reflect.Type, key string) []int {
 }
 
 // 从环境变量给变量赋值，变量格式为: ${Var}
+// 支持 POSIX Shell 参数扩展：${VAR}、${VAR:-default}、${VAR-default}、
+// ${VAR:?error}、${VAR?error}。求值失败（如 :? 未设置）时返回 out=""。
 func AssignVarFromEnv(v string, envMap map[string]string) (out string, ok bool) {
 	v = strings.TrimSpace(v)
 	i := strings.IndexByte(v, '}')
@@ -605,15 +647,160 @@ func AssignVarFromEnv(v string, envMap map[string]string) (out string, ok bool) 
 		return
 	}
 	ok = true
-	v = v[2:i]
-	// 优先从系统环境变量查找
-	out, found := os.LookupEnv(v)
-	if !found {
-		// 如果系统环境变量不存在，则从 .env 文件的 map 中查找
-		out = envMap[v]
+	expr := v[2:i]
+	val, hit, err := evalEnvExpr(expr, envMap)
+	if err == nil && hit {
+		out = val
 	}
-	fmt.Printf("config from env: %s: %s\n", v, out)
+	fmt.Printf("config from env: %s: %s\n", expr, out)
 	return
+}
+
+// parseEnvExpr 解析 ${...} 内的 POSIX 参数扩展表达式，返回变量名、操作符和参数。
+// 支持：VAR、VAR:-default、VAR-default、VAR:=default、VAR=default、
+// VAR:+alt、VAR+alt、VAR:?error、VAR?error。
+func parseEnvExpr(expr string) (name, op, arg string, err error) {
+	i := 0
+	for i < len(expr) {
+		c := expr[i]
+		if c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			i++
+			continue
+		}
+		break
+	}
+	if i == 0 {
+		return "", "", "", errors.Errorf("invalid env expression %q", expr)
+	}
+	name, rest := expr[:i], expr[i:]
+	switch {
+	case rest == "":
+		return name, "", "", nil
+	case strings.HasPrefix(rest, ":-"):
+		return name, ":-", rest[2:], nil
+	case strings.HasPrefix(rest, ":+"):
+		return name, ":+", rest[2:], nil
+	case strings.HasPrefix(rest, ":="):
+		return name, ":=", rest[2:], nil
+	case strings.HasPrefix(rest, ":?"):
+		return name, ":?", rest[2:], nil
+	case strings.HasPrefix(rest, "-"):
+		return name, "-", rest[1:], nil
+	case strings.HasPrefix(rest, "+"):
+		return name, "+", rest[1:], nil
+	case strings.HasPrefix(rest, "="):
+		return name, "=", rest[1:], nil
+	case strings.HasPrefix(rest, "?"):
+		return name, "?", rest[1:], nil
+	}
+	return "", "", "", errors.Errorf("invalid env expression %q", expr)
+}
+
+// evalEnvExpr 求值单个 ${...} 表达式（等价于链长为 1 的 evalEnvChain）。
+func evalEnvExpr(expr string, envMap map[string]string) (val string, hit bool, err error) {
+	return evalEnvChain([]string{expr}, envMap)
+}
+
+// evalEnvChain 按顺序求值多个 ${...} 表达式（注释形式支持一行多个）：
+//  1. 以第一个"存在"（按各操作符语义判定）的表达式的值为最终值；
+//  2. 全部不存在时，以第一个带默认值（:-、-、:=、=）的表达式的默认值为最终值
+//     （:=/= 被选中时同样写回 envMap）；
+//  3. 都没有则不赋值（hit=false，由调用方决定兜底）；
+//  4. 求值过程中遇到 ${VAR:?error} / ${VAR?error} 且变量不满足条件时立即报错。
+func evalEnvChain(exprs []string, envMap map[string]string) (val string, hit bool, err error) {
+	def, defAssign, hasDef := "", "", false
+	for _, expr := range exprs {
+		v, h, e := envExprValue(expr, envMap)
+		if e != nil {
+			return "", false, e
+		}
+		if h {
+			return v, true, nil
+		}
+		if !hasDef {
+			if d, name, ok := defaultOf(expr); ok {
+				def, defAssign, hasDef = d, name, true
+			}
+		}
+	}
+	if hasDef {
+		if defAssign != "" && envMap != nil {
+			envMap[defAssign] = def
+		}
+		return def, true, nil
+	}
+	return "", false, nil
+}
+
+// envExprValue 求单表达式的"存在性"与值（不应用默认值）：
+// 存在（hit=true）→ val 为该表达式的值（变量值，或 :+/+ 的 alt）；
+// 不存在 → hit=false；${VAR:?error} / ${VAR?error} 不满足条件时返回 err。
+// 先按整体名字精确查找（兼容变量名含 "-" 等字符的旧用法），未命中再按 POSIX 语法解析。
+func envExprValue(expr string, envMap map[string]string) (val string, hit bool, err error) {
+	if val, ok := lookupEnv(expr, envMap); ok {
+		return val, true, nil
+	}
+	name, op, arg, perr := parseEnvExpr(expr)
+	if perr != nil {
+		// 无法解析为参数扩展：按未设置的普通变量名处理
+		return "", false, nil
+	}
+	raw, isSet := lookupEnv(name, envMap)
+	switch op {
+	case "":
+		if isSet {
+			return raw, true, nil
+		}
+	case ":-", ":=":
+		if isSet && raw != "" {
+			return raw, true, nil
+		}
+	case "-", "=":
+		if isSet {
+			return raw, true, nil
+		}
+	case ":+":
+		if isSet && raw != "" {
+			return arg, true, nil
+		}
+	case "+":
+		if isSet {
+			return arg, true, nil
+		}
+	case ":?":
+		if isSet && raw != "" {
+			return raw, true, nil
+		}
+		if arg == "" {
+			arg = name + ": parameter not set or null"
+		}
+		return "", false, errors.Errorf("%s", arg)
+	case "?":
+		if isSet {
+			return raw, true, nil
+		}
+		if arg == "" {
+			arg = name + ": parameter not set"
+		}
+		return "", false, errors.Errorf("%s", arg)
+	}
+	return "", false, nil
+}
+
+// defaultOf 按默认值语法（:-、-、:=、=）解析表达式的默认值；
+// :=/= 时 assignName 为需要写回 envMap 的变量名。
+func defaultOf(expr string) (def, assignName string, ok bool) {
+	name, op, arg, err := parseEnvExpr(expr)
+	if err != nil {
+		return "", "", false
+	}
+	switch op {
+	case ":-", "-":
+		return arg, "", true
+	case ":=", "=":
+		return arg, name, true
+	}
+	return "", "", false
 }
 
 // AssignMapFromEnv 对 map 中的 "${VAR}" 字符串做环境变量替换（兼容旧接口）。
