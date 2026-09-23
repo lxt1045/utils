@@ -6,7 +6,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/lxt1045/utils/atlas"
 	"github.com/lxt1045/utils/atlas/testdata"
-	"github.com/lxt1045/utils/config"
+	"github.com/lxt1045/utils/db"
 )
 
 func TestMigrateDiff(t *testing.T) {
@@ -17,7 +17,7 @@ func TestMigrateDiff(t *testing.T) {
 		Password: "password",
 		DBName:   "testdata",
 		SSLMode:  true,
-		AtlasDB: config.AtlasDB{
+		AtlasDB: db.AtlasDB{
 			DBName:     "atlas_dev",
 			MigrateDir: "testdata/migrate",
 		},

@@ -93,6 +93,7 @@ func Test_migrateDiff_pg(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
 /*
 # 执行的时候也需要执行 golang-migrate 格式, 否则 up 和 down 文件都会被执行。
 atlas migrate apply --dir "file://e:/test/atlas/migrations?format=golang-migrate" - --url ""mysql://root:password@127.0.0.1:3306/dji88"

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/mockey"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,8 +25,7 @@ func TestNew(t *testing.T) {
 		t.Fatal(err)
 	}
 	pNow := &tNow
-	// fUnPatch := mockey.Mock(time.Now).Return(tNow).Build().UnPatch
-	defer mockey.Mock(time.Now).To(func() time.Time { return *pNow }).Build().UnPatch()
+	SetTimenow(func() time.Time { return *pNow })
 
 	varDelay := 0
 	f := func(d delayData) {

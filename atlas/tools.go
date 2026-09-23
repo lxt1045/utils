@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/lxt1045/errors"
-	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/db"
+	"github.com/lxt1045/utils/tools"
 	// _ "github.com/go-sql-driver/mysql"
 )
 

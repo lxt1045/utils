@@ -69,7 +69,7 @@ func TestGrpc(t *testing.T) {
 	defer cancel()
 	req := &base.HelloReq{
 		Name: "test",
-		Test: "hello 12356789",
+		// Test: "hello 12356789",
 	}
 	resp, err := cli.SayHello(callCtx, req, googlegrpc.WaitForReady(false))
 	if err != nil {
@@ -142,7 +142,7 @@ func TestGrpcEtcd(t *testing.T) {
 
 	req := &base.HelloReq{
 		Name: "test",
-		Test: "hello 12356789",
+		// Test: "hello 12356789",
 	}
 	resp, err := cli.SayHello(callCtx, req, googlegrpc.WaitForReady(false))
 	if err != nil {
