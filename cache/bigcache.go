@@ -104,7 +104,7 @@ func newBigCache(ctx context.Context, config bigcache.Config, name string) (*big
 	return bc, nil
 }
 
-func (c *cache[T]) Set(k string, v T) (err error) {
+func (c *cache[T]) Set(ctx context.Context, k string, v T) (err error) {
 	var buffer bytes.Buffer
 	err = gob.NewEncoder(&buffer).Encode(v)
 	if err != nil {

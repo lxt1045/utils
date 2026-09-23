@@ -10,7 +10,7 @@ import (
 )
 
 func TestMigrateDiff(t *testing.T) {
-	conf := config.DB{
+	conf := db.Config{
 		Host:     "127.0.0.1",
 		Port:     "3306",
 		User:     "root",
@@ -22,7 +22,7 @@ func TestMigrateDiff(t *testing.T) {
 			MigrateDir: "testdata/migrate",
 		},
 	}
-	err := atlas.MigrateDiff(t.Context(), "test_version", "./testdata/test.sql", "./testdata/migrate", testdata.Migrate, conf)
+	err := atlas.MigrateDiff(t.Context(), "mysql", "test_version", "./testdata/test.sql", "./testdata/migrate", testdata.Migrate, conf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,19 +33,19 @@ func TestMigrateDiff(t *testing.T) {
 atlas migrate apply --dir "file://e:/test/atlas/migrations?format=golang-migrate" - --url ""mysql://root:password@127.0.0.1:3306/dji88"
 */
 func TestMigrateApplyFS(t *testing.T) {
-	conf := config.DB{
-		Host:     "127.0.0.1",
+	conf := db.Config{
+		Host:     "10.1.1.121",
 		Port:     "3306",
 		User:     "root",
 		Password: "password",
 		DBName:   "testdata",
 		SSLMode:  true,
-		AtlasDB: config.AtlasDB{
+		AtlasDB: db.AtlasDB{
 			DBName:     "atlas_dev",
 			MigrateDir: "migrate",
 		},
 	}
-	err := atlas.MigrateApplyFS(t.Context(), testdata.Migrate, conf)
+	err := atlas.MigrateApplyFS(t.Context(), "mysql", testdata.Migrate, conf)
 	if err != nil {
 		t.Fatal(err)
 	}

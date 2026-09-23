@@ -48,6 +48,16 @@ func NewLoading[T Value](ctx context.Context, cache Cache[T], loadFunc LoaderFun
 	return
 }
 
+func (c *loading[T]) Close() (err error) {
+	return c.cache.Close()
+}
+func (c *loading[T]) Del(ks ...string) (err error) {
+	return c.cache.Del(ks...)
+}
+func (c *loading[T]) GetWithInfo(k string) (d T, expired bool, err error) {
+	return c.cache.GetWithInfo(k)
+}
+
 func (c *loading[T]) Get(ctx context.Context, k string) (d T, err error) {
 	d, expired, err := c.cache.GetWithInfo(k)
 	if err == nil {
@@ -87,7 +97,7 @@ func (c *loading[T]) Set(ctx context.Context, k string, v T) (err error) {
 	if c.postLoad != nil {
 		_ = c.postLoad(ctx, k, v)
 	}
-	return c.cache.Set(k, v)
+	return c.cache.Set(ctx, k, v)
 }
 
 func (c *loading[T]) BatchLoad(ctx context.Context, ks []string) (vs []T, err error) {

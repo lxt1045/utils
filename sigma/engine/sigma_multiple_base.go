@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"uuid"
 
 	"github.com/lxt1045/utils/delay"
 	"github.com/lxt1045/utils/tag"
@@ -49,8 +50,8 @@ type StreamRuleset[T any] struct {
 	rules []*streamRule[T] // 所有规则
 	tis   map[string]*tag.TagInfo
 
-	allLastEventIDAdddr map[int64]*int64                    // map[rule_id]&rule_id
-	mEvals              map[int64][]func(m *T) []DataHit[T] // map[singleRuleID]Evals
+	allLastEventIDAdddr map[uuid.UUID]*atomic.Pointer[uuid.UUID] // map[eventid]&event_id   //  // map[rule_id]&rule_id
+	mEvals              map[int64][]func(m *T) []DataHit[T]      // map[singleRuleID]Evals
 }
 
 func (rs StreamRuleset[T]) Eval(ruleID int64, m *T) (hitss [][]DataHit[T]) {
@@ -64,16 +65,16 @@ func (rs StreamRuleset[T]) Eval(ruleID int64, m *T) (hitss [][]DataHit[T]) {
 	return
 }
 
-func (rs StreamRuleset[T]) ResetEventID(eventID int64) {
+func (rs StreamRuleset[T]) ResetEventID(eventID uuid.UUID) {
 	pEventID := rs.allLastEventIDAdddr[eventID]
 	if pEventID != nil {
-		atomic.CompareAndSwapInt64(pEventID, eventID, 0)
+		pEventID.CompareAndSwap(&eventID, nil)
 	}
 }
 
 func (rs *StreamRuleset[T]) Build() (err error) {
 	rs.mEvals = make(map[int64][]func(m *T) []DataHit[T])
-	rs.allLastEventIDAdddr = make(map[int64]*int64)
+	rs.allLastEventIDAdddr = make(map[uuid.UUID]*atomic.Pointer[uuid.UUID])
 	// 处理 Eval 函数
 	for _, rule := range rs.rules {
 		for ruleID := range rule.mCountsIdx {
@@ -167,7 +168,7 @@ type Group[T any] struct {
 	// 上次导出时间。
 	// 如果不超过窗口，则使用上次的 event_id 并只导出自己；
 	// 否则，还需要把队列中属于本 group 的所有 *T 都导出成同一个事件
-	lastEventID int64
+	lastEventID atomic.Pointer[uuid.UUID]
 }
 
 func (r *streamRule[T]) NewGroup() (g *Group[T]) {
@@ -214,7 +215,7 @@ type DataHit[T any] struct {
 	MulRuleID    int64
 	MainRuleID   int64 // 主事件ID
 	SingleRuleID int64
-	EventID      int64
+	EventID      uuid.UUID
 	Score        int16
 	RuleType     RuleType
 	Data         *T

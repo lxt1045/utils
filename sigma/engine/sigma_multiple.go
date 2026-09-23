@@ -8,9 +8,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"uuid"
 
 	"github.com/lxt1045/utils/delay"
-	"github.com/lxt1045/utils/gid"
+	"github.com/lxt1045/utils/tools"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/tag"
 	"gopkg.in/yaml.v2"
@@ -302,7 +303,7 @@ func addHavingEqual[E string | int64 | bool, T any](s *streamRule[T], idxHaving 
 			v := fGetElemL(m)
 			having := &g.havings[idxHaving]
 			d := data[T]{
-				start: time.Now().UnixNano(),
+				start: timeNow().UnixNano(),
 				data:  m,
 			}
 
@@ -341,7 +342,7 @@ func addHavingEqual[E string | int64 | bool, T any](s *streamRule[T], idxHaving 
 			v := fGetElemR(m)
 			having := &g.havings[idxHaving]
 			d := data[T]{
-				start: time.Now().UnixNano(),
+				start: timeNow().UnixNano(),
 				data:  m,
 			}
 
@@ -440,38 +441,38 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 	if len(rule.preFuncs) == 0 && len(rule.postFuncs) == 0 {
 		fEval = func(m *T) (hits []DataHit[T]) {
 			g := rule.GetGroup(m)
-			lastEventID := atomic.LoadInt64(&g.lastEventID)
+			lastEventID := g.lastEventID.Load()
 			var mainRuleID int64
 
 			// 没有 count 统计条件，也没有 having 限制条件，纯粹的合并成一个单独的事件
 			if rule.timeWindow > 0 {
-				ts := gid.ToTs(lastEventID)
-				if ts+rule.timeWindow/int64(time.Second) < gid.GetTsNow() {
-					newEventID := gid.New()
-					swaped := atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, newEventID)
+				ts := tools.UUIDv7PToTs(lastEventID)
+				if ts+rule.timeWindow/int64(time.Second) < timeNow().UnixMilli() {
+					newEventID := uuid.NewV7()
+					swaped := g.lastEventID.CompareAndSwap(lastEventID, &newEventID)
 					if swaped {
 						mainRuleID = singleRuleID64
 						rule.ruleset.allLastEventIDAdddr[newEventID] = &g.lastEventID
-						if lastEventID > 0 {
-							delete(rule.ruleset.allLastEventIDAdddr, lastEventID)
+						if lastEventID != nil {
+							delete(rule.ruleset.allLastEventIDAdddr, *lastEventID)
 						}
 					}
-					lastEventID = atomic.LoadInt64(&g.lastEventID)
+					lastEventID = g.lastEventID.Load()
 				}
-			} else if lastEventID == 0 {
-				newEventID := gid.New()
-				swaped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, newEventID)
+			} else if lastEventID == nil {
+				newEventID := uuid.NewV7()
+				swaped := g.lastEventID.CompareAndSwap(nil, &newEventID)
 				if swaped {
 					mainRuleID = singleRuleID64
 					rule.ruleset.allLastEventIDAdddr[newEventID] = &g.lastEventID
 				}
-				lastEventID = atomic.LoadInt64(&g.lastEventID)
+				lastEventID = g.lastEventID.Load()
 			}
 			hits = append(hits, DataHit[T]{
 				MulRuleID:    mulRuleID64,
 				SingleRuleID: singleRuleID64,
 				MainRuleID:   mainRuleID,
-				EventID:      lastEventID,
+				EventID:      tools.Must(lastEventID),
 				Data:         m,
 				Score:        score,
 				RuleType:     RuleTypeMerger,
@@ -507,7 +508,7 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 			需要用 delay 表延迟 time_windows 的事件后，再删除 group_by 避免无限膨胀
 		*/
 		g := rule.GetGroup(m)
-		lastEventID := atomic.LoadInt64(&g.lastEventID)
+		lastEventID := g.lastEventID.Load()
 
 		dataDelay := eventData[T]{
 			singleRuleID: singleRuleID64, // 单条规则的 rule_id
@@ -527,7 +528,7 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 		// 统计数量；不通过就直接返回吧
 		for i, n := range g.counts {
 			if n < rule.countLimits[i] {
-				atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, 0)
+				g.lastEventID.CompareAndSwap(lastEventID, nil)
 				return
 			}
 		}
@@ -537,17 +538,17 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 			pair := g.havings[i].pair.Load()
 			if pair == nil || pair.start == 0 {
 				// 没有命中 或者 超过时间窗口；把上一个 eventID 清除
-				atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, 0)
+				g.lastEventID.CompareAndSwap(lastEventID, nil)
 				return
 			}
 		}
 
 		// 仅输出当前 *T,并使用上次的 event_id
-		if lastEventID > 0 {
+		if lastEventID != nil {
 			hits = append(hits, DataHit[T]{
 				MulRuleID:    mulRuleID64,
 				SingleRuleID: singleRuleID64,
-				EventID:      lastEventID,
+				EventID:      tools.Must(lastEventID),
 				Data:         m,
 				Score:        score,
 				RuleType:     RuleTypeMultiple,
@@ -557,12 +558,12 @@ func (rule *streamRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Da
 		}
 
 		// 输出 group 队列中的所有数据，并生成新的event_id
-		newEventID := gid.New()
-		swapped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, newEventID)
+		newEventID := uuid.NewV7()
+		swapped := g.lastEventID.CompareAndSwap(nil, &newEventID)
 		if !swapped {
-			newEventID1 := atomic.LoadInt64(&g.lastEventID)
-			if newEventID1 != 0 {
-				newEventID = newEventID1 // 得保证 newEventID 不为 0
+			newEventID1 := g.lastEventID.Load()
+			if newEventID1 != nil {
+				newEventID = *newEventID1 // 得保证 newEventID 不为 0
 			}
 		}
 		// atomic.StoreInt64(&g.lastEventID, newEventID)

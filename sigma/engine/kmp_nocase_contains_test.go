@@ -9,7 +9,7 @@ import (
 )
 
 func Test_kmpIndex(t *testing.T) {
-	str := "D:/project/go/src/gitlab.wecode.com/abcabcab/dev/broker/cmd/run_236/1034-find.yml"
+	str := "go/src/gitlab.wecode.com/abcabcab/dev/broker/cmd/run_236/1034-find.yml"
 
 	substrs := []string{
 		"gitlab",
@@ -23,7 +23,7 @@ func Test_kmpIndex(t *testing.T) {
 }
 
 func Test_kmpIndexNoCase(t *testing.T) {
-	str := "D:/project/go/src/gitlab.wecode.com/abcabcab/dev/broker/cmd/run_236/1034-find.yml"
+	str := "src/gitlab.wecode.com/abcabcab/dev/broker/cmd/run_236/1034-find.yml"
 
 	substrs := []string{
 		"gitlab",
@@ -33,6 +33,7 @@ func Test_kmpIndexNoCase(t *testing.T) {
 	}
 	for _, substr := range substrs {
 		t.Logf("std-i:%d", strings.Index(str, substr))
+		t.Logf("std-i:%d", strings.Index(strings.ToLower(str), strings.ToLower(substr)))
 		t.Logf("kmpIndex-i:%d", kmpIndexNoCaseMaker(substr)(str))
 	}
 }

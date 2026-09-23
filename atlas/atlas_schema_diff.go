@@ -17,8 +17,48 @@ import (
 	"ariga.io/atlas/sql/schema"
 	"ariga.io/atlas/sql/sqlclient"
 	"github.com/lxt1045/errors"
+	"github.com/lxt1045/utils/db"
 )
 
+// "mysql://root:password@127.0.0.1:3306/atlas_dev"
+func createDevURL(ctx context.Context, devURL string) (err error) {
+	url, err := sqlclient.ParseURL(devURL)
+	if err != nil {
+		return
+	}
+	scheme := url.Scheme
+	switch scheme {
+	case "mysql":
+		conf := db.Config{
+			Host:    strings.Split(url.Host, ":")[0],
+			Port:    url.Port(),
+			User:    url.User.Username(),
+			DBName:  url.Path,
+			SSLMode: false,
+		}
+		conf.Password, _ = url.User.Password()
+		if conf.DBName != "" && conf.DBName[0] == '/' {
+			conf.DBName = conf.DBName[1:]
+		}
+		err = db.CreateMysqlDB(ctx, conf)
+	case "postgres":
+		conf := db.Config{
+			Host:    strings.Split(url.Host, ":")[0],
+			Port:    url.Port(),
+			User:    url.User.Username(),
+			DBName:  url.Path,
+			SSLMode: false,
+		}
+		conf.Password, _ = url.User.Password()
+		if conf.DBName != "" && conf.DBName[0] == '/' {
+			conf.DBName = conf.DBName[1:]
+		}
+		err = db.CreatePostgreDB(ctx, conf)
+	case "clickhouse":
+
+	}
+	return
+}
 // --format '{{ sql . }}' : 一行 sql ;
 // --format '{{ sql . \"  \" }}' : 转成多行，方便查看 ;
 // atlas schema diff --from "mysql://root:password@127.0.0.1:3306/dji1" --to "file://e:/test/atlas/test.sql" --format '{{ sql . \"  \" }}' --dev-url "mysql://root:password@127.0.0.1:3306/atlas_dev"
@@ -27,12 +67,15 @@ func SchemaDiffRun(ctx context.Context, fromURL, toURL, schemas, exclude []strin
 	var (
 		c *sqlclient.Client
 	)
+	err = createDevURL(ctx, devURL)
+	if err != nil {
+		return
+	}
 	c, err = sqlclient.Open(ctx, devURL)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
-
 	from, err := stateReader(ctx, &stateReaderConfig{
 		urls:    fromURL,
 		dev:     c,

@@ -8,9 +8,63 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/lxt1045/utils/config/filesystem"
+	"github.com/lxt1045/utils/log"
 	"github.com/stretchr/testify/assert"
+	etcdcli "go.etcd.io/etcd/client/v3"
 )
+
+func TestInitWithEtcd(t *testing.T) {
+	t.Run("this-zerolog", func(t *testing.T) {
+		ctx := t.Context()
+
+		cliEtcd, err := etcdcli.New(etcdcli.Config{
+			Endpoints:   []string{"10.1.1.121:2379"},
+			DialTimeout: 1 * time.Second,
+			Username:    "root",
+			Password:    "Qwe*123!@#",
+		})
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		type Config struct {
+			ServiceID int16
+			Debug     bool
+			Pprof     bool
+			Dev       bool
+			Log       log.Config
+		}
+
+		confFile, err := Init[Config](ctx, &filesystem.Conf, "conf/default.yml", "dev")
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+
+		conf, err := EtcdWatch(ctx, confFile, "/config/base", cliEtcd, nil)
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+
+		bs, err := json.Marshal(conf.Load())
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		t.Logf("conf: %s", bs)
+		time.Sleep(time.Second * 20)
+		bs, err = json.Marshal(conf.Load())
+		if err != nil {
+			t.Fatal(err)
+			return
+		}
+		t.Logf("conf: %s", bs)
+	})
+}
 
 func TestLog(t *testing.T) {
 	t.Run("this-zerolog", func(t *testing.T) {

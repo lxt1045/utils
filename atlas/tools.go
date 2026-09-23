@@ -25,7 +25,7 @@ import (
 	  --format '{{ sql . \"  \" }}'
 */
 // versionName 本次操作的名字
-func MigrateDiff(ctx context.Context, versionName, inSqlFile, outMigrateDir string, fdb fs.FS, conf config.DB) (err error) {
+func MigrateDiff(ctx context.Context, scheme string, versionName, inSqlFile, outMigrateDir string, fdb fs.FS, conf db.Config) (err error) {
 
 	// toURL := []string{"file://e:/test/atlas/test.sql"}
 	inSqlFile, err = filepath.Abs(inSqlFile)
@@ -37,7 +37,7 @@ func MigrateDiff(ctx context.Context, versionName, inSqlFile, outMigrateDir stri
 
 	// devURL := "mysql://root:password@127.0.0.1:3306/atlas_dev"
 	conf.DBName = conf.AtlasDB.DBName
-	devURL := ToMysqlUrl(conf)
+	devURL := ToDBUrl(conf, scheme)
 
 	// dirURL := "file://e:/test/atlas/migrations?format=golang-migrate"
 	outMigrateDir, err = filepath.Abs(outMigrateDir)
@@ -64,23 +64,31 @@ func MigrateDiff(ctx context.Context, versionName, inSqlFile, outMigrateDir stri
 	  --dir "file://e:/test/atlas/migrations?format=golang-migrate"  \
 	  --url ""mysql://root:password@127.0.0.1:3306/dji88"
 */
-func MigrateApply(ctx context.Context, inMigrateDir string, conf config.DB) (err error) {
-	err = db.CreateMysqlDB(ctx, conf)
-	if err != nil {
-		return
+func MigrateApply(ctx context.Context, scheme string, inMigrateDir string, conf db.Config) (err error) {
+	switch scheme {
+	case "mysql":
+		err = db.CreateMysqlDB(ctx, conf)
+		if err != nil {
+			return
+		}
+	case "postgres":
+		err = db.CreatePostgreDB(ctx, conf)
+		if err != nil {
+			return
+		}
 	}
-	// toURL := "mysql://root:password@127.0.0.1:3306/dji88"
+	// toURL := "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/dji88"
 	// fromURL := "file://e:/test/atlas/migrations?format=golang-migrate"
-	toURL := ToMysqlUrl(conf)
+	toURL := ToDBUrl(conf, scheme)
 	fromURL := ToFileUrl(filepath.ToSlash(inMigrateDir))
-	err = MigrateApplyRun(ctx, fromURL, toURL)
+	err = MigrateApplyRun(ctx, fromURL, toURL, conf.AtlasDB.AllowDirty == "true")
 	if err != nil {
 		err = errors.WithErr(err)
 		return
 	}
 	return
 }
-func MigrateApplyFS(ctx context.Context, fdb fs.FS, conf config.DB) (err error) {
+func MigrateApplyFS(ctx context.Context, scheme string, fdb fs.FS, conf db.Config) (err error) {
 	tmp, err := TempRangeDir()
 	if err != nil {
 		return
@@ -92,7 +100,7 @@ func MigrateApplyFS(ctx context.Context, fdb fs.FS, conf config.DB) (err error) 
 		return
 	}
 
-	return MigrateApply(ctx, filepath.Join(tmp, conf.AtlasDB.MigrateDir), conf)
+	return MigrateApply(ctx, scheme, filepath.Join(tmp, conf.AtlasDB.MigrateDir), conf)
 }
 
 func MigrateHash(ctx context.Context, inMigrateDir string) (err error) {
@@ -105,9 +113,9 @@ func MigrateHash(ctx context.Context, inMigrateDir string) (err error) {
 	return
 }
 
-func ToMysqlUrl(conf config.DB) string {
+func ToDBUrl(conf db.Config, scheme string) string {
 	// toURL := "mysql://root:BdtEnxxTnoN1luUR@10.1.1.121:3306/dji88"
-	toURL := fmt.Sprintf("mysql://%s:%s@%s:%s/%s", conf.User, conf.Password, conf.Host, conf.Port, conf.DBName)
+	toURL := fmt.Sprintf("%s://%s:%s@%s:%s/%s", scheme, conf.User, conf.Password, conf.Host, conf.Port, conf.DBName)
 	return toURL
 }
 func ToFileUrl(path string) string {
@@ -139,9 +147,10 @@ func CopyFSFile(file, fsFile string, fsys fs.FS) (err error) {
 }
 
 func TempRangeDir() (tmp string, err error) {
-	tmp = os.TempDir()
+	// tmp = os.TempDir()
+	tmp = tools.UserTempDir()
 	tmp = filepath.Join(tmp, RangeStr("atlas_", ""))
-	err = os.MkdirAll(tmp, 0666)
+	err = os.MkdirAll(tmp, 0777)
 	if err != nil {
 		err = errors.WithErr(err)
 		return

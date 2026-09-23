@@ -15,7 +15,7 @@ import (
 	"github.com/lxt1045/utils/cert/test/grpc/filesystem"
 	"github.com/lxt1045/utils/cert/test/grpc/pb"
 	"github.com/lxt1045/utils/config"
-	wegrpc "github.com/lxt1045/utils/grpc"
+	ugrpc "github.com/lxt1045/utils/grpc"
 	"github.com/lxt1045/utils/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -80,7 +80,6 @@ func (s *server) StreamHello(stream pb.Hello_StreamHelloServer) (err error) {
 			return err
 		}
 	}
-	return nil
 }
 
 func (s *server) StreamReqHello(stream pb.Hello_StreamReqHelloServer) (err error) {
@@ -96,7 +95,6 @@ func (s *server) StreamReqHello(stream pb.Hello_StreamReqHelloServer) (err error
 		ctx := stream.Context()
 		log.Ctx(ctx).Info().Interface("req", res).Msg("UploadFile")
 	}
-	return nil
 }
 
 func (s *server) StreamRespHello(req *pb.HelloReq, stream pb.Hello_StreamRespHelloServer) (err error) {
@@ -140,7 +138,7 @@ func main1() {
 		grpc.UnaryInterceptor(
 			middleware.ChainUnaryServer(
 				validator.UnaryServerInterceptor(),
-				wegrpc.LogUnaryServiceInterceptor(),
+				ugrpc.LogUnaryServiceInterceptor("service"),
 				// zap.UnaryServerInterceptor(zapLogger),
 				// logger.UnaryServerInterceptor(wegrpc.InterceptorLogger(l)),
 			),
@@ -148,7 +146,7 @@ func main1() {
 		grpc.StreamInterceptor(
 			middleware.ChainStreamServer(
 				validator.StreamServerInterceptor(),
-				wegrpc.LogStreamServiceInterceptor(),
+				ugrpc.LogStreamServiceInterceptor("service"),
 			),
 		),
 		grpc.MaxSendMsgSize(math.MaxInt32),
@@ -190,14 +188,13 @@ func main1() {
 
 func main() {
 	ctx := context.Background()
-	conf := config.GRPC{
-		Protocol:   "tcp",
+	conf := ugrpc.ConfSvc{
 		Addr:       ":10088",
 		ServerCert: "static/ca/server-cert.pem",
 		ServerKey:  "static/ca/server-key.pem",
 		CACert:     "static/ca/root-cert.pem",
 	}
-	svc, err := wegrpc.NewServer(ctx, conf, filesystem.Static)
+	svc, err := ugrpc.NewServerTLS(ctx, conf, filesystem.Static, nil)
 	if err != nil {
 		fmt.Println("network error", err)
 	}

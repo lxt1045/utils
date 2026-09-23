@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
+	"uuid"
 
-	"github.com/lxt1045/utils/gid"
+	"github.com/lxt1045/utils/tools"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/tag"
 	"gopkg.in/yaml.v2"
@@ -153,33 +153,35 @@ func (rule *mergeRule[T]) ToEvalFunc(singleRuleID int64) (fEval func(m *T) []Dat
 	score := int16(rule.yml.Initial)
 
 	fEval = func(m *T) (hits []DataHit[T]) {
-		newEventID, tsNow := gid.New(), time.Now().UnixNano()
+		newEventID, tsNow := uuid.NewV7(), timeNow().UnixNano()
 		g := rule.MustGetGroup(m, newEventID, tsNow)
-		lastEventID := atomic.LoadInt64(&g.lastEventID)
+		// lastEventID := atomic.LoadInt64(&g.lastEventID)
+		lastEventID := g.lastEventID.Load()
 		var mainRuleID int64
 
 		// 没有 count 统计条件，也没有 having 限制条件，纯粹的合并成一个单独的事件
 		if rule.timeWindow > 0 {
-			ts := gid.ToTs(lastEventID)
-			if ts+rule.timeWindow/int64(time.Second) < gid.GetTsNow() {
-				swaped := atomic.CompareAndSwapInt64(&g.lastEventID, lastEventID, gid.New())
+			// ts := gid.ToTs(lastEventID)
+			ts := tools.UUIDv7PToTs(lastEventID)
+			if ts+rule.timeWindow/int64(time.Second) < timeNow().UnixMilli() {
+				swaped := g.lastEventID.CompareAndSwap(lastEventID, tools.ToP(uuid.NewV7()))
 				if swaped {
 					mainRuleID = singleRuleID64
 				}
-				lastEventID = atomic.LoadInt64(&g.lastEventID)
+				lastEventID = g.lastEventID.Load()
 			}
-		} else if lastEventID == 0 {
-			swaped := atomic.CompareAndSwapInt64(&g.lastEventID, 0, gid.New())
+		} else if lastEventID == nil {
+			swaped := g.lastEventID.CompareAndSwap(nil, tools.ToP(uuid.NewV7()))
 			if swaped {
 				mainRuleID = singleRuleID64
 			}
-			lastEventID = atomic.LoadInt64(&g.lastEventID)
+			lastEventID = g.lastEventID.Load()
 		}
 		hits = append(hits, DataHit[T]{
 			MulRuleID:    mergeRuleID64,
 			SingleRuleID: singleRuleID64,
 			MainRuleID:   mainRuleID,
-			EventID:      lastEventID,
+			EventID:      tools.Must(lastEventID),
 			Data:         m,
 			Score:        score,
 		})

@@ -20,7 +20,7 @@ import (
 
 var (
 	// 证书过期时间
-	expiration = time.Now().AddDate(10, 0, 0)
+	expiration = time.Now().AddDate(100, 0, 0)
 
 	defaultSubject = pkix.Name{
 		Country:            []string{"CN"},
@@ -31,6 +31,10 @@ var (
 		CommonName:         "Lxt Root CA",
 	}
 )
+
+func SetExpiration(t time.Time) {
+	expiration = t
+}
 
 type Cert struct {
 	rootCert *x509.Certificate

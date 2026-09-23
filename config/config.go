@@ -5,37 +5,21 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"embed"
 	"fmt"
 	"io/fs"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/lxt1045/errors"
-
+	"github.com/lxt1045/utils/etcd"
+	"github.com/lxt1045/utils/log"
+	etcdcli "go.etcd.io/etcd/client/v3"
 	"gopkg.in/yaml.v3"
 )
-
-type DB struct {
-	Host             string
-	Port             string
-	User             string
-	Password         string
-	DBName           string
-	SSLMode          bool
-	WriteConcurrency int
-	Span             int
-	DialTimeout      int
-	ReadTimeout      int
-	AtlasDB          AtlasDB
-}
-type AtlasDB struct {
-	DBName     string
-	MigrateDir string
-}
 
 type HTTP struct {
 	ServerKey  string
@@ -47,17 +31,6 @@ type HTTP struct {
 	Static     bool
 	Path       string
 	Download   bool
-}
-type GRPC struct {
-	CACert     string
-	ServerKey  string
-	ServerCert string
-	ClientKey  string
-	ClientCert string
-	Protocol   string
-	Addr       string
-	Host       string
-	HostAddrs  []string
 }
 
 type Conn struct {
@@ -93,29 +66,6 @@ type Queue struct {
 	CAIv       string
 }
 
-type Log struct {
-	StoreLevel string // 写到存储的 level
-	LogLevel   string
-	ToConsole  bool
-
-	// 以下是 lumberjack 配置
-
-	// 日志大小到达MaxSize(MB)就开始backup，默认值是100.
-	MaxSize int
-	// 旧日志保存的最大天数，默认保存所有旧日志文件
-	MaxAge int
-	// 旧日志保存的最大数量，默认保存所有旧日志文件
-	MaxBackups int
-	// 对backup的日志是否进行压缩，默认不压缩
-	Compress bool
-	// 是否使用本地时间，否则使用UTC时间
-	LocalTime bool
-	// 日志文件名，归档日志也会保存在对应目录下
-	// 若该值为空，则日志会保存到os.TempDir()目录下，日志文件名为
-	// <processname>-lumberjack.log
-	Filename string
-}
-
 func Env() string {
 	for _, a := range os.Args {
 		if a == "dev" {
@@ -131,7 +81,41 @@ func Env() string {
 	return ""
 }
 
-func Init[T any](ctx context.Context, pfs *embed.FS, file, env string) (conf T, err error) {
+// etcd 自动更新
+func EtcdWatch[T any](ctx context.Context, conf T, etcdPath string, cli *etcdcli.Client, cancel context.CancelFunc) (pConf *atomic.Pointer[T], err error) {
+	pConf = &atomic.Pointer[T]{}
+	pConf.Store(&conf)
+	if cli == nil {
+		return
+	}
+	ch := make(chan bool, 1)
+	err = etcd.Watch(ctx, cli, cancel, func(t etcd.BackupType, d etcd.EventData) {
+		defer func() {
+			select {
+			case ch <- true:
+			default:
+			}
+		}()
+		if d.Key != etcdPath || d.EvType == etcd.TypeDelete || len(d.Value) == 0 {
+			return
+		}
+		conf0 := conf
+		err = Unmarshal([]byte(d.Value), &conf0)
+		if err != nil {
+			log.Ctx(ctx).Error().Caller().Err(err).Msg("InitWithEtcd Watch got error")
+			return
+		}
+		log.Ctx(ctx).Info().Caller().Err(err).Msg("InitWithEtcd Watch got new")
+		pConf.Store(&conf0)
+	}, etcdPath)
+	if err != nil {
+		return
+	}
+	<-ch
+	return
+}
+
+func Init[T any](ctx context.Context, pfs fs.FS, file, env string) (conf T, err error) {
 	if env != "" {
 		i := strings.LastIndexByte(file, '.')
 		file = file[:i] + "_" + env + file[i:]
@@ -152,7 +136,7 @@ func Init[T any](ctx context.Context, pfs *embed.FS, file, env string) (conf T, 
 	return
 }
 
-func UnmarshalFS(file string, fsStatic embed.FS, conf interface{}) (err error) {
+func UnmarshalFS(file string, fsStatic fs.FS, conf interface{}) (err error) {
 	bs, err := fs.ReadFile(fsStatic, file)
 	if err != nil {
 		err = errors.Errorf(err.Error())
@@ -882,7 +866,7 @@ func Camel2Case(name string) string {
 	return buf.String()
 }
 
-func LoadTLSConfig(efs embed.FS, certFile, keyFile, caFile string) (c *tls.Config, err error) {
+func LoadTLSConfig(efs fs.FS, certFile, keyFile, caFile string) (c *tls.Config, err error) {
 	if keyFile == "" && certFile == "" {
 		return nil, nil
 	}

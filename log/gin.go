@@ -1,9 +1,10 @@
 package log
 
 import (
+	"uuid"
+
 	"github.com/gin-gonic/gin"
 	"github.com/lxt1045/errors/zerolog"
-	"github.com/lxt1045/utils/gid"
 )
 
 const (
@@ -11,13 +12,13 @@ const (
 	ginLogger = "logger"
 )
 
-func GinLogID(c *gin.Context) int64 {
+func GinLogID(c *gin.Context) uuid.UUID {
 	vid, _ := c.Get(ginLogID)
-	logid, _ := vid.(int64)
+	logid, _ := toUUID(vid)
 	return logid
 }
 
-func GinWithLogid(c *gin.Context, logid int64) *zerolog.Logger {
+func GinWithLogid(c *gin.Context, logid uuid.UUID) *zerolog.Logger {
 	c.Set(ginLogID, logid)
 
 	l := zerolog.New(GetOutput())
@@ -35,17 +36,23 @@ func GinCtx(c *gin.Context) *zerolog.Logger {
 	}
 
 	vid, _ := c.Get(ginLogID)
-	logid, _ := vid.(int64)
-	if logid == 0 {
-		logid, ok := c.Value(logID{}).(int64)
+	logid, ok := toUUID(vid)
+	if !ok {
+		logid, ok = toUUID(c.Value(logID{}))
 		if ok {
 			l := zerolog.Ctx(c)
 			c.Set(ginLogID, logid)
 			c.Set(ginLogger, &l)
 			return l
 		}
-		logid = gid.New()
+		logid = uuid.NewV7()
 	}
 
 	return GinWithLogid(c, logid)
+}
+
+func toUUID(v any) (id uuid.UUID, ok bool) {
+	id, _ = v.(uuid.UUID)
+	ok = id != uuid.Nil()
+	return
 }

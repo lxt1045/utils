@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/lxt1045/utils/gid"
 	"github.com/lxt1045/utils/log"
 	"github.com/lxt1045/utils/tag"
 	"github.com/markuskont/datamodels"
@@ -21,75 +21,36 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var (
-	// dir = "D:/project/go/src/github.com/lxt1045/sigma_rule/run_236_new"
-	dir = "D:/project/go/src/github.com/lxt1045/sigma_rule/right"
-)
+func Test_NewRuleset(t *testing.T) {
+	sigmaYml, err := os.ReadFile("./testdata/right_mul/1001202001.yml")
+	assert.NoError(t, err)
 
-func Test_sigma11(t *testing.T) {
-	ctx := context.Background()
-	file := "D:/project/go/src/github.com/lxt1045/sigma_rule/right_1/1001301010.yml"
-	// file := "D:/download/1004501011.yml"
-	// file := "D:/download/2010502004.yml"
-
-	bsObj := `{
-		"log_id": 1825473211280965634,
-		"platform": "windows",
-		"agent_id": 2,
-		"time": 1700104412094930700,
-		"event_time": 1700104411121750300,
-		"mark": -127,
-		"source": "Microsoft-Windows-Sysmon/Operational",
-		"session_id": -127,
-		"username": "DESKTOP-NL0NE6O\\admin",
-		"parent_username": "DESKTOP-NL0NE6O\\admin",
-		"parent_cmdline": "wesensor.exe install",
-		"parent_path": "C:\\Users\\admin\\Downloads\\agent-10.1.1.200_202311161014\\wesensor.exe",
-		"description": "Service Control Manager Configuration Tool",
-		"product": "Microsoft® Windows® Operating System",
-		"company": "Microsoft Corporation",
-		"event_id": 1,
-		"logon_id": 1962153,
-		"logon_guid": "{81c15ea6-00e4-6555-a9f0-1d0000000000}",
-		"pid": 16936,
-		"name": "sc.exe",
-		"path": "C:\\Windows\\System32\\sc.exe",
-		"cmdline": "sc start Wesensord",
-		"cwd": "C:\\Users\\admin\\Downloads\\agent-10.1.1.200_202311161014\\",
-		"euid": -127,
-		"egid": -127,
-		"on_disk": -127,
-		"ppid": 13676,
-		"pgroup": 0,
-		"virtual_process": -127,
-		"upid": 1825473211280965634,
-		"uppid": 1825473211280982018,
-		"flags": -127,
-		"exit_code": -127,
-		"token_elevation_status": -127,
-		"socket": -127,
-		"family": -127,
-		"initiated": -127,
-		"local_port": -127,
-		"remote_port": -127,
-		"size": -127,
-		"mtime": -127,
-		"ctime": -127,
-		"is_executable": -127,
-		"file_version": "10.0.22621.1 (WinBuild.160101.0800)",
-		"original_filename": "sc.exe",
-		"sha256": "SHA1:ECE3EFDB9BAC287FA85088E49264AF099EB32313,MD5:FF2A4319FA5531F0D7B98DBBA9ABBD4A,SHA256:67CBE3A7B9C9B7A2E9FB10A33C1A9A3FD297B6F1598AEA374BD9B5D2DEE352EC,IMPHASH:42DADBD60BBC453DD1773FDC089E19B7",
-		"source_pid": -127,
-		"target_pid": -127,
-		"signed": -127,
-		"new_thread_id": -127,
-		"tty": "1",
-		"rule_name": "technique_id:T1031,technique_name:Modify Existing Service"
-	 }`
-	var input Log
-	err := json.Unmarshal([]byte(bsObj), &input)
+	ctx := context.TODO()
+	rs, err := NewRuleset(ctx, [][]byte{sigmaYml}, Log{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	input := Log{
+		Path:    "/xxxx/route",
+		Cmdline: "route nsidnsidh sdksk",
+		Syscall: "execve",
+	}
+	ruleIDs := rs.Eval(&input, []int64{})
+
+	bs, _ := json.Marshal(&ruleIDs)
+	t.Logf("results:%+v", string(bs))
+	assert.Equal(t, len(ruleIDs), 1)
+
+	t.Log("end...")
+}
+func Test_sigma(t *testing.T) {
+	ctx := context.Background()
+	file := "./testdata/single/1001301010.yml"
+
+	input := Log{
+		EventId: 1,
+		Path:    "bmnxbnxb\\dsquery.exe",
+		Cmdline: "sdsjkdj/trustedDomaindkjkdjk/sdjksjdk-filter",
 	}
 
 	rs, err := NewOneRuleset(ctx, file, input)
@@ -99,127 +60,20 @@ func Test_sigma11(t *testing.T) {
 	ruleIDs := rs.Eval2(&input, nil)
 
 	{
-		bs, _ := json.Marshal(&ruleIDs)
+		ids := []int64{}
+		for _, r := range ruleIDs {
+			ids = append(ids, r.RuleID)
+		}
+		bs, _ := json.Marshal(&ids)
 		t.Logf("results:%+v", string(bs))
-	}
 
-	t.Log("end...")
-}
-func Test_sigma(t *testing.T) {
-	ctx := context.Background()
-	file := "D:/project/go/src/github.com/lxt1045/sigma_rule/right/01001201001.yml"
-	// file := "D:/download/2010502004.yml"
-
-	bsObj := `{
-		"log_id": 1822718767126659080,
-		"platform": "windows",
-		"agent_id": 8,
-		"time": 1697539135314726000,
-		"event_time": 1697539135021119900,
-		"source": "Microsoft-Windows-Sysmon/Operational",
-		"username": "SYSTEM",
-		"parent_username": "lixiantu\\86189",
-		"parent_cmdline": "C:\\Windows\\Explorer.EXE",
-		"parent_path": "C:\\Windows\\explorer.exe",
-		"description": "Beyond Compare",
-		"product": "Beyond Compare",
-		"company": "Scooter Software",
-		"event_id": 1,
-		"logon_guid": "{554e3258-f0be-6527-6a46-080000000000}",
-		"pid": 27172,
-		"name": "BCompare.exe",
-		"path": "C:\\Program Files\\Beyond Compare 4\\BCompare.exe",
-		"cmdline": "\"C:\\Program Files\\Beyond Compare 4\\BCompare.exe\" ",
-		"cwd": "C:\\Program Files\\Beyond Compare 4\\",
-		"ppid": 9308,
-		"upid": 1822718767126691848,
-		"uppid": 1822716598168354824,
-		"file_version": "4.4.6.27483",
-		"original_filename": "BCompare.exe",
-		"sha256": "SHA1=C1A9044FE63DB93050C20A3D961D7A2D45042115,MD5=32012A5AAAE41BEDAC3167411C426382,SHA256=C4DB10508A30327B8019813D09C6274A1060747058DB6FB64CBBF6544E93E6DC,IMPHASH=72FA3C3B727F8724D5D64BE2B6C80EF1",
-		"new_thread_id": 44292,
-		"tty": "1",
-		"rule_name": "technique_id=T1204,technique_name=User Execution"
-	}`
-	var input Log
-	dec := json.NewDecoder(bytes.NewBufferString(bsObj))
-	dec.UseNumber()
-	if err := dec.Decode(&input); err != nil {
-		t.Fatal(err)
-	}
-
-	rs, err := NewOneRuleset(ctx, file, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ruleIDs := rs.Eval(&input, nil)
-
-	{
-		bs, _ := json.Marshal(&ruleIDs)
-		t.Logf("results:%+v", string(bs))
+		assert.Equal(t, ids, []int64{1001301010})
 	}
 
 	t.Log("end...")
 }
 
-func Test_sigma_func(t *testing.T) {
-	ctx := context.Background()
-	file := "D:/project/go/src/github.com/lxt1045/sigma_rule/right/10001302002.yml"
-	// file := "D:/download/2010502004.yml"
-
-	bsObj := `{
-		"log_id": 1822718767126659080,
-		"platform": "windows",
-		"agent_id": 8,
-		"time": 1697539135314726000,
-		"event_time": 1697539135021119900,
-		"source": "Microsoft-Windows-Sysmon/Operational",
-		"username": "SYSTEM",
-		"parent_username": "lixiantu\\86189",
-		"parent_cmdline": "C:\\Windows\\Explorer.EXE",
-		"parent_path": "C:\\Windows\\system32\\CMD.exe",
-		"description": "Beyond Compare",
-		"product": "Beyond Compare",
-		"company": "Scooter Software",
-		"event_id": 1,
-		"logon_guid": "{554e3258-f0be-6527-6a46-080000000000}",
-		"pid": 27172,
-		"name": "BCompare.exe",
-		"path": "C:\\Program Files\\Beyond Compare 4\\BCompare.exe",
-		"cmdline": "C:\\Program Files\\Beyond Compare 4\\BCompare.exe",
-		"cwd": "C:\\Program Files\\Beyond Compare 4\\",
-		"ppid": 9308,
-		"upid": 1822718767126691848,
-		"uppid": 1822716598168354824,
-		"file_version": "4.4.6.27483",
-		"original_filename": "BCompare.exe",
-		"sha256": "SHA1=C1A9044FE63DB93050C20A3D961D7A2D45042115,MD5=32012A5AAAE41BEDAC3167411C426382,SHA256=C4DB10508A30327B8019813D09C6274A1060747058DB6FB64CBBF6544E93E6DC,IMPHASH=72FA3C3B727F8724D5D64BE2B6C80EF1",
-		"new_thread_id": 44292,
-		"tty": "1",
-		"rule_name": "technique_id=T1204,technique_name=User Execution"
-	}`
-	var input Log
-	dec := json.NewDecoder(bytes.NewBufferString(bsObj))
-	dec.UseNumber()
-	if err := dec.Decode(&input); err != nil {
-		t.Fatal(err)
-	}
-
-	rs, err := NewOneRuleset(ctx, file, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ruleIDs := rs.Eval(&input, nil)
-
-	{
-		bs, _ := json.Marshal(&ruleIDs)
-		t.Logf("results:%+v", string(bs))
-	}
-
-	t.Log("end...")
-}
-
-func Test_sigma2(t *testing.T) {
+func Test_go_sigma_rule_engine(t *testing.T) {
 	data := []byte(`title: 尝试使用显式凭据进行登录。
 id: 1003
 status: 1 
@@ -493,9 +347,7 @@ func mapToStruct[T any](m map[string]interface{}) (info T, err error) {
 }
 
 func Test_Eval(t *testing.T) {
-	// dir := "D:/project/go/src/github.com/lxt1045/sigma_rule/run_236_new"
-	// dir = "D:/project/go/src/github.com/lxt1045/sigma_rule/right"
-	dir := "D:/project/go/src/github.com/lxt1045/sigma_rule/from_db/"
+	dir := "D:/project/go/src/gitlab.wecode.com/dev/sigma_rule/rule_20231026"
 	ctx := context.Background()
 	bs := []byte(`{
 		"log_id": 1820954305453212865,
@@ -641,11 +493,11 @@ func hasRule(results sigma.Results, id string) bool {
 }
 
 func Test_Eval_BenchMark(t *testing.T) {
-	// dir := "D:/project/go/src/github.com/lxt1045/sigma_rule/run_236_new"
-	bs, err := os.ReadFile("./test.json")
+	bs, err := os.ReadFile("./testdata/test.json")
 	if err != nil {
 		t.Fatal(err)
 	}
+	dir := "D:/project/go/src/gitlab.wecode.com/dev/sigma_rule/rule_20231026"
 
 	const (
 		M = 1
@@ -769,9 +621,9 @@ func Benchmark_Eval(b *testing.B) {
 	// 	b.Fatal(err)
 	// }
 	ctx := context.Background()
-	// dir := "D:/project/go/src/github.com/lxt1045/sigma_rule/run_236_new"
+	dir := "D:/project/go/src/gitlab.wecode.com/dev/sigma_rule/rule_20231026"
 
-	bs, err := os.ReadFile("./test.json")
+	bs, err := os.ReadFile("./testdata/test.json")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -806,10 +658,10 @@ func Benchmark_Eval(b *testing.B) {
 }
 
 func showQps(ctx context.Context, msgSuss *int64) {
-	ctx, _ = log.WithLogid(ctx, gid.New())
+	ctx, _ = log.WithLogid(ctx, uuid.NewV7())
 	go func() {
 		var lastCount int64
-		lastTime := time.Now().UnixNano()
+		lastTime := timeNow().UnixNano()
 		for {
 			select {
 			case <-ctx.Done():
@@ -818,7 +670,7 @@ func showQps(ctx context.Context, msgSuss *int64) {
 			}
 			last := atomic.LoadInt64(msgSuss)
 			diff := last - lastCount
-			t := time.Now().UnixNano()
+			t := timeNow().UnixNano()
 			f := float64(diff) / (float64(t-lastTime) / float64(time.Second))
 			log.Ctx(ctx).Warn().Float64("qps", f).Int64("count", last).Send()
 

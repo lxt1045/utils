@@ -23,11 +23,16 @@ import (
 
 // atlas migrate diff test_name --dir "file://e:/test/atlas/migrations" --to "file://e:/test/atlas/test.sql" --dev-url "mysql://root:password@127.0.0.1:3306/atlas_dev" --format '{{ sql . \"  \" }}'
 func MigrateDiffRun(ctx context.Context, toURL, schemas []string, name, formatTo, dirURL, devURL, qualifier string) (err error) {
+	err = createDevURL(ctx, devURL)
+	if err != nil {
+		return
+	}
 	dev, err := sqlclient.Open(ctx, devURL)
 	if err != nil {
 		return err
 	}
 	defer dev.Close()
+
 	// Acquire a lock.
 	unlock, err := dev.Lock(ctx, "atlas_migrate_diff", 10*time.Second)
 	if err != nil {

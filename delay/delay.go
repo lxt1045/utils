@@ -8,6 +8,19 @@ import (
 	"github.com/lxt1045/utils/log"
 )
 
+var fTimeNow func() time.Time
+
+func SetTimenow(f func() time.Time) {
+	fTimeNow = f
+}
+
+func timeNow() time.Time {
+	if fTimeNow != nil {
+		return fTimeNow()
+	}
+	return time.Now()
+}
+
 const (
 	defaultPopNSleep = time.Millisecond * 100
 
@@ -99,7 +112,7 @@ func (p *Queue[T]) Push(t T) (closed bool) {
 		return true
 	}
 	d := Data[T]{
-		deadline: time.Now().UnixNano() + p.timeWindow,
+		deadline: timeNow().UnixNano() + p.timeWindow,
 		data:     t,
 	}
 	return p.push(d)
@@ -107,8 +120,8 @@ func (p *Queue[T]) Push(t T) (closed bool) {
 
 // PushWithStart 支持在头部按顺序插入延时数据,不过还是按Push顺序执行Post
 func (p *Queue[T]) PushWithStart(t T, tStart int64) (closed bool) {
-	if tStart <= 0 || tStart > time.Now().UnixNano() {
-		tStart = time.Now().UnixNano()
+	if tStart <= 0 || tStart > timeNow().UnixNano() {
+		tStart = timeNow().UnixNano()
 	}
 
 	d := Data[T]{
@@ -129,7 +142,7 @@ func (p *Queue[T]) push(d Data[T]) (closed bool) {
 		deadline := p.queue[p.head].deadline
 		p.wlock.Unlock()
 
-		tNow := time.Now().UnixNano()
+		tNow := timeNow().UnixNano()
 		if tNow > deadline {
 			locked := p.poplock.TryLock()
 			if !locked {
@@ -195,7 +208,7 @@ func (p *Queue[T]) pop(fOK func(t T) bool) {
 	p.rLock.RLock()         // 注意加锁顺序: p.rLock -> r.lock -> p.lock
 	defer p.rLock.RUnlock() //
 
-	tNow := time.Now().UnixNano()
+	tNow := timeNow().UnixNano()
 
 	p.wlock.Lock()
 	tail := p.tail // 统一获取，避免不一致

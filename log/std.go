@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+	"uuid"
 
 	"github.com/lxt1045/errors"
 	eslog "github.com/lxt1045/errors/slog"
@@ -210,7 +211,7 @@ func Warnln(args ...interface{}) {
 
 func DebugContext(ctx context.Context, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -219,7 +220,7 @@ func DebugContext(ctx context.Context, args ...interface{}) {
 }
 func InfoContext(ctx context.Context, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -228,7 +229,7 @@ func InfoContext(ctx context.Context, args ...interface{}) {
 }
 func WarnContext(ctx context.Context, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -237,7 +238,7 @@ func WarnContext(ctx context.Context, args ...interface{}) {
 }
 func ErrorContext(ctx context.Context, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -246,7 +247,7 @@ func ErrorContext(ctx context.Context, args ...interface{}) {
 }
 func PrintContext(ctx context.Context, level slog.Level, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -255,7 +256,7 @@ func PrintContext(ctx context.Context, level slog.Level, args ...interface{}) {
 }
 func LogContext(ctx context.Context, level slog.Level, attrs ...slog.Attr) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -265,7 +266,7 @@ func LogContext(ctx context.Context, level slog.Level, attrs ...slog.Attr) {
 
 func DebugfContext(ctx context.Context, format string, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -274,7 +275,7 @@ func DebugfContext(ctx context.Context, format string, args ...interface{}) {
 }
 func InfofContext(ctx context.Context, format string, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -283,7 +284,7 @@ func InfofContext(ctx context.Context, format string, args ...interface{}) {
 }
 func WarnfContext(ctx context.Context, format string, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -292,7 +293,7 @@ func WarnfContext(ctx context.Context, format string, args ...interface{}) {
 }
 func ErrorfContext(ctx context.Context, format string, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -301,7 +302,7 @@ func ErrorfContext(ctx context.Context, format string, args ...interface{}) {
 }
 func PrintfContext(ctx context.Context, level slog.Level, format string, args ...interface{}) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()
@@ -310,7 +311,7 @@ func PrintfContext(ctx context.Context, level slog.Level, format string, args ..
 }
 func LogfContext(ctx context.Context, level slog.Level, format string, attrs ...slog.Attr) {
 	var l *zerolog.Logger
-	if logid := Logid(ctx); logid > 0 {
+	if logid := Logid(ctx); logid != uuid.Nil() {
 		l = Ctx(ctx)
 	} else {
 		l = StdLogger()

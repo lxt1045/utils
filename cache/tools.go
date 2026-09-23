@@ -16,7 +16,7 @@ var (
 
 type Cache[T Value] interface {
 	GetWithInfo(key string) (d T, expired bool, err error)
-	Set(key string, d T) error
+	Set(ctx context.Context, key string, d T) error
 	Close() error
 	Del(keys ...string) error
 }

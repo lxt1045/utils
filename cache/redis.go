@@ -85,7 +85,7 @@ func (r *redisCache[T]) GetWithInfo(key string) (d T, expired bool, err error) {
 	return
 }
 
-func (r *redisCache[T]) Set(key string, d T) error {
+func (r *redisCache[T]) Set(ctx context.Context, key string, d T) error {
 	bs, err := json.Marshal(&d)
 	if err != nil {
 		return errors.WithErr(err)

@@ -2,6 +2,8 @@ package engine
 
 import (
 	"sync"
+	"sync/atomic"
+	"uuid"
 
 	"github.com/lxt1045/utils/tag"
 )
@@ -88,12 +90,17 @@ type mergeRule[T any] struct {
 }
 
 type MGroup struct {
-	lastEventID int64
+	// lastEventID int64
+	lastEventID atomic.Pointer[uuid.UUID]
 	deadline    int64 // lastEventID 失效时间
 	sync.Mutex        // 加锁实现单飞: singleflight
 }
 
-func (r *mergeRule[T]) MustGetGroup(m *T, eventID, tsNow int64) (g *MGroup) {
+// func (r *mergeRule[T]) LoadLastEventID() (g *MGroup) {
+// 	key := r.fGetGroupKey(m)
+// }
+
+func (r *mergeRule[T]) MustGetGroup(m *T, eventID uuid.UUID, tsNow int64) (g *MGroup) {
 	key := r.fGetGroupKey(m)
 	r.groupsLock.RLock()
 	g = r.groups[key]
@@ -107,12 +114,12 @@ func (r *mergeRule[T]) MustGetGroup(m *T, eventID, tsNow int64) (g *MGroup) {
 		r.groupsLock.Unlock()
 		if g != g1 {
 			g.Lock()
-			if g.lastEventID != 0 {
+			if g.lastEventID.Load() != nil {
 				g.Unlock()
 				return
 			}
 		}
-		defer g.Unlock() // derfer 嵌套defer
+		defer g.Unlock() // defer 嵌套defer
 		g2 := r.getGroupFromDB(key, eventID, tsNow)
 		g.lastEventID = g2.lastEventID
 		g.deadline = g2.deadline
@@ -127,9 +134,8 @@ func (r *mergeRule[T]) MustGetGroup(m *T, eventID, tsNow int64) (g *MGroup) {
 	return
 }
 
-func (r *mergeRule[T]) getGroupFromDB(key string, eventID, tsNow int64) (g MGroup) {
-
-	g.lastEventID = eventID
+func (r *mergeRule[T]) getGroupFromDB(key string, eventID uuid.UUID, tsNow int64) (g MGroup) {
+	g.lastEventID.Store(&eventID)
 	g.deadline = tsNow + r.timeWindow
 	//
 	return

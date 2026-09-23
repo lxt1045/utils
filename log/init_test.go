@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
@@ -61,7 +62,7 @@ func TestLevel(t *testing.T) {
 	}
 	t.Run("this-zerolog", func(t *testing.T) {
 		ctx := context.TODO()
-		ctx, _ = WithLogid(ctx, 11111)
+		ctx, _ = WithLogid(ctx, uuid.NewV7())
 		Ctx(ctx).Info().
 			Str("string", `some string format log information`).
 			Int("int", 3).

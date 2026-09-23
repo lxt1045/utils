@@ -2,15 +2,16 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/url"
 	"slices"
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5"
 	"github.com/jmoiron/sqlx"
 	"github.com/lxt1045/errors"
-	"github.com/lxt1045/utils/config"
 	"github.com/lxt1045/utils/log"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
@@ -18,7 +19,50 @@ import (
 	"gorm.io/gorm"
 )
 
-func ConnPostgreGorm(ctx context.Context, conf config.DB) (gormdb *gorm.DB, err error) {
+type Config struct {
+	Host             string
+	Port             string
+	User             string
+	Password         string
+	DBName           string
+	SSLMode          bool
+	WriteConcurrency int
+	Span             int
+	DialTimeout      int
+	ReadTimeout      int
+	AtlasDB          AtlasDB
+}
+type AtlasDB struct {
+	DBName      string
+	SqlFile     string
+	MigrateDir  string
+	AutoMigrate string
+	AllowDirty  string
+}
+
+func ConnPostgreGorm(ctx context.Context, conf Config) (gormdb *gorm.DB, err error) {
+	// postgres://user:pass@localhost:5432/dbname
+	url := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", conf.User, conf.Password, conf.Host, conf.Port, conf.DBName)
+
+	sqlDB, err := sql.Open("pgx", url)
+	if err != nil {
+		err = errors.WithErr(err)
+		return
+	}
+
+	gormdb, err = gorm.Open(postgres.New(postgres.Config{
+		Conn: sqlDB,
+	}), &gorm.Config{
+		Logger: log.NewGormLogger(log.Ctx(ctx)),
+	})
+	if err != nil {
+		err = errors.WithErr(err)
+		return
+	}
+
+	return
+}
+func ConnPostgreGorm2(ctx context.Context, conf Config) (gormdb *gorm.DB, err error) {
 	sslmode := "disable"
 	if conf.SSLMode {
 		sslmode = "enable"
@@ -56,7 +100,7 @@ func PostgreDNS(params map[string]string) string {
 	return dsn
 }
 
-func ConnCkSqlx(ctx context.Context, conf config.DB) (sqlxDb *sqlx.DB, err error) {
+func ConnCkSqlx(ctx context.Context, conf Config) (sqlxDb *sqlx.DB, err error) {
 	tcpInfo := fmt.Sprintf("clickhouse://%s:%s@%s:%s/%s?read_timeout=%ds&output_format_native_use_flattened_dynamic_and_json_serialization=1",
 		conf.User, url.QueryEscape(conf.Password), conf.Host, conf.Port, conf.DBName, conf.ReadTimeout)
 
@@ -68,7 +112,7 @@ func ConnCkSqlx(ctx context.Context, conf config.DB) (sqlxDb *sqlx.DB, err error
 	return sqlxDb, err
 }
 
-func ConnCkGorm(ctx context.Context, conf config.DB) (*gorm.DB, error) {
+func ConnCkGorm(ctx context.Context, conf Config) (*gorm.DB, error) {
 	if conf.DialTimeout <= 0 {
 		conf.DialTimeout = 10
 	}
@@ -87,7 +131,7 @@ func ConnCkGorm(ctx context.Context, conf config.DB) (*gorm.DB, error) {
 	return gormdb, nil
 }
 
-func ConnMysqlSqlx(ctx context.Context, conf config.DB) (sqlxDb *sqlx.DB, err error) {
+func ConnMysqlSqlx(ctx context.Context, conf Config) (sqlxDb *sqlx.DB, err error) {
 	// tcpInfo := fmt.Sprintf("mysql://%s:%s@%s:%s/%s?username=%s&password=%s&read_timeout=5s&compress=true",
 	// 	conf.User, url.QueryEscape(conf.Password), conf.Host, conf.Port, conf.DBName, conf.User, url.QueryEscape(conf.Password))
 
@@ -115,7 +159,7 @@ func ConnMysqlSqlx(ctx context.Context, conf config.DB) (sqlxDb *sqlx.DB, err er
 	return sqlxDb, err
 }
 
-func ConnMysqlGorm(ctx context.Context, conf config.DB) (db *gorm.DB, err error) {
+func ConnMysqlGorm(ctx context.Context, conf Config) (db *gorm.DB, err error) {
 	// gormdb, _ := gorm.Open(mysql.Open("root:@(127.0.0.1:3306)/demo?charset=utf8mb4&parseTime=True&loc=Local"))
 	uri := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		conf.User,
@@ -159,7 +203,7 @@ func (o *GormOption) AfterInitialize(*gorm.DB) error {
 }
 
 // CreateMysqlDB 检查DB是否创建
-func CreateMysqlDB(ctx context.Context, dbconf config.DB) (err error) {
+func CreateMysqlDB(ctx context.Context, dbconf Config) (err error) {
 	defer func() {
 		if err != nil {
 			if _, ok := err.(*errors.Code); !ok {
@@ -190,7 +234,39 @@ func CreateMysqlDB(ctx context.Context, dbconf config.DB) (err error) {
 	return
 }
 
-func CreateCkDB(ctx context.Context, dbconf config.DB) (err error) {
+// CreatePostgreDB 检查DB是否创建
+func CreatePostgreDB(ctx context.Context, dbconf Config) (err error) {
+	defer func() {
+		if err != nil {
+			if _, ok := err.(*errors.Code); !ok {
+				err = errors.WithErr(err)
+			}
+		}
+	}()
+	dbconf1 := dbconf
+	dbconf1.DBName = "postgres" // PostgreSQL默认连接postgres数据库
+	db, err := ConnPostgreGorm(ctx, dbconf1)
+	if err != nil {
+		return
+	}
+
+	dbs := []string{}
+	err = db.Raw("SELECT datname FROM pg_database;").Scan(&dbs).Error
+	if err != nil {
+		return
+	}
+
+	if !slices.Contains(dbs, dbconf.DBName) {
+		log.Ctx(ctx).Info().Caller().Msgf("CreatePostgreDB: %s", dbconf.DBName)
+		err = db.Exec("CREATE DATABASE " + dbconf.DBName).Error
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func CreateCkDB(ctx context.Context, dbconf Config) (err error) {
 	defer func() {
 		if err != nil {
 			if _, ok := err.(*errors.Code); !ok {

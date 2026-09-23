@@ -106,7 +106,8 @@ func Test_addHavingEqual(t *testing.T) {
 		})
 
 		t.Run("4", func(t *testing.T) {
-			mLR := &(*mL)
+			x := *mL
+			mLR := &x
 			f(eventData[Log]{
 				singleRuleID: ruleIDR,
 				idxCounts:    0,

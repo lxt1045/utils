@@ -3,38 +3,15 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/bytedance/mockey"
 	"github.com/stretchr/testify/assert"
+	"github.com/lxt1045/utils/delay"
 )
-
-func Test_OneSigmaMul(t *testing.T) {
-	sigmaYml, err := os.ReadFile("D:/project/go/src/github.com/lxt1045/sigma_rule/right_mul/101001202001.yml")
-	assert.Nil(t, err)
-
-	ctx := context.TODO()
-	rs, err := NewOneRulesetMul(ctx, []byte(sigmaYml), Log{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	input := Log{
-		AgentId:     88,
-		EventId:     1,
-		ImageLoaded: "1234567890",
-	}
-	ruleIDs := rs.Eval(1001201888, &input)
-
-	bs, _ := json.Marshal(&ruleIDs)
-	t.Logf("results:%+v", string(bs))
-	assert.Equal(t, len(ruleIDs), 1)
-
-	t.Log("end...")
-}
 
 func Test_sigmaMul2(t *testing.T) {
 	tNow, err := time.Parse(time.RFC3339, "2023-10-02T00:00:00Z")
@@ -42,8 +19,8 @@ func Test_sigmaMul2(t *testing.T) {
 		t.Fatal(err)
 	}
 	pNow := &tNow
-	// fUnPatch := mockey.Mock(time.Now).Return(tNow).Build().UnPatch
-	defer mockey.Mock(time.Now).To(func() time.Time { return *pNow }).Build().UnPatch()
+	fTimeNow = func() time.Time { return *pNow }
+	delay.SetTimenow(fTimeNow)
 
 	sigmaYml := `title: 特殊进程行为--创建管道并发起网络连接
 id: 345
@@ -111,8 +88,8 @@ func Test_sigmaMul(t *testing.T) {
 		t.Fatal(err)
 	}
 	pNow := &tNow
-	// fUnPatch := mockey.Mock(time.Now).Return(tNow).Build().UnPatch
-	defer mockey.Mock(time.Now).To(func() time.Time { return *pNow }).Build().UnPatch()
+	fTimeNow = func() time.Time { return *pNow }
+	delay.SetTimenow(fTimeNow)
 
 	sigmaYml := `
 title: 特殊软件行为
@@ -178,7 +155,7 @@ detection:
 		assert.Equal(t, len(ruleIDs), 0)
 	}
 	*pNow = pNow.Add(time.Second)
-	var lastEventID, lastEventID99 int64
+	var lastEventID, lastEventID99 uuid.UUID
 	{
 		input := Log{AgentId: 88, EventId: 4, ImageLoaded: "aa1234567890"}
 		ruleIDs := rs.Eval(3, &input)
@@ -237,7 +214,7 @@ detection:
 				n++
 			}
 		}
-		assert.Equal(t, n, 1) // 此时输出一个事件，事件id和之前的一样
+		assert.Equal(t, n, 1) // 此时输出一个事件（之前的事件已经输出过了，再输就重复了），事件id和之前的一样
 		assert.Equal(t, ruleIDs[0][0].EventID, lastEventID)
 	}
 	{
@@ -314,8 +291,8 @@ func Test_sigmaMul_onlyHaving(t *testing.T) {
 		t.Fatal(err)
 	}
 	pNow := &tNow
-	// fUnPatch := mockey.Mock(time.Now).Return(tNow).Build().UnPatch
-	defer mockey.Mock(time.Now).To(func() time.Time { return *pNow }).Build().UnPatch()
+	fTimeNow = func() time.Time { return *pNow }
+	delay.SetTimenow(fTimeNow)
 
 	sigmaYml := `
 title: 特殊软件行为
@@ -356,7 +333,7 @@ detection:
 		assert.Equal(t, len(ruleIDs), 0)
 	}
 	*pNow = pNow.Add(time.Second)
-	var lastEventID, lastEventID99 int64
+	var lastEventID, lastEventID99 uuid.UUID
 	{
 		input := Log{AgentId: 88, EventId: 2, ImageLoaded: "1234567890"}
 		ruleIDs := rs.Eval(2, &input)
@@ -469,8 +446,8 @@ func Test_sigmaMul_noPreFunc(t *testing.T) {
 		t.Fatal(err)
 	}
 	pNow := &tNow
-	// fUnPatch := mockey.Mock(time.Now).Return(tNow).Build().UnPatch
-	defer mockey.Mock(time.Now).To(func() time.Time { return *pNow }).Build().UnPatch()
+	fTimeNow = func() time.Time { return *pNow }
+	delay.SetTimenow(fTimeNow)
 
 	sigmaYml := `
 title: 特殊软件行为
@@ -481,7 +458,7 @@ description: "描述"
 seriousness: HIGH
 
 detection:
-  # object: rule3 
+  # object: rule3  # 主体规则，以该规则为主体，画关联图谱进程树
   ordered: false 
   selection: 
     rule1: 1 
@@ -501,7 +478,7 @@ detection:
 	if err != nil {
 		t.Fatal(err)
 	}
-	var lastEventID, lastEventID99 int64
+	var lastEventID, lastEventID99 uuid.UUID
 	{
 		input := Log{AgentId: 88, EventId: 1, ImageLoaded: "1234567890"}
 		ruleIDs := rs.Eval(1, &input)
@@ -556,9 +533,9 @@ detection:
 		input := Log{AgentId: 88, EventId: 3, ImageLoaded: "bb1234567890"}
 		ruleIDs := rs.Eval(3, &input)
 		assert.Equal(t, len(ruleIDs), 1)
-		assert.NotEqual(t, ruleIDs[0][0].EventID, lastEventID)
-		assert.NotEqual(t, ruleIDs[0][0].EventID, int64(0))
-		assert.NotEqual(t, ruleIDs[0][0].MainRuleID, int64(0))
+		assert.Equal(t, ruleIDs[0][0].EventID, lastEventID)
+		assert.NotEqual(t, ruleIDs[0][0].EventID, uuid.Nil())
+		assert.Equal(t, ruleIDs[0][0].MainRuleID, int64(0))
 	}
 	{
 		input := Log{AgentId: 99, EventId: 3, ImageLoaded: "bb1234567890"}

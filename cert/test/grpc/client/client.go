@@ -10,7 +10,7 @@ import (
 	"github.com/lxt1045/utils/cert/test/grpc/filesystem"
 	"github.com/lxt1045/utils/cert/test/grpc/pb"
 	"github.com/lxt1045/utils/config"
-	wegrpc "github.com/lxt1045/utils/grpc"
+	ugrpc "github.com/lxt1045/utils/grpc"
 	"github.com/lxt1045/utils/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -40,7 +40,7 @@ func main1() {
 	}
 	creds := credentials.NewTLS(tlsCert)
 
-	err = wegrpc.RegisterDNS(map[string][]string{
+	err = ugrpc.RegisterDNS(map[string][]string{
 		"lxt1045.com": {"127.0.0.1:10088"},
 	})
 	if err != nil {
@@ -49,10 +49,10 @@ func main1() {
 	}
 
 	// 连接服务器
-	conn, err := grpc.Dial("grpc:///lxt1045.com",
+	conn, err := grpc.NewClient("grpc:///lxt1045.com",
 		grpc.WithTransportCredentials(creds),
-		grpc.WithUnaryInterceptor(wegrpc.LogUnaryClientInterceptor()),
-		grpc.WithStreamInterceptor(wegrpc.LogStreamClientInterceptor()),
+		grpc.WithUnaryInterceptor(ugrpc.LogUnaryClientInterceptor("client")),
+		grpc.WithStreamInterceptor(ugrpc.LogStreamClientInterceptor("client")),
 	)
 	// conn.ServerName = ""
 	if err != nil {
@@ -74,14 +74,14 @@ func main1() {
 
 func main() {
 	ctx := context.Background()
-	conf := config.GRPC{
-		Host:       "lxt1045.com",
-		HostAddrs:  []string{"127.0.0.1:10088", "127.0.0.1:10087"},
-		ServerCert: "static/ca/client-cert.pem",
-		ServerKey:  "static/ca/client-key.pem",
+	conf := ugrpc.ConfCli{
+		SvcName:    "lxt1045.com",
+		SvcAddrs:   []string{"127.0.0.1:10088", "127.0.0.1:10087"},
+		ClientCert: "static/ca/client-cert.pem",
+		ClientKey:  "static/ca/client-key.pem",
 		CACert:     "static/ca/root-cert.pem",
 	}
-	conn, err := wegrpc.NewClient(ctx, conf, filesystem.Static)
+	conn, err := ugrpc.NewClientTLS(ctx, conf, filesystem.Static, nil)
 	if err != nil {
 		log.Ctx(context.TODO()).Error().Caller().Err(err).Msg("network error")
 		return
@@ -99,7 +99,7 @@ func main() {
 }
 
 func sayHello(ctx context.Context, c pb.HelloClient) {
-	ctx = wegrpc.GRPCContext(ctx)
+	ctx = ugrpc.GRPCContext(ctx)
 	req := &pb.HelloReq{Name: "lixiantu"}
 	re1, err := c.SayHello(ctx, req)
 	if err != nil || re1 == nil {

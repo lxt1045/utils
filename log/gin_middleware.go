@@ -30,7 +30,7 @@ type bodyWriter struct {
 	maxLen int
 }
 
-func (w bodyWriter) Write(b []byte) (n int, err error) {
+func (w *bodyWriter) Write(b []byte) (n int, err error) {
 	//memory copy here!
 	n, err = w.ResponseWriter.Write(b)
 
@@ -64,7 +64,7 @@ func (r *bodyReader) Read(b []byte) (n int, err error) {
 	return
 }
 
-func Log(reqMaxLen, respMaxLen int) gin.HandlerFunc {
+func GinMiddleware(reqMaxLen, respMaxLen int, logfuncs ...func(c *gin.Context, e *zerolog.Event) *zerolog.Event) gin.HandlerFunc {
 	if respMaxLen <= 0 {
 		respMaxLen = 1024
 	}
@@ -78,13 +78,13 @@ func Log(reqMaxLen, respMaxLen int) gin.HandlerFunc {
 			maxLen: reqMaxLen,
 		}
 		//if we need to log res body
-		respWriter := bodyWriter{
+		respWriter := &bodyWriter{
 			maxLen:         respMaxLen,
 			ResponseWriter: c.Writer,
 		}
 		c.Writer = respWriter
 
-		if c.Request.Body != nil && (c.Request.Method == http.MethodPut ||
+		if c.Request.Body != nil && (c.Request.Method == http.MethodPut || c.Request.Method == http.MethodPost ||
 			c.Request.Method == http.MethodPatch || c.Request.Method == http.MethodDelete) {
 			reqReader.r = c.Request.Body
 			c.Request.Body = io.NopCloser(reqReader)
@@ -116,6 +116,11 @@ func Log(reqMaxLen, respMaxLen int) gin.HandlerFunc {
 					Message: "服务从panic中恢复",
 				})
 				c.Abort()
+			}
+			if len(logfuncs) > 0 {
+				for _, logfunc := range logfuncs {
+					l = logfunc(c, l)
+				}
 			}
 			l.Caller(1).
 				Int64("duration/ms", loss).

@@ -80,6 +80,19 @@ func Test_migrateDiff(t *testing.T) {
 	}
 }
 
+func Test_migrateDiff_pg(t *testing.T) {
+	// fromURL := []string{"mysql://root:password@127.0.0.1:3306/dji1"}
+	toURL := []string{"file://D:/project/go/src/gitlab.wecode.com/dev/middle_platform/base/filesystem/db/ddl.sql"}
+	schemas := []string{}
+	dirURL := "file://D:/project/go/src/gitlab.wecode.com/dev/middle_platform/base/filesystem/db/migrations"
+	name := "go_auto"
+	formatTo := "{{ sql . \"  \" }}"
+	devURL := "postgres://user01:password@127.0.0.1:5432/atlas_dev"
+	err := atlas.MigrateDiffRun(t.Context(), toURL, schemas, name, formatTo, dirURL, devURL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 /*
 # 执行的时候也需要执行 golang-migrate 格式, 否则 up 和 down 文件都会被执行。
 atlas migrate apply --dir "file://e:/test/atlas/migrations?format=golang-migrate" - --url ""mysql://root:password@127.0.0.1:3306/dji88"
@@ -87,7 +100,7 @@ atlas migrate apply --dir "file://e:/test/atlas/migrations?format=golang-migrate
 func Test_migrateApply(t *testing.T) {
 	toURL := "mysql://root:password@127.0.0.1:3306/dji88"
 	fromURL := "file://e:/test/atlas/migrations?format=golang-migrate"
-	err := atlas.MigrateApplyRun(t.Context(), fromURL, toURL)
+	err := atlas.MigrateApplyRun(t.Context(), fromURL, toURL, false)
 	if err != nil {
 		t.Fatal(err)
 	}

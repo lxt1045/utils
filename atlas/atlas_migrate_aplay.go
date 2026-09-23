@@ -20,7 +20,7 @@ import (
 )
 
 // atlas migrate apply --dir "file://path/to/migrations?format=golang-migrate" --url "mysql://..."
-func MigrateApplyRun(ctx context.Context, dirFrom, urlTo string) (err error) {
+func MigrateApplyRun(ctx context.Context, dirFrom, urlTo string, allowDirty bool) (err error) {
 	dirURL, err := url.Parse(dirFrom)
 	if err != nil {
 		return fmt.Errorf("parse dir-url: %w", err)
@@ -73,7 +73,7 @@ func MigrateApplyRun(ctx context.Context, dirFrom, urlTo string) (err error) {
 		return err
 	}
 	// Determine pending files.
-	opts, err := migrateOptions(false, "")
+	opts, err := migrateOptions(allowDirty, "")
 	if err != nil {
 		return err
 	}

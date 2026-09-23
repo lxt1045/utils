@@ -14,6 +14,10 @@ import (
 
 // atlas schema inspect --from "mysql://root:password@127.0.0.1:3306/dji1" --to "file://e:/test/atlas/test.sql" --format '{{ sql . \"  \" }}' --dev-url "mysql://root:password@127.0.0.1:3306/atlas_dev"
 func SchemaInspectRun(ctx context.Context, fromURL, schemas, exclude []string, formatTo, devURL string) (err error) {
+	err = createDevURL(ctx, devURL)
+	if err != nil {
+		return
+	}
 	dev, err := sqlclient.Open(ctx, devURL)
 	if err != nil {
 		return err
