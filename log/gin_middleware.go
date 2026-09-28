@@ -74,6 +74,12 @@ func GinMiddleware(reqMaxLen, respMaxLen int, logfuncs ...func(c *gin.Context, e
 	return func(c *gin.Context) {
 		start := time.Now()
 		logger := GinCtx(c)
+
+		if logID := GinLogID(c); logID != uuid.Nil() {
+			ctx, _ := WithLogid(c.Request.Context(), logID)
+			c.Request = c.Request.WithContext(ctx)
+		}
+
 		reqReader := &bodyReader{
 			maxLen: reqMaxLen,
 		}
