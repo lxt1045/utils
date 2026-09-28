@@ -4,57 +4,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`github.com/lxt1045/utils` is a Go utility library featuring a custom bidirectional RPC framework plus common infrastructure components. It requires Go ≥ 1.24.
+`github.com/lxt1045/utils` is a personal Go infrastructure library: a collection of reusable
+components the author settled on across network-proxy / messaging / internal-service work.
+It requires **Go ≥ 1.27** (see `go.mod`).
 
 **Status**: Pre-1.0. External APIs may change without notice before v1.0.0.
 
-## Core Components
+> **Important change**: the bidirectional RPC framework that used to live in `rpc/` has been
+> **extracted to the standalone module `github.com/lxt1045/rpc`** (now a plain dependency in
+> `go.mod`). Do not look for `rpc/` sources in this repo; read that module's source in the
+> module cache when RPC behavior matters (e.g. `grpc/grpc_test.go` still exercises it).
 
-### RPC Framework (`rpc/`)
+## Module Layout
 
-The repository's centerpiece - a custom bidirectional RPC framework supporting:
-- **Bidirectional calls**: Client and service can both initiate calls on the same connection
-- **Multiple transports**: TCP, TCP+TLS, QUIC, KCP, UDP
-- **Connection upgrade**: Can promote a connection to raw TCP tunnel (similar to WebSocket)
-- **Stream multiplexing**: Multiple logical streams per connection
+Single root module `github.com/lxt1045/utils`, plus **nested independent modules**
+(no `go.work` — build them from their own directories):
 
-Key concepts:
-- `rpc.Peer`: Bidirectional peer containing both client and service functionality
-- `codec.Codec`: Protocol layer with ReadLoop, timeout queues, and state machine (0=normal, 1=upgrading, 2=upgraded)
-- `codec.Stream`: Logical streams for multiplexing multiple flows over one connection
-- `codec.Upgrade`: Connection promotion to raw TCP tunnel - **one upgrade per peer, makes peer unusable for RPC afterward**
+- `atlas/` — own `go.mod` (`github.com/lxt1045/utils/atlas`): DB schema migration toolkit
+  built on ariga.io/atlas (migrate diff/apply/hash, schema inspect), runnable as a cobra CLI.
+- `geohash/geos/` — own `go.mod` (`geos`): geometry/merge experiments on top of
+  `peterstace/simplefeatures`; has its own README/TODO and `run*.sh` scripts.
+- `geohash/` — in root module; has its own [geohash/CLAUDE.md](geohash/CLAUDE.md).
+  High-performance geohash encode/decode with AMD64 BMI2 (PDEP) assembly path,
+  benchmarked against several third-party geohash libraries.
 
-### Infrastructure Modules
+Root-module packages:
 
-- `log/`: Structured logging (zerolog) with context logid propagation
-- `config/`: YAML configuration loading with embed.FS and TLS cert utilities
-- `cache/`: LoadingCache with singleflight and pluggable backends
-- `delay/`: Delay queues and one-writer-many-reader queues for timeout handling
-- `gid/`: High-throughput global ID generator (snowflake variant using runtime.nanotime)
-- `tag/`: Struct tag parsing and caching
-- `cert/`: Self-signed CA/server/client certificate generation
-- `socks/`: SOCKS5/HTTP proxy protocol implementation
-- `sigma/`: Sigma rule engine for security alert matching
-- `grpc/`: gRPC server utilities with mTLS and middleware
+| Package | Purpose | Notes |
+| --- | --- | --- |
+| `log/` | Structured logging (zerolog + lumberjack), ctx logid propagation, Gin/GORM/slog adapters | `log.Ctx(ctx).Info()` |
+| `config/` | YAML config loading with embed.FS, env-var chained assignment, TLS cert loading | `config.UnmarshalFS` |
+| `cache/` | LoadingCache (factory + singleflight) with pluggable backends: bigcache, fastcache, redis | `cache.NewLoadingCache` |
+| `delay/` | Delay queues / one-writer-many-reader queues for timeout callbacks | used by rpc timeouts |
+| `gid/` | High-throughput global ID generator (snowflake variant on `runtime.nanotime` via `//go:linkname`) | tests need mockey flags |
+| `tag/` | reflect-based struct tag parsing and caching | |
+| `cert/` | Self-signed CA / server / client cert generation | |
+| `socks/` | SOCKS5 / HTTP proxy protocol implementation (+ `socks/http` proxy server with tunnel bridging) | |
+| `sigma/` | Sigma rule engine for security alert matching (`sigma/engine`: KMP nocase acceleration) | generic over any struct |
+| `grpc/` | gRPC server utilities with mTLS and middleware (validator/recovery/logging) | thin wrapper |
+| `channel/` | `ChanN[T]` — overwrite-not-block multi-item channel built on native chan | |
+| `db/` | Multi-DB connection helpers (MySQL/Postgres/ClickHouse) via gorm + sqlx | |
+| `ck/` | ClickHouse sqlx helpers (flatten, disk, `ToSqlxResult`) | |
+| `etcd/` | etcd client wrapper: init, watch (with reconnect), typed local cache | |
+| `crypto/` | `aes` encryption helpers, `hash` (string→int64) | |
+| `tools/` | Generic helpers: deep copy, sortmap, uuid, str, temp dir, time, `Must`/`ToP`/`IfV` etc. | |
+| `postgresql/` | Postgres CDC demo using `Trendyol/go-pq-cdc` (logical replication slot) | `package main` demo |
 
 ## Development Commands
 
 ### Building
 ```bash
-# Build all packages (warning: may OOM on memory-constrained machines due to large binaries)
+# Build all root-module packages (may OOM on memory-constrained machines at link stage)
 go build ./...
 
 # Build specific components
-go build ./rpc/... ./log/... ./config/...
+go build ./log/... ./config/... ./cache/...
 
-# Cross-compile for Linux (Windows PowerShell)
-$env:CGO_ENABLED=0; $env:GOOS="linux"; $env:GOARCH="amd64"; go build ./path/to/target
+# Nested modules must be built from their own directory
+cd atlas && go build ./...
+cd geohash/geos && go build ./...
 ```
 
 ### Testing
 ```bash
-# Recommended: Test by module to avoid triggering all demos at once
-go test -count=1 -race -timeout 5m ./config/... ./log/... ./cache/... ./delay/... ./tag/... ./cert/... ./gid/... ./rpc/...
+# Test by module to avoid triggering everything at once
+go test -count=1 -race -timeout 5m ./config/... ./log/... ./cache/... ./delay/... ./tag/... ./cert/... ./gid/... ./channel/... ./tools/...
 
 # Tests using mockey require disabled optimization
 go test -count=1 -gcflags="all=-N -l" ./gid
@@ -63,79 +77,45 @@ go test -count=1 -gcflags="all=-N -l" ./gid
 go vet ./...
 ```
 
-### Running Examples
-The `rpc/test/` directory contains working examples:
+## Engineering Conventions (from `.cursor/rules/project.mdc`)
 
-```bash
-# Most complete example: SOCKS proxy
-cd rpc/test/socks/service && go run .    # Terminal 1
-cd rpc/test/socks/client && go run .     # Terminal 2
-# Browser: Configure HTTP proxy 127.0.0.1:18081
+- Error wrapping: **always** use `github.com/lxt1045/errors` for stack-traced error chains;
+  keep compatibility with stdlib `errors.Is/As`.
+- No `panic` / `os.Exit` in production code — return errors and let callers decide.
+- Comments may be Chinese, but must explain *why*, not restate *what*.
+- Logging: never log benign connection-close errors at `error` level. Benign set includes
+  `io.EOF`, `io.ErrUnexpectedEOF`, `io.ErrClosedPipe`, `net.ErrClosed`,
+  Linux `connection reset by peer` / `broken pipe`, Windows `forcibly closed` /
+  `aborted by the software`, framework `has been closed` / `Codec is closed` /
+  `upgrade closed`. Use an `isBenignCloseErr()`-style check in proxy/forwarding code.
+- Tests with goroutines: use `t.Errorf` + `return` instead of `t.Fatal` (Fatal in a
+  non-test goroutine does not stop the test cleanly).
 
-# Other examples
-cd rpc/test/tcp/service && go run .      # Basic TCP RPC
-cd rpc/test/socks_quic/service && go run . # QUIC transport
-cd rpc/test/socks_stream/service && go run . # Stream mode (no upgrade)
-```
+### Two-way Copy Pattern (network proxy code)
+1. Both copy directions must coordinate shutdown — either direction ending should
+   immediately wake the other (`src.SetDeadline(time.Now())` or `Close()`).
+2. Benign close errors log at debug level, not error level.
 
-## Architecture Notes
+## External RPC Framework (`github.com/lxt1045/rpc`)
 
-### RPC Framework Architecture
-```
-                ┌──────────────────────────────────────────────┐
-                │                    rpc.Peer                  │
-                │  ┌───────────────┐         ┌─────────────┐   │
-                │  │   Client      │         │   Service   │   │
-                │  │ (calls peer)  │         │ (responds)  │   │
-                │  └──────┬────────┘         └─────┬───────┘   │
-                │         │       shared codec       │        │
-                │         └────────► codec ◄─────────┘        │
-                └──────────────────────│──────────────────────┘
-                                       │
-                          ┌────────────┴───────────┐
-                          │     codec.Codec        │
-                          │  ─ ReadLoop()           │
-                          │  ─ resps[uint64]        │
-                          │  ─ streams[uint64]      │   multiplexing
-                          │  ─ upgrade *Upgrade     │   one per connection
-                          │  ─ delay.Queue          │
-                          │  ─ status (0/1/2)       │
-                          └────────────┬────────────┘
-                                       │ io.ReadWriteCloser
-                  ┌────────────────────┼────────────────────┐
-                  │                    │                    │
-              ┌───┴───┐            ┌───┴───┐           ┌────┴────┐
-              │  TCP  │            │ QUIC  │           │   KCP   │
-              │ +TLS  │            │       │           │  / UDP  │
-              └───────┘            └───────┘           └─────────┘
-```
+Historical context from when it lived here (still relevant when reading dependent code):
+- `rpc.Peer`: bidirectional peer — client and service on the same connection.
+- `codec.Codec`: wire layer with ReadLoop, timeout queue, stream multiplexing, and a
+  status state machine (0=normal, 1=upgrading, 2=upgraded).
+- `codec.Upgrade`: promotes the connection to a raw TCP tunnel — **one upgrade per peer;
+  the peer is unusable for RPC afterward and must be closed**.
+- Transports: TCP, TCP+TLS, QUIC, KCP, UDP.
 
-### Two-way Copy Pattern
-For network proxy code (A⇄B forwarding):
-1. Both copy directions must coordinate shutdown - any direction ending should immediately wake the other
-2. Use `src.SetDeadline(time.Now())` or `Close()` to wake blocked readers when writer encounters errors
-3. Benign close errors (EOF, connection reset, etc.) should log at debug level, not error level
+## Context Files
 
-## Code Quality Guidelines
-
-- Error handling uses `github.com/lxt1045/errors` for stack traces
-- Windows/Linux cross-platform: Use `isBenignCloseErr()` pattern for network errors
-- `Codec` methods must be nil-safe - fields become nil after `Close()`
-- Use `sync.RWMutex` correctly: `RLock` for reads, `Lock` for writes
-- Tests with goroutines: use `t.Errorf` + `return` instead of `t.Fatal`
-
-## Key Examples
-
-Most comprehensive examples are in `rpc/test/socks/` with detailed README covering:
-- Bidirectional RPC setup
-- Connection upgrade for tunneling  
-- Two-way copy pattern implementation
-- Cross-platform error handling
-- Windows-specific `wsasend` error debugging
+- `work.md` — per-round work log; append new sections, never delete history.
+- `TODO.md` — current task list (in Chinese); requires following `.cursor/rules/` and
+  writing a summary + work-context entry to `work.md` after each task.
+- `geohash/CLAUDE.md` — package-specific guidance for the geohash module.
 
 ## Known Issues
 
-- Two `unreachable code` warnings in `rpc/conn/kcp.go:178` and `rpc/test/nat/client/client.go:138` (historical)
-- No CI/CD pipeline yet
-- Test coverage ~15% (focused on critical paths)
-- Dependencies need updates (`golang.org/x/net v0.12.0` etc.)
+- `go build ./...` can OOM at link stage on memory-constrained machines; build per-package.
+- No CI/CD pipeline yet.
+- Test coverage is uneven (focused on critical paths); some historical `*_test.go` files
+  may no longer compile/run — check before assuming they pass.

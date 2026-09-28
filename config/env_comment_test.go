@@ -1,9 +1,20 @@
 package config
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// skipEmptyEnvOnWindows Windows 的进程环境块无法保存空值：os.Setenv(k, "")
+// 等价于删除该变量，导致 "已设置但为空" 与 "未设置" 无法区分。
+// 依赖该区分的用例（envSet=true 且 envVal=""）在 Windows 上跳过。
+func skipEmptyEnvOnWindows(t *testing.T, envSet bool, envVal string) {
+	t.Helper()
+	if envSet && envVal == "" && runtime.GOOS == "windows" {
+		t.Skip("windows: empty env value is indistinguishable from unset")
+	}
+}
 
 type commentCfg struct {
 	Port     int      `mapstructure:"port"`
@@ -222,6 +233,7 @@ func TestPOSIXValueForm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			skipEmptyEnvOnWindows(t, c.envSet, c.envVal)
 			if c.envSet {
 				t.Setenv("PX_V", c.envVal)
 			}
@@ -320,6 +332,7 @@ func TestPOSIXPlusAssignValueForm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			skipEmptyEnvOnWindows(t, c.envSet, c.envVal)
 			if c.envSet {
 				t.Setenv("PX_V", c.envVal)
 			}
