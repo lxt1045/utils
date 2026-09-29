@@ -10,6 +10,10 @@ import (
 const (
 	ginLogID  = "logid"
 	ginLogger = "logger"
+
+	// HeaderLogID 是 GinMiddleware 写回给客户端的响应头名，用于把本次请求的
+	// log_id 透传给调用方（导出以便 handler/客户端引用同一名字，避免写死字符串）。
+	HeaderLogID = "X-Log-Id"
 )
 
 func GinLogID(c *gin.Context) uuid.UUID {

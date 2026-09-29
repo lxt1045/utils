@@ -106,8 +106,10 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 			lasti = i
 		} else if strings.HasPrefix(c.Func, "gen.(*DO).") {
 			lasti = i
-		} else if strings.Contains(c.FileLine, ".gen.go:") { //strings.HasSuffix(c.File, ".gen.go") {
+		} else if strings.HasSuffix(c.File, ".gen.go") {
 			lasti = i
+		} else if lasti > 0 {
+			break // s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {}) 会出现这种情况
 		}
 	}
 	cs = cs[lasti+1:]

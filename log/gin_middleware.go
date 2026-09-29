@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lxt1045/errors"
@@ -78,6 +79,8 @@ func GinMiddleware(reqMaxLen, respMaxLen int, logfuncs ...func(c *gin.Context, e
 		if logID := GinLogID(c); logID != uuid.Nil() {
 			ctx, _ := WithLogid(c.Request.Context(), logID)
 			c.Request = c.Request.WithContext(ctx)
+			// 在写响应之前带上 log_id，方便调用方排查问题时按 id 检索日志
+			c.Header(HeaderLogID, logID.String())
 		}
 
 		reqReader := &bodyReader{
