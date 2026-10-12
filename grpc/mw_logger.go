@@ -41,8 +41,8 @@ func LogUnaryClientInterceptor(name string) grpc.UnaryClientInterceptor {
 
 			l.Str("caller", getCaller(l, method, "")).
 				Int64("duration/ms", loss).
-				Interface("req", req).
-				Interface("reply", reply).
+				Interface("req", protoLogValue(req)).
+				Interface("reply", protoLogValue(reply)).
 				Str("method", method).
 				Str("client", name).
 				Str("service", trimServiceName(cc.CanonicalTarget())).
@@ -157,7 +157,7 @@ func (s *streamClient) RecvMsg(m interface{}) (err error) {
 			Bool("client_stream", s.clientStreams).
 			Str("client", s.client).
 			Str("service", s.service).
-			Interface("msg", m).Msg("grpc stream RecvMsg")
+			Interface("msg", protoLogValue(m)).Msg("grpc stream RecvMsg")
 	}()
 
 	if err = s.ClientStream.RecvMsg(m); err != nil {
@@ -187,7 +187,7 @@ func (s *streamClient) SendMsg(m interface{}) (err error) {
 			Bool("client_stream", s.clientStreams).
 			Str("client", s.client).
 			Str("service", s.service).
-			Interface("msg", m).Msg("grpc stream SendMsg")
+			Interface("msg", protoLogValue(m)).Msg("grpc stream SendMsg")
 	}()
 
 	if err := s.ClientStream.SendMsg(m); err != nil {
@@ -364,7 +364,7 @@ func (s *streamService) RecvMsg(m interface{}) (err error) {
 			Bool("client_stream", s.clientstream).
 			Str("client", s.client).
 			Str("sevice", s.sevice).
-			Interface("msg", m).Msg("grpc stream RecvMsg")
+			Interface("msg", protoLogValue(m)).Msg("grpc stream RecvMsg")
 	}()
 
 	if err = s.ServerStream.RecvMsg(m); err != nil {
@@ -393,7 +393,7 @@ func (s *streamService) SendMsg(m interface{}) (err error) {
 			Bool("client_stream", s.clientstream).
 			Str("client", s.client).
 			Str("sevice", s.sevice).
-			Interface("msg", m).Msg("grpc stream SendMsg")
+			Interface("msg", protoLogValue(m)).Msg("grpc stream SendMsg")
 	}()
 
 	if err = s.ServerStream.SendMsg(m); err != nil {

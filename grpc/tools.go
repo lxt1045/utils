@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -13,6 +14,8 @@ import (
 	"github.com/lxt1045/errors/zerolog"
 	"github.com/lxt1045/utils/log"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 func i64ToStr(i int64) string {
@@ -88,7 +91,45 @@ func getCaller(l *zerolog.Event, full, method string) string {
 			return ""
 		}
 	}
+	// 回退：动态调用（如 Lua 引擎经 dynamicpb 发起的调用）栈上没有生成代码
+	// 客户端方法帧，上面按包名/方法名的启发式匹配必然失败；此时取第一个
+	// 非框架/基础设施的业务帧作为 caller。
+	// 注意 errors 库的 caller.Func 是短名（只保留末段路径，如 grpc.Invoke），
+	// 只能用短名前缀匹配。
+	for _, c := range cs {
+		if c.Func == "" || c.FileLine == "" {
+			continue
+		}
+		if isInfraFrame(c.Func) {
+			continue
+		}
+		return c.FileLine
+	}
 	return ""
+}
+
+// isInfraFrame 判定短函数名是否属于框架/基础设施包（grpc 框架、本包、
+// 日志与错误库、运行时）。caller 回退时不应指向这些帧。
+func isInfraFrame(fn string) bool {
+	for _, pre := range []string{"grpc.", "errors.", "zerolog.", "log.", "runtime."} {
+		if strings.HasPrefix(fn, pre) {
+			return true
+		}
+	}
+	return false
+}
+
+// protoLogValue 把 proto 消息转成可 JSON 序列化的日志值。
+// 生成的 pb 类型走 encoding/json 能输出字段，但引擎 dynamicpb 动态消息的
+// 内部字段全是未导出的，encoding/json 只会得到 {}，所以统一用 protojson。
+// 非 proto 类型原样返回。
+func protoLogValue(v any) any {
+	if m, ok := v.(proto.Message); ok {
+		if bs, err := protojson.Marshal(m); err == nil {
+			return json.RawMessage(bs)
+		}
+	}
+	return v
 }
 
 func getMethod(l *zerolog.Event, srv any, full string) string {
